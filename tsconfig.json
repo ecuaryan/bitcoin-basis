@@ -1,1 +1,1 @@
-{ "files": [], "references": [{ "path": "./engine" }] }
+{ "files": [], "references": [{ "path": "./engine" }, { "path": "./app" }] }

@@ -36,6 +36,8 @@ for (const [path, pkg] of Object.entries(packages)) {
   // Workspace members: the folder entry and its node_modules symlink entry.
   if (pkg.link === true) continue;
   if (!path.includes("node_modules/")) continue; // workspace source folder
+  // Bundled dependencies ship inside their parent's tarball, which is itself integrity-checked.
+  if (pkg.inBundle === true) continue;
   const name = path || "(root)";
   if (typeof pkg.resolved !== "string") {
     fail(`${name}: missing "resolved" URL.`);

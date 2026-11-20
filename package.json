@@ -8,19 +8,24 @@
     "node": ">=24"
   },
   "workspaces": [
-    "engine"
+    "engine",
+    "app"
   ],
   "scripts": {
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "check": "npm run typecheck && npm run lint && npm run test:coverage"
+    "check": "npm run typecheck && npm run lint && npm run test:coverage",
+    "dev": "npm run dev -w @bitcoin-basis/app",
+    "build": "npm run build -w @bitcoin-basis/app",
+    "preview": "npm run preview -w @bitcoin-basis/app"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@vitest/coverage-v8": "5.1.1",
     "eslint": "10.15.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "fast-check": "4.10.3",
     "globals": "17.14.0",
     "typescript": "6.0.3",
