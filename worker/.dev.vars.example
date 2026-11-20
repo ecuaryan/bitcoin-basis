@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `wrangler dev`. Fake values; never commit .dev.vars.
+# SESSION_SECRET: at least 32 characters (e.g. `openssl rand -base64 48`).
+SESSION_SECRET=dev-only-session-secret-not-for-production-use
+# SETUP_CODE: at least 16 characters; works only until the first passkey is registered.
+SETUP_CODE=dev-only-setup-code

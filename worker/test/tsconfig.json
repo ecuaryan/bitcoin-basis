@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "rootDir": "..",
+    "outDir": "../dist-types/test",
+    "tsBuildInfoFile": "../dist-types/test/.tsbuildinfo",
+    "lib": ["ES2023", "ESNext.TypedArrays", "DOM"],
+    "types": ["node"]
+  },
+  "include": [".", "../src/headers.ts"]
+}

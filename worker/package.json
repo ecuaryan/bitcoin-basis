@@ -1,0 +1,19 @@
+{
+  "name": "@bitcoin-basis/worker",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Sync server: one Cloudflare Worker in front of a private R2 bucket, plus static hosting for the app.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run --root .. worker/test"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261120.1",
+    "wrangler": "4.166.0"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "14.1.0"
+  }
+}

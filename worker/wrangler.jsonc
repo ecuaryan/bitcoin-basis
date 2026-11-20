@@ -1,0 +1,33 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  // One Worker: static app hosting plus the /api sync endpoints. See README.md.
+  "name": "bitcoin-basis",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-15",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "../app/dist",
+    "not_found_handling": "single-page-application",
+    // Only the API runs Worker code; everything else is a static asset (headers from app/public/_headers).
+    "run_worker_first": ["/api/*"]
+  },
+  // Private buckets. Rename them here if you use different bucket names.
+  "r2_buckets": [
+    { "binding": "DATA", "bucket_name": "bitcoin-basis-data" },
+    { "binding": "BACKUP", "bucket_name": "bitcoin-basis-backup" }
+  ],
+  // Local-dev defaults. On deploy, set the real values, e.g.
+  // wrangler deploy --var ORIGIN:https://bitcoin-basis.example.workers.dev --var RP_ID:bitcoin-basis.example.workers.dev
+  "vars": {
+    "ORIGIN": "http://localhost:8787",
+    "RP_ID": "localhost",
+    "RP_NAME": "Bitcoin Basis"
+  },
+  // Secrets (never committed): SESSION_SECRET, SETUP_CODE. Set with `wrangler secret put`.
+  // Daily copy of new objects from DATA to BACKUP.
+  "triggers": { "crons": ["17 3 * * *"] },
+  // No request logging or tracing: bodies and cookies never leave the Worker.
+  "observability": { "enabled": false },
+  "upload_source_maps": false
+}

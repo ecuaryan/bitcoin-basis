@@ -17,6 +17,8 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.browser } },
     rules: { ...reactHooks.configs.recommended.rules },
   },
+  // The sync Worker runs in the Cloudflare Workers runtime (service-worker-like globals).
+  { files: ['worker/src/**/*.ts'], languageOptions: { globals: { ...globals.serviceworker } } },
   // The service worker runs in a worker scope, in plain JS.
   { files: ['app/public/sw.js'], languageOptions: { globals: { ...globals.serviceworker } } },
 );

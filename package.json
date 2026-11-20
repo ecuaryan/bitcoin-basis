@@ -9,7 +9,8 @@
   },
   "workspaces": [
     "engine",
-    "app"
+    "app",
+    "worker"
   ],
   "scripts": {
     "typecheck": "tsc -b",
