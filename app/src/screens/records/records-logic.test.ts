@@ -1,7 +1,8 @@
 import { replay, type Entry } from '@bitcoin-basis/engine';
 import { describe as suite, expect, it } from 'vitest';
 import { buildDemoBook } from '../../demo/demo-data.ts';
-import { buildItems, describe, entryYears, kindGroup, matches, type EntryFilter } from './records-logic.ts';
+import { describeEntry as describe } from '../../lib/describe-entry.ts';
+import { buildItems, entryYears, kindGroup, matches, type EntryFilter } from './records-logic.ts';
 
 const tz = 'America/Boise';
 const entry = <T extends Entry['kind']>(e: Extract<Entry, { kind: T }>): Entry => e;
@@ -44,6 +45,9 @@ suite('describe', () => {
   it('names a buy', () => {
     const line = describe(buy1, names);
     expect(line).toMatchObject({ title: 'Bought', detail: 'Strike', sats: 100_000, sign: '+', cents: 5_000 });
+  });
+  it('also gives the one-line summary the wallet history uses', () => {
+    expect(describe(buy1, names)).toMatchObject({ summary: 'Bought', centsLabel: 'paid' });
   });
   it('names a settings change in words', () => {
     const e = entry({ id: 's', kind: 'settings', at: '2026-01-01T00:00:00Z', tz, patch: { wagesCents: 1 } });

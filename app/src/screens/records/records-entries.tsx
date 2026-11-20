@@ -9,14 +9,15 @@ import { Button } from '../../ui/Button.tsx';
 import { Field, SelectBox } from '../../ui/Field.tsx';
 import { PlainMoney } from '../../ui/plain-money.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
-import { buildItems, describe, entryYears, KIND_GROUPS, matches, type EntryFilter, type EntryItem, type KindGroup } from './records-logic.ts';
+import { describeEntry } from '../../lib/describe-entry.ts';
+import { buildItems, entryYears, KIND_GROUPS, matches, type EntryFilter, type EntryItem, type KindGroup } from './records-logic.ts';
 
 const PAGE = 40;
 
 /** One row in an entries list. A button: it opens the entry with its history. */
 export function EntryRow({ item, wallets, today, onOpen, last }: { item: EntryItem; wallets: ReadonlyMap<string, Wallet>; today: string; onOpen(): void; last: boolean }) {
   const e = item.current;
-  const line = describe(e, wallets);
+  const line = describeEntry(e, wallets);
   const edited = item.versions.length > 1;
   return (
     <li className={cx(!last && 'border-b border-line')}>
@@ -88,7 +89,7 @@ export function EntrySheet({ item, state, today, onClose }: { item: EntryItem; s
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
   const name = (id: string) => wallets.get(id)?.name ?? 'Unknown wallet';
   const e = item.current;
-  const line = describe(e, wallets);
+  const line = describeEntry(e, wallets);
   const rows: [string, ReactNode][] = [
     ['When', `${shortDate(localDate(e.at, e.tz), today)} · ${e.tz.replace('_', ' ')}`],
     ...facts(e, name),
@@ -120,7 +121,7 @@ export function EntrySheet({ item, state, today, onClose }: { item: EntryItem; s
           <h3 className="m-0 text-[15px] font-semibold">History</h3>
           <ol className="m-0 flex list-none flex-col gap-2 p-0">
             {history.map((v, i) => {
-              const l = describe(v, wallets);
+              const l = describeEntry(v, wallets);
               const isNow = v.id === e.id && !item.deleted && i === 0;
               return (
                 <li key={v.id} className="flex flex-col gap-0.5 rounded-xl border border-line bg-bg px-3 py-2 text-sm">

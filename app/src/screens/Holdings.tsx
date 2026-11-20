@@ -6,6 +6,7 @@ import { demoPriceAt } from '../demo/demo-data.ts';
 import { cx } from '../lib/cx.ts';
 import { buildHoldingsView, type HoldingsView } from '../lib/holdings-view.ts';
 import { formatMoney } from '../lib/format.ts';
+import { AddWalletButton } from './wallet/AddWallet.tsx';
 import { Amount, Money } from '../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide } from '../ui/AppShell.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -228,6 +229,7 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
           {view.wallets.map((w) => (
             <WalletRow key={w.id} w={w} />
           ))}
+          <AddWalletButton className="mt-2 self-start" />
         </Card>
       </div>
 

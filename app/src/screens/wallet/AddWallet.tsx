@@ -2,6 +2,7 @@ import { uuidv7, type WalletEntry, type WalletType } from '@bitcoin-basis/engine
 import { useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { PlusIcon } from '../../ui/icons.tsx';
 import { Segmented } from '../../ui/Segmented.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 import { TextField } from '../../ui/form-fields.tsx';
@@ -80,5 +81,19 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
         Add wallet
       </Button>
     </form>
+  );
+}
+
+/** A standalone "Add a wallet" button that opens the sheet. */
+export function AddWalletButton({ className }: { className?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)} {...(className === undefined ? {} : { className })}>
+        <PlusIcon size={16} />
+        Add a wallet
+      </Button>
+      <AddWalletSheet open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }

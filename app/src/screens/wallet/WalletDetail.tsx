@@ -16,7 +16,8 @@ import { Segmented } from '../../ui/Segmented.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { GainText, TIER_BG } from '../holdings-parts.tsx';
 import { useAmount } from '../log/hooks.ts';
-import { describeEntry, DELETABLE_KINDS, EDITABLE_KINDS, localInputFor, lockedYear, longDate, nextDay, nowInstant, trialReplay } from '../log/model.ts';
+import { describeEntry } from '../../lib/describe-entry.ts';
+import { DELETABLE_KINDS, EDITABLE_KINDS, localInputFor, lockedYear, longDate, nextDay, nowInstant, trialReplay } from '../log/model.ts';
 import { CloseOutSheet } from './CloseOut.tsx';
 import { lastConfirmed, walletEntries, walletLots } from './model.ts';
 import { WalletMenu } from './WalletMenu.tsx';
@@ -194,7 +195,7 @@ function ConfirmBalance({ wallet, inputRef }: { wallet: Wallet; inputRef: React.
                   return (
                     <li key={e.id} className="flex justify-between gap-3 text-xs">
                       <span>
-                        {line.title} · {shortDate(localInputFor(e.at, e.tz).slice(0, 10), today)}
+                        {line.summary} · {shortDate(localInputFor(e.at, e.tz).slice(0, 10), today)}
                       </span>
                       {line.sats !== null ? <Amount sats={line.sats} interactive={false} short /> : null}
                     </li>
@@ -312,7 +313,7 @@ function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
             <li key={e.id} className="border-b border-line last:border-b-0">
               <button type="button" aria-expanded={isOpen} onClick={() => setOpenId(isOpen ? null : e.id)} className="flex min-h-14 w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-semibold">{line.title}</span>
+                  <span className="truncate text-sm font-semibold">{line.summary}</span>
                   <span className="text-xs text-muted">
                     {shortDate(date, today)}
                     {locked !== null ? ` · locked, ${locked} is closed` : ''}

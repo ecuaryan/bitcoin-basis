@@ -6,6 +6,7 @@ import { buttonClasses, Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { Amount } from '../../ui/Amount.tsx';
 import { UnlockYearSheet } from '../tax/Tax.tsx';
+import { AddWalletButton } from '../wallet/AddWallet.tsx';
 import { yearLockHistory } from '../tax/tax-logic.ts';
 
 /** Years that were closed after filing, with their history. Unlocking needs a reason. */
@@ -76,6 +77,7 @@ export function WalletsView() {
           </Link>
         ))}
       </Card>
+      <AddWalletButton className="self-start" />
     </div>
   );
 }

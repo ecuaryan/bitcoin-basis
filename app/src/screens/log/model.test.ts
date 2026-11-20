@@ -51,4 +51,12 @@ describe('coin choice and trial replay', () => {
     const del: Entry = { id: 'd1', kind: 'delete', at: '2026-02-01T00:00:00Z', tz: 'America/Boise', replaces: 'b1', reason: 'x' };
     expect(trialReplay(withSell, replay(withSell), [del], 'b1').problems.length).toBeGreaterThan(0);
   });
+  it('lets a buy be edited after a sale picked its coins (lot ids stay stable)', () => {
+    const sell: Entry = { id: 's1', kind: 'sell', at: '2026-01-01T00:00:00Z', tz: 'America/Boise', wallet: 'ex', sats: 10_000_000, proceedsCents: 1, picks: [{ lotId: 'b1', sats: 10_000_000 }], spent: false };
+    const withSell = [...book, sell];
+    const edit: Entry = { ...buy('b1v2', '2024-02-01T17:00:00Z', 60_000_000, 2_100_000), replaces: 'b1', reason: 'typo' };
+    expect(trialReplay(withSell, replay(withSell), [edit], 'b1').problems).toEqual([]);
+    const tooSmall: Entry = { ...edit, sats: 5_000_000 };
+    expect(trialReplay(withSell, replay(withSell), [tooSmall], 'b1').problems[0]).toMatch(/^A later entry would stop working/);
+  });
 });

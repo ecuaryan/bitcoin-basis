@@ -1,4 +1,5 @@
-import { taxYear, type Cents, type Entry, type EntryKind, type Sats, type Wallet } from '@bitcoin-basis/engine';
+import { taxYear, type Entry, type EntryKind, type Wallet } from '@bitcoin-basis/engine';
+import { describeEntry } from '../../lib/describe-entry.ts';
 
 export interface EntryItem {
   /** Id of the first version. */
@@ -96,79 +97,6 @@ export function kindGroup(kind: EntryKind): KindGroup {
   }
 }
 
-export interface EntryLine {
-  glyph: string;
-  title: string;
-  /** Wallet and context, without the date. */
-  detail: string;
-  sats: Sats | null;
-  /** `+` coins in, `−` coins out, empty when neither. */
-  sign: '+' | '−' | '';
-  cents: Cents | null;
-}
-
-const SOURCE_TITLE = { income: 'income', gift: 'gift', inherited: 'inherited', 'frozen-payout': 'payout from a frozen wallet' } as const;
-
-export function describe(e: Entry, wallets: ReadonlyMap<string, Wallet>): EntryLine {
-  const w = (id: string): string => wallets.get(id)?.name ?? 'Unknown wallet';
-  const line = (glyph: string, title: string, detail: string, sats: Sats | null = null, sign: EntryLine['sign'] = '', cents: Cents | null = null): EntryLine => ({ glyph, title, detail, sats, sign, cents });
-  switch (e.kind) {
-    case 'buy':
-      return line('+', 'Bought', w(e.wallet), e.sats, '+', e.costCents);
-    case 'receive': {
-      const extra = e.source.type === 'income' && e.source.description ? ` · ${e.source.description}` : '';
-      return line('↓', `Received: ${SOURCE_TITLE[e.source.type]}`, `${w(e.wallet)}${extra}`, e.sats, '+', e.valueCents);
-    }
-    case 'move':
-      return line('→', 'Moved', `${w(e.from)} to ${w(e.to)}`, e.sats, '', null);
-    case 'sell':
-      return line('↑', e.spent ? 'Spent' : 'Sold', `${w(e.wallet)}${e.description ? ` · ${e.description}` : ''}`, e.sats, '−', e.proceedsCents);
-    case 'give':
-      return line('♥', 'Gave', `${w(e.wallet)} · to ${e.recipient}`, e.sats, '−', e.valueCents);
-    case 'lost':
-      return line('!', 'Lost', `${w(e.wallet)} · ${e.cause.replace('-', ' ')}`, e.sats, '−');
-    case 'opening-lot':
-      return line('⇩', 'Imported lot', `${w(e.wallet)} · ${e.origin}`, e.sats, '+', e.costCents);
-    case 'balance-confirm':
-      return line('✓', 'Balance confirmed', w(e.wallet), e.sats);
-    case 'retirement-snapshot':
-      return line('✓', 'Retirement balance', w(e.wallet), e.sats);
-    case 'wallet':
-      return line('◇', 'Wallet added', `${e.name} · ${e.type === 'self-custody' ? 'self-custody' : e.type}`);
-    case 'wallet-update':
-      return line('◇', e.archived === true ? 'Wallet archived' : e.archived === false ? 'Wallet restored' : 'Wallet renamed', e.name ?? w(e.wallet));
-    case 'wallet-freeze':
-      return line('◇', 'Wallet frozen', w(e.wallet));
-    case 'wallet-close-out':
-      return line('◇', 'Frozen wallet closed out', w(e.wallet));
-    case 'settings':
-      return line('⚙', 'Settings changed', Object.keys(e.patch).map(settingLabel).join(', '));
-    case 'close-year':
-      return line('◼', `Year ${e.year} closed`, 'Filed');
-    case 'unlock-year':
-      return line('◻', `Year ${e.year} unlocked`, e.reason);
-    case 'giving-paid':
-      return line('♥', 'Giving paid', `For ${e.year}`, null, '', e.cents);
-    case 'delete':
-      return line('×', 'Deleted', e.reason);
-  }
-}
-
-const SETTING_LABELS: Record<string, string> = {
-  filingStatus: 'filing status',
-  wagesCents: 'wages',
-  state: 'state',
-  carryforwardStCents: 'short-term carryforward',
-  carryforwardLtCents: 'long-term carryforward',
-  givingEnabled: 'giving on or off',
-  givingName: 'giving name',
-  givingPercentBp: 'giving percent',
-  givingMode: 'giving before or after tax',
-  earlierMoneyInCents: 'earlier money in',
-  timeZone: 'time zone',
-};
-export const settingLabel = (key: string): string => SETTING_LABELS[key] ?? key;
-
 export interface EntryFilter {
   text: string;
   wallet: string;
@@ -190,7 +118,7 @@ export function matches(item: EntryItem, f: EntryFilter, wallets: ReadonlyMap<st
   if (f.year !== '' && String(taxYear(e.at, e.tz)) !== f.year) return false;
   const q = f.text.trim().toLowerCase();
   if (q === '') return true;
-  const line = describe(e, wallets);
+  const line = describeEntry(e, wallets);
   const hay = [line.title, line.detail, e.note ?? '', e.proof ?? '', e.reason ?? '', e.id, ...walletsOf(e).map((id) => wallets.get(id)?.name ?? '')].join(' ').toLowerCase();
   return q.split(/\s+/).every((word) => hay.includes(word));
 }

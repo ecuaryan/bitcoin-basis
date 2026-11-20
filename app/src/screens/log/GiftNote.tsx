@@ -33,10 +33,10 @@ export function giftNoteText(g: GiftGiven): string {
 }
 
 /** The gift note on screen. Amounts follow the hide-amounts setting. */
-export function GiftNoteCard({ gift }: { gift: GiftGiven }) {
+export function GiftNoteCard({ gift, heading: Heading = 'h4' }: { gift: GiftGiven; heading?: 'h2' | 'h4' }) {
   return (
     <section aria-label="Gift note" className="flex flex-col gap-2.5 rounded-2xl border border-line bg-bg px-3.5 py-3.5">
-      <h4 className="m-0 font-display text-base font-semibold tracking-tight">Gift note for {gift.recipient}</h4>
+      <Heading className="m-0 font-display text-base font-semibold tracking-tight">Gift note for {gift.recipient}</Heading>
       <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
         <dt className="text-muted">Date of gift</dt>
         <dd className="m-0 text-right font-semibold">{longDate(gift.date)}</dd>
@@ -99,17 +99,17 @@ export function GiftNotePage() {
   const gift = state.gifts.find((g) => g.entryId === id);
   if (gift === undefined) {
     return (
-      <div className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-4 px-5 py-10">
+      <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-4 px-5 py-10">
         <h1 className="m-0 font-display text-2xl font-semibold">Gift note</h1>
         <p className="m-0 text-muted">That gift is not in your book.</p>
         <Link to="/" className={buttonClasses('secondary', 'w-fit no-underline text-text')}>
           Back to Holdings
         </Link>
-      </div>
+      </main>
     );
   }
   return (
-    <div className="mx-auto flex min-h-dvh max-w-xl flex-col gap-5 px-5 py-8 print:max-w-none print:bg-white print:p-0 print:text-black">
+    <main className="mx-auto flex min-h-dvh max-w-xl flex-col gap-5 px-5 py-8 print:max-w-none print:bg-white print:p-0 print:text-black">
       <div className="flex items-center justify-between print:hidden">
         <Brand />
         <Link to="/" className="text-sm font-semibold">
@@ -124,7 +124,7 @@ export function GiftNotePage() {
         </Callout>
       ) : null}
       <div className="print:hidden">
-        <GiftNoteCard gift={gift} />
+        <GiftNoteCard gift={gift} heading="h2" />
       </div>
       <pre className="m-0 hidden whitespace-pre-wrap font-sans text-sm print:block print:text-black">{giftNoteText(gift)}</pre>
       <div className="flex flex-wrap gap-2.5 print:hidden">
@@ -145,6 +145,6 @@ export function GiftNotePage() {
           {copied ? 'Copied' : 'Copy the note'}
         </Button>
       </div>
-    </div>
+    </main>
   );
 }

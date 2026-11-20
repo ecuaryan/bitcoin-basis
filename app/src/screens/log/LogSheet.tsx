@@ -10,7 +10,8 @@ import type { Draft, FormProps, LogKind, LogPreset } from './draft.ts';
 import { GiftNoteActions, GiftNoteCard } from './GiftNote.tsx';
 import { GiveForm } from './GiveForm.tsx';
 import { useNowMs } from './hooks.ts';
-import { describeEntry, lockedYear } from './model.ts';
+import { describeEntry } from '../../lib/describe-entry.ts';
+import { lockedYear } from './model.ts';
 import { MoveForm } from './MoveForm.tsx';
 import { ReceiveForm } from './ReceiveForm.tsx';
 import { Review } from './Review.tsx';
@@ -109,7 +110,7 @@ function LogBody({ preset: startPreset, onClose }: { preset: LogPreset; onClose(
       removing: true,
       replacing: head.id,
       rows: [
-        { label: 'Entry', value: line.title },
+        { label: 'Entry', value: line.summary },
         ...(line.sats === null ? [] : [{ label: 'Amount', value: <Amount sats={line.sats} interactive={false} showUnit /> }]),
         ...(line.cents === null ? [] : [{ label: line.centsLabel === '' ? 'Value' : line.centsLabel.replace(/^./, (c) => c.toUpperCase()), value: <Money cents={line.cents} /> }]),
       ],

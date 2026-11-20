@@ -1,0 +1,198 @@
+import { expect, test, type Page } from '@playwright/test';
+import { expectNoViolations, openDemo } from './helpers.ts';
+
+/** Axe on every route and on the sheets, at both sizes (the two Playwright projects). */
+
+const ROUTES: { path: string }[] = [
+  { path: '/' },
+  { path: '/what-if' },
+  { path: '/what-if?mode=borrow' },
+  { path: '/tax' },
+  { path: '/tax/summary/2026' },
+  { path: '/records?v=entries' },
+  { path: '/records?v=giving' },
+  { path: '/records?v=closed' },
+  { path: '/records?v=wallets' },
+  { path: '/records?v=io' },
+  { path: '/records?v=settings' },
+  { path: '/wallet/wallet-strike' },
+  { path: '/wallet/wallet-cold' },
+  { path: '/welcome' },
+  { path: '/unlock' },
+  { path: '/kit' },
+  { path: '/nowhere' },
+];
+
+for (const r of ROUTES) {
+  test(`axe: ${r.path}`, async ({ page }) => {
+    await openDemo(page);
+    await page.goto(r.path);
+    await expect(page.locator('h1, h2').first()).toBeVisible();
+    await expectNoViolations(page);
+  });
+}
+
+test('axe: first run (nothing logged yet)', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Load demo data' })).toBeVisible();
+  await expectNoViolations(page);
+});
+
+test('axe: the gift note page', async ({ page }) => {
+  await openDemo(page);
+  await page.goto('/wallet/wallet-strike');
+  await expect(page.getByRole('region', { name: 'Entries' })).toBeVisible();
+  const showMore = page.getByRole('button', { name: 'Show more' });
+  const gave = page.getByRole('button', { name: /Gave to Sam/ });
+  while ((await gave.count()) === 0 && (await showMore.count()) > 0) await showMore.click();
+  await gave.first().click();
+  await page.getByRole('link', { name: 'Open the gift note' }).click();
+  await expect(page.locator('h1').first()).toBeVisible();
+  await expectNoViolations(page);
+});
+
+async function openLogSheet(page: Page, tab: string) {
+  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Log' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('tab', { name: tab }).click();
+  return dialog;
+}
+
+for (const tab of ['Bought', 'Received', 'Moved', 'Sold or spent', 'Gave']) {
+  test(`axe: Log sheet, ${tab}`, async ({ page }) => {
+    await openDemo(page);
+    await openLogSheet(page, tab);
+    await expectNoViolations(page);
+  });
+}
+
+test('axe: the other sheets (year, add wallet, wallet menu, edit)', async ({ page }) => {
+  await openDemo(page);
+  await page.getByRole('button', { name: /Show where the .*2023 coins came from/ }).click();
+  await expect(page.getByRole('dialog', { name: '2023 coins' })).toBeVisible();
+  await expectNoViolations(page);
+  await page.keyboard.press('Escape');
+
+  await page.goto('/records?v=wallets');
+  await page.getByRole('button', { name: 'Add a wallet' }).click();
+  await expect(page.getByRole('dialog', { name: 'Add a wallet' })).toBeVisible();
+  await expectNoViolations(page);
+  await page.keyboard.press('Escape');
+
+  await page.goto('/wallet/wallet-strike');
+  await expect(page.locator('h1').first()).toBeVisible();
+  await page.getByRole('button', { name: /Bought/ }).first().click();
+  await page.getByRole('button', { name: 'Edit' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expectNoViolations(page);
+});
+
+test('axe: Sell sheets (pick coins, review)', async ({ page }) => {
+  await openDemo(page);
+  await page.goto('/what-if');
+  await page.getByRole('button', { name: 'Pick coins' }).click();
+  await expect(page.getByRole('dialog', { name: 'Pick coins' })).toBeVisible();
+  await expectNoViolations(page);
+  await page.getByRole('button', { name: 'Use these coins' }).click();
+  await page.getByRole('button', { name: 'Log this sale' }).click();
+  await expect(page.getByRole('dialog', { name: 'Review this sale' })).toBeVisible();
+  await expectNoViolations(page);
+});
+
+test('reduced motion is honored: no running animations', async ({ page }) => {
+  await openDemo(page);
+  await openLogSheet(page, 'Bought');
+  const running = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running' && Number(a.effect?.getComputedTiming().duration ?? 0) > 5).length);
+  expect(running).toBe(0);
+  expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
+});
+
+// ---- Keyboard only ---------------------------------------------------------------------
+
+async function focusOutlineVisible(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const el = document.activeElement;
+    if (!el || el === document.body) return false;
+    // The date field's inner picker button draws the browser's own focus ring.
+    if (el instanceof HTMLInputElement && el.type === 'datetime-local') return true;
+    const s = getComputedStyle(el);
+    return s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0;
+  });
+}
+
+/** Tab until `pred` matches the focused element (max `limit` presses), checking a focus ring on each stop. */
+async function tabTo(page: Page, name: RegExp | string, limit = 60): Promise<void> {
+  for (let i = 0; i < limit; i++) {
+    await page.keyboard.press('Tab');
+    const label = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return '';
+      const labelled = el instanceof HTMLInputElement || el instanceof HTMLSelectElement ? [...(el.labels ?? [])].map((l) => l.innerText).join(' ') : '';
+      return el.getAttribute('aria-label') ?? (el.innerText || labelled || el.tagName);
+    });
+    expect(await focusOutlineVisible(page), `focus ring on "${label}"`).toBe(true);
+    if (typeof name === 'string' ? label.trim() === name : name.test(label)) return;
+  }
+  throw new Error(`Tab never reached ${String(name)}`);
+}
+
+test('keyboard only: log a purchase, Esc closes, focus returns', async ({ page, isMobile }) => {
+  test.skip(isMobile === true, 'Keyboard walk-through runs on desktop');
+  await openDemo(page);
+  await page.reload();
+  await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
+  await tabTo(page, /^Log$/);
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Log' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Amount', { exact: true })).toBeVisible();
+  // Focus moved into the sheet.
+  expect(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null)).toBe(true);
+  // Esc closes and focus goes back to the Log button.
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Log', exact: true })).toBeFocused();
+
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Amount', { exact: true }).focus();
+  await page.keyboard.type('0.01');
+  await page.keyboard.press('Tab');
+  await tabTo(page, /Total paid/);
+  await page.keyboard.type('750');
+  await tabTo(page, 'Review purchase');
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByText('No tax', { exact: true })).toBeVisible();
+  await tabTo(page, 'Save purchase');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('3.3767 2105 BTC')).toBeVisible();
+});
+
+test('keyboard only: log a sale, tab stays inside the sheet, Esc and focus return', async ({ page, isMobile }) => {
+  test.skip(isMobile === true, 'Keyboard walk-through runs on desktop');
+  await openDemo(page);
+  const dialog = await openLogSheet(page, 'Sold or spent');
+  await dialog.getByLabel('From wallet').selectOption({ label: 'Strike' });
+  await dialog.getByLabel('Amount', { exact: true }).fill('0.002');
+  // Tab around the whole sheet: focus never leaves the dialog.
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null), `tab ${i} stays in the dialog`).toBe(true);
+    expect(await focusOutlineVisible(page), await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 200) ?? '')).toBe(true);
+  }
+  await tabTo(page, 'Review sale');
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByText('Taxable gain')).toBeVisible();
+  await tabTo(page, 'Save sale');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // Esc from a fresh sheet puts focus back on the Log button.
+  await page.getByRole('button', { name: 'Log', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Log', exact: true })).toBeFocused();
+});

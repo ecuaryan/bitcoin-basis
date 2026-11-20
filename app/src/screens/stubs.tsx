@@ -72,11 +72,11 @@ export function WalletDetail() {
 /** Full-screen pages outside the tabs (first run, unlock, emergency kit). */
 function Bare({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-5 py-10">
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-5 py-10">
       <Brand />
       <h1 className="m-0 font-display text-3xl font-semibold tracking-tight">{title}</h1>
       {children}
-    </div>
+    </main>
   );
 }
 

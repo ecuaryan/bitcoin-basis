@@ -67,3 +67,13 @@ Documentation tiers (`TIER_BG`, `TIER_LABEL` in `screens/holdings-parts.tsx` and
 ## Testing
 
 Component tests: `app/src/**/*.test.tsx` with `// @vitest-environment happy-dom` and helpers in `app/src/test/render.tsx`. E2E: `app/e2e/*.spec.ts` against `vite preview` (phone 390x844 and desktop 1440x1000), axe on every screen. Screenshots: `npm run build && npm run preview` then `npm run screenshots -w @bitcoin-basis/app` (output in `app/e2e/screenshots/`, git-ignored).
+
+### Visual snapshots
+
+`app/e2e/visual.spec.ts` (tests tagged `@visual`) takes full-page pictures of Holdings, the Log sheet, Sell, Borrow, Tax season, Records and Wallet detail at both sizes, using the demo book (fixed price, fixed "today"), animations off and reduced motion on. Baselines live in `app/e2e/visual.spec.ts-snapshots/` and are platform-specific (`*-darwin.png`: fonts render differently per OS), so CI skips them with `--grep-invert @visual` and they run on a Mac only.
+
+- Check: `npm run e2e -w @bitcoin-basis/app -- --grep @visual`
+- After an intended design change, review the diff in `app/playwright-report/` or `app/test-results/`, then update: `npm run e2e:visual:update -w @bitcoin-basis/app`, look at the changed PNGs, and commit them with the change.
+- Run everything except snapshots (what CI runs): `npm run e2e:ci -w @bitcoin-basis/app`.
+- Accessibility sweep: `app/e2e/a11y.spec.ts` runs axe on every route and sheet at both sizes, a keyboard-only walk-through (log a purchase and a sale, Esc, focus return) and a reduced-motion check.
+- Screens other than Holdings are code-split with `React.lazy` (see `App.tsx`); keep new routes lazy and Holdings in the main chunk.

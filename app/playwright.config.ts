@@ -7,7 +7,7 @@ export default defineConfig({
   testDir: 'e2e',
   testMatch: '**/*.spec.ts',
   fullyParallel: true,
-  reporter: [['list']],
+  reporter: process.env['CI'] ? [['list'], ['html', { open: 'never' }]] : [['list']],
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     colorScheme: 'dark',
@@ -19,9 +19,11 @@ export default defineConfig({
     { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
   ],
   webServer: {
-    command: 'npm run build && npm run preview',
+    // CI builds first (separate step); locally the build runs here so the preview is never stale.
+    command: process.env['CI'] ? 'npm run preview' : 'npm run build && npm run preview',
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env['CI'],
+    stdout: 'ignore',
     timeout: 120_000,
   },
 });

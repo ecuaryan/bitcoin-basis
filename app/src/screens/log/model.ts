@@ -222,7 +222,8 @@ export function trialReplay(entries: readonly Entry[], current: LedgerState, add
   const problems: string[] = [];
   for (const err of after.errors) {
     if (mine.has(err.entryId)) problems.push(friendlyProblem(err.code, err.message));
-    else if (!known.has(`${err.entryId}:${err.code}`)) problems.push('Other entries depend on these coins and would stop working. Change or remove those first.');
+    // The engine decides what is refused. Lot ids stay the same across edits, so a later sale only breaks if its own picks no longer fit.
+    else if (!known.has(`${err.entryId}:${err.code}`)) problems.push(`A later entry would stop working: ${err.message}`);
   }
   if (after.conflicts.length > current.conflicts.length) problems.push('Another copy of this entry was changed elsewhere. Resolve that first.');
   for (const e of add) if (e.kind !== 'delete' && !after.applied.includes(e.id) && problems.length === 0) problems.push('This entry could not be applied to your book.');
@@ -269,6 +270,11 @@ function gainLines(st: number, lt: number): EffectLine[] {
   return lines;
 }
 
+function laterPayoutNote(st: number, lt: number): string {
+  if (st !== 0 && lt !== 0) return 'Any later payout counts as a gain with $0 cost, part short-term and part long-term, in the same proportions as this loss.';
+  return `Any later payout counts as a ${lt !== 0 ? 'long' : 'short'}-term gain with $0 cost.`;
+}
+
 /** What saving `entry` does to taxes, read from the book replayed with it (`after`) and without it (`before`). */
 export function computeEffect(entry: Entry, before: LedgerState, after: LedgerState): Effect {
   switch (entry.kind) {
@@ -290,8 +296,8 @@ export function computeEffect(entry: Entry, before: LedgerState, after: LedgerSt
       if (src.type === 'inherited') return NONE('No tax now', ['Inherited coins take their value on the date of death as cost and always count as long-term.']);
       const rec = after.recoveries.find((r) => r.entryId === entry.id);
       if (rec !== undefined) {
-        const tax = capitalTax(before, rec.year, rec.date, rec.term === 'short' ? rec.gainCents : 0, rec.term === 'long' ? rec.gainCents : 0);
-        return { tone: 'taxable', headline: 'Taxable gain', lines: gainLines(rec.term === 'short' ? rec.gainCents : 0, rec.term === 'long' ? rec.gainCents : 0), taxCents: tax, notes: ['This wallet was already closed out, so the payout is a gain with $0 cost.'], cpa: [] };
+        const tax = capitalTax(before, rec.year, rec.date, rec.stGainCents, rec.ltGainCents);
+        return { tone: 'taxable', headline: 'Taxable gain', lines: gainLines(rec.stGainCents, rec.ltGainCents), taxCents: tax, notes: ['This wallet was already closed out, so the payout is a gain with $0 cost.'], cpa: [] };
       }
       return NONE('No tax yet', ['A payout counts toward what you got back. It lowers the loss you record when you close the wallet out.']);
     }
@@ -342,62 +348,12 @@ export function computeEffect(entry: Entry, before: LedgerState, after: LedgerSt
         headline: c.gainCents < 0 ? 'Capital loss' : 'Capital gain',
         lines: [{ label: 'Cost of the coins', cents: c.costCents }, { label: 'Paid back to you', cents: c.recoveredCents }, ...gainLines(c.stGainCents, c.ltGainCents)],
         taxCents: tax,
-        notes: [`Recorded in ${c.year}, on the loss date. Any later payout counts as a ${c.recoveryTerm}-term gain with $0 cost.`],
+        notes: [`Recorded in ${c.year}, on the loss date. ${laterPayoutNote(c.stGainCents, c.ltGainCents)}`],
         cpa: ['The loss date and whether this is the right treatment depend on your situation. Confirm with your CPA.'],
       };
     }
     default:
       return NONE('No tax');
-  }
-}
-
-// ---- Describing entries ----------------------------------------------------------------
-
-export interface EntryLine {
-  title: string;
-  sats: number | null;
-  cents: number | null;
-  /** What the cents are: paid, value, proceeds. */
-  centsLabel: string;
-}
-
-/** A one-line description of an entry for history lists. Amounts are returned as numbers so the screen can mask them. */
-export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>): EntryLine {
-  const name = (id: string): string => wallets.get(id)?.name ?? 'a wallet';
-  switch (e.kind) {
-    case 'buy':
-      return { title: 'Bought', sats: e.sats, cents: e.costCents, centsLabel: 'paid' };
-    case 'opening-lot':
-      return { title: 'Imported coins', sats: e.sats, cents: e.costCents, centsLabel: 'cost' };
-    case 'receive': {
-      const s = e.source;
-      const title = s.type === 'income' ? 'Received income' : s.type === 'gift' ? 'Received a gift' : s.type === 'inherited' ? 'Inherited' : `Payout from ${name(s.fromWallet)}`;
-      return { title, sats: e.sats, cents: e.valueCents, centsLabel: 'worth' };
-    }
-    case 'move':
-      return { title: `Moved ${name(e.from)} to ${name(e.to)}`, sats: e.sats, cents: null, centsLabel: '' };
-    case 'sell':
-      return { title: e.spent ? 'Spent' : 'Sold', sats: e.sats, cents: e.proceedsCents, centsLabel: e.spent ? 'worth' : 'received' };
-    case 'give':
-      return { title: e.to === 'person' ? `Gave to ${e.recipient}` : `Gave to ${e.recipient} (charity)`, sats: e.sats, cents: e.valueCents, centsLabel: 'worth' };
-    case 'lost':
-      return { title: 'Lost or stolen', sats: e.sats, cents: null, centsLabel: '' };
-    case 'balance-confirm':
-      return { title: 'Checked the balance', sats: e.sats, cents: null, centsLabel: '' };
-    case 'retirement-snapshot':
-      return { title: 'Retirement balance noted', sats: e.sats, cents: null, centsLabel: '' };
-    case 'wallet':
-      return { title: `Added ${e.name}`, sats: null, cents: null, centsLabel: '' };
-    case 'wallet-update':
-      return { title: e.archived === true ? 'Archived' : e.archived === false ? 'Brought back from the archive' : `Renamed to ${e.name ?? ''}`, sats: null, cents: null, centsLabel: '' };
-    case 'wallet-freeze':
-      return { title: 'Marked frozen', sats: null, cents: null, centsLabel: '' };
-    case 'wallet-close-out':
-      return { title: 'Closed out', sats: null, cents: null, centsLabel: '' };
-    case 'delete':
-      return { title: 'Removed an entry', sats: null, cents: null, centsLabel: '' };
-    default:
-      return { title: e.kind, sats: null, cents: null, centsLabel: '' };
   }
 }
 

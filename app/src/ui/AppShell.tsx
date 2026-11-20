@@ -1,12 +1,15 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, lazy, useEffect, Suspense, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { cx } from '../lib/cx.ts';
-import { LogSheet } from '../screens/log/LogSheet.tsx';
 import type { LogPreset } from '../screens/log/draft.ts';
 import { EyeIcon, EyeOffIcon, HoldingsIcon, LockIcon, PlusIcon, RecordsIcon, WhatIfIcon } from './icons.tsx';
 import { useMediaQuery } from './motion.ts';
 import { usePrefs } from './prefs.tsx';
 import { useToast } from './Toast.tsx';
+
+// The Log sheet (all its forms) loads the first time it is opened.
+const loadLogSheet = () => import('../screens/log/LogSheet.tsx');
+const LogSheet = lazy(() => loadLogSheet().then((m) => ({ default: m.LogSheet })));
 
 export const WIDE_QUERY = '(min-width: 1024px)';
 /** Two layouts: phone (tabs along the bottom) and desktop (sidebar) from 1024px. */
@@ -128,7 +131,9 @@ function PhoneShell({ onLog }: { onLog(): void }) {
         </div>
       </header>
       <main className="relative flex flex-1 flex-col px-5 pb-[130px] pt-6">
-        <Outlet />
+        <Suspense fallback={null}>
+          <Outlet />
+        </Suspense>
       </main>
       <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 mx-auto flex h-[92px] max-w-[560px] items-center justify-around bg-[linear-gradient(180deg,rgb(11_11_12/0),#0b0b0c_30%)] px-3 pb-[max(20px,env(safe-area-inset-bottom))] pt-2">
         <PhoneTab to="/" end label="Holdings" icon={<HoldingsIcon size={22} />} />
@@ -173,7 +178,9 @@ function DesktopShell({ onLog }: { onLog(): void }) {
         </button>
       </nav>
       <main className="relative min-w-0 flex-1 px-10 pb-10 pt-8">
-        <Outlet />
+        <Suspense fallback={null}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );
@@ -183,17 +190,28 @@ function DesktopShell({ onLog }: { onLog(): void }) {
 export function AppShell() {
   const wide = useIsWide();
   const [logOpen, setLogOpen] = useState(false);
+  const [logLoaded, setLogLoaded] = useState(false);
+  // Fetch the sheet quietly once the first screen is up, so the + button feels instant.
+  useEffect(() => {
+    const t = setTimeout(() => void loadLogSheet(), 1500);
+    return () => clearTimeout(t);
+  }, []);
   const [preset, setPreset] = useState<LogPreset>({});
   const open = useCallback((p?: LogPreset) => {
     setPreset(p ?? {});
     setLogOpen(true);
+    setLogLoaded(true);
   }, []);
   const openPlain = useCallback(() => open(), [open]);
   const api = useMemo(() => ({ open }), [open]);
   return (
     <LogContext.Provider value={api}>
       {wide ? <DesktopShell onLog={openPlain} /> : <PhoneShell onLog={openPlain} />}
-      <LogSheet open={logOpen} onClose={() => setLogOpen(false)} preset={preset} />
+      {logLoaded ? (
+        <Suspense fallback={null}>
+          <LogSheet open={logOpen} onClose={() => setLogOpen(false)} preset={preset} />
+        </Suspense>
+      ) : null}
     </LogContext.Provider>
   );
 }
