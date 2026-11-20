@@ -3,6 +3,7 @@
  * Unknown fields are rejected so typos cannot silently drop data.
  */
 import { instantMs, isValidInstant, isValidLocalDate, isValidTimeZone } from './dates.ts';
+import { STATE_RATES } from './tax/tables/state.ts';
 import { err, ok } from './result.ts';
 import { FILING_STATUSES, LOST_CAUSES, TIERS, WALLET_TYPES, type Entry, type EntryKind, type Result } from './types.ts';
 
@@ -23,7 +24,8 @@ const isInstant: Check = (v) => typeof v === 'string' && isValidInstant(v);
 const isDate: Check = (v) => typeof v === 'string' && isValidLocalDate(v);
 const isYear: Check = (v) => Number.isSafeInteger(v) && (v as number) >= 1970 && (v as number) <= 9999;
 const isTimeZone: Check = (v) => typeof v === 'string' && isValidTimeZone(v);
-const isFraction: Check = (v) => typeof v === 'number' && v >= 0 && v < 1;
+const isRateTenThousandths: Check = (v) => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) <= 10_000;
+const isStateCode: Check = (v) => typeof v === 'string' && Object.hasOwn(STATE_RATES, v);
 const isPercent: Check = (v) => typeof v === 'number' && v >= 0 && v <= 100;
 const oneOf =
   (values: readonly string[]): Check =>
@@ -69,8 +71,8 @@ const isSource = taggedUnion('type', {
 
 const isStateTax = taggedUnion('kind', {
   none: { kind: req(isString) },
-  flat: { kind: req(isString), state: req(isText) },
-  custom: { kind: req(isString), rate: req(isFraction) },
+  flat: { kind: req(isString), state: req(isStateCode) },
+  custom: { kind: req(isString), rate: req(isRateTenThousandths) },
 });
 
 const isSettingsPatch = matches({

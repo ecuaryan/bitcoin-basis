@@ -12,3 +12,7 @@ playwright-report/
 # never commit real ledger data
 *.real.csv
 private/
+app/e2e/screenshots/
+app/dist-types/
+playwright/.cache/
+dist-types/

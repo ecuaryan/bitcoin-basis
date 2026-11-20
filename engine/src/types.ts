@@ -26,8 +26,9 @@ export type Term = 'short' | 'long';
 export type LostCause = 'lost-keys' | 'wrong-address' | 'hack' | 'scam';
 export const LOST_CAUSES: readonly LostCause[] = ['lost-keys', 'wrong-address', 'hack', 'scam'];
 
-export type FilingStatus = 'single' | 'married-joint' | 'married-separate' | 'head-of-household';
-export const FILING_STATUSES: readonly FilingStatus[] = ['single', 'married-joint', 'married-separate', 'head-of-household'];
+/** The one filing-status type, shared by the ledger settings and the tax module. */
+export type FilingStatus = 'single' | 'married-joint' | 'married-separate' | 'head-of-household' | 'qualifying-surviving-spouse';
+export const FILING_STATUSES: readonly FilingStatus[] = ['single', 'married-joint', 'married-separate', 'head-of-household', 'qualifying-surviving-spouse'];
 
 /** Sats taken from one lot by a disposal. */
 export interface LotPick {
@@ -191,7 +192,7 @@ export type EntryKind = Entry['kind'];
 // Settings
 // ---------------------------------------------------------------------------------------------
 
-/** State income tax: none, a state's flat rate from the tax tables, or a custom rate (e.g. 0.053). */
+/** State income tax: none, a state's flat rate from the tax tables, or a custom flat rate as a whole number of 1/10000ths (530 = 5.3%). */
 export type StateTaxSetting =
   | { readonly kind: 'none' }
   | { readonly kind: 'flat'; readonly state: string }

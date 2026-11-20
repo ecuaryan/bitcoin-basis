@@ -1,10 +1,12 @@
 /** Shared types for the tax module. Money is whole cents; rates are whole 1/10000ths (530 = 5.3%). */
 
 import type { Cents } from '../money.ts';
+import { FILING_STATUSES, type FilingStatus } from '../types.ts';
 
-export type TaxFilingStatus = 'single' | 'married-joint' | 'married-separate' | 'head-of-household' | 'qualifying-surviving-spouse';
+/** Same type as the ledger's `FilingStatus` (one source of truth). */
+export type TaxFilingStatus = FilingStatus;
 
-export const TAX_FILING_STATUSES: readonly TaxFilingStatus[] = ['single', 'married-joint', 'married-separate', 'head-of-household', 'qualifying-surviving-spouse'];
+export const TAX_FILING_STATUSES: readonly TaxFilingStatus[] = FILING_STATUSES;
 
 /** A rate in whole 1/10000ths: 1000 = 10%, 380 = 3.8%. */
 export type TaxRate = number;

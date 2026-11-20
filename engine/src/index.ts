@@ -12,6 +12,7 @@ export { replay, DEFAULT_SETTINGS, APPRAISAL_THRESHOLD_CENTS } from './replay.ts
 export { lowestTaxOrder, oldestFirst, oldestFirstOrder, picksAfterMove, picksFor, splitCost, splitMovePicks, termFor, validatePicks, type LowestTaxOptions } from './picks.ts';
 export { averageCostPerBtc, giftsOverExclusion, giftTotalsByRecipient, holdings, yearSummary, type Holdings, type RecipientTotal, type RetirementHolding, type WalletHolding, type YearSummary } from './reports.ts';
 export { canSellFrom, type SellRefusal } from './sell-guard.ts';
+export * from './tax/index.ts';
 export { parseCsv, toCsv } from './csv.ts';
 export {
   ENTRIES_FORMAT,
@@ -31,3 +32,4 @@ export {
   type OpeningLotsImport,
   type OpeningLotsImportOptions,
 } from './io.ts';
+export * from './planner/index.ts';

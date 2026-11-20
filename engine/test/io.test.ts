@@ -108,7 +108,7 @@ describe('entries JSON', () => {
     ...testBook(),
     sell('S', 'ex', '2026-11-15', [pick('L1', '0.25')], '18750'),
     { id: 'D', kind: 'delete', at: noon('2026-11-16'), tz: TZ, replaces: 'L4', reason: 'duplicate' },
-    { id: 'set', kind: 'settings', at: noon('2026-01-01'), tz: TZ, patch: { state: { kind: 'custom', rate: 0.053 } } },
+    { id: 'set', kind: 'settings', at: noon('2026-01-01'), tz: TZ, patch: { state: { kind: 'custom', rate: 530 } } },
   ];
   test('export then import reproduces every number', () => {
     const text = exportEntriesJson(entries);

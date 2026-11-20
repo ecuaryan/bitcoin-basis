@@ -1,3 +1,4 @@
+export { stateChoiceFromSettings } from './settings.ts';
 export { capitalTaxEffect, incrementalTax, marginalRates, taxForYear } from './tax.ts';
 export type { Carryforward, IncrementalTax, MarginalRates, Netting, StateChoice, TaxAssumptions, TaxEffect, TaxInput, TaxResult } from './tax.ts';
 export { FEDERAL_TABLES, federalTableFor } from './tables/index.ts';

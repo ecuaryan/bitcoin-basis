@@ -13,3 +13,4 @@ Build log for Bitcoin Basis. Each step lists what "done" means and how it was ve
 ## Log
 
 - 2026-11-20: Repo created. MIT license. Engine spec written (`docs/engine-spec.md`).
+- 2026-11-20: CI live (typecheck, lint, 100% engine coverage, gitleaks, audit, CodeQL). Ledger and tax modules landed: 279 tests. Tax math cross-checked against an independent reference on 2,800 random cases (exact match). Planner (Sell/Borrow/giving) and app scaffold in progress.
