@@ -1,0 +1,115 @@
+/**
+ * Coin choice: orderings (oldest first, lowest tax), turning an ordering into picks, and
+ * validating picks. Pure helpers over a lot list; replay uses the same validation.
+ */
+import { isLongTerm } from './dates.ts';
+import { mulDivRoundHalfUp, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
+import { compareLotsOldestFirst } from './order.ts';
+import { err, ok } from './result.ts';
+import { TIERS, type EntryId, type LocalDate, type Lot, type LotId, type LotPick, type PickError, type Result, type Term, type WalletId } from './types.ts';
+
+/** Short- or long-term for coins from `lot` disposed of on `date`. Inherited lots are always long-term. */
+export function termFor(lot: Pick<Lot, 'acquiredDate' | 'alwaysLongTerm'>, date: LocalDate): Term {
+  return lot.alwaysLongTerm || isLongTerm(lot.acquiredDate, date) ? 'long' : 'short';
+}
+
+/** Cost of taking `sats` from a lot holding `lotSats` and `lotCost`: all of it, or a half-up share. */
+export function splitCost(lotSats: Sats, lotCost: Cents, sats: Sats): Cents {
+  return sats === lotSats ? lotCost : mulDivRoundHalfUp(lotCost, sats, lotSats);
+}
+
+/** The wallet's open lots, oldest first (acquired date, then acquired instant, then lot id). */
+export function oldestFirstOrder(lots: readonly Lot[], wallet: WalletId): Lot[] {
+  return lots.filter((l) => l.wallet === wallet && l.sats > 0).sort(compareLotsOldestFirst);
+}
+
+/** Picks for `sats` from the wallet, oldest first. */
+export function oldestFirst(lots: readonly Lot[], wallet: WalletId, sats: Sats): Result<LotPick[], PickError> {
+  return picksFor(oldestFirstOrder(lots, wallet), sats);
+}
+
+export interface LowestTaxOptions {
+  /** Price in cents per BTC. */
+  readonly priceCents: Cents;
+  /** Marginal rates (e.g. 0.273), used only to order lots. */
+  readonly stRate: number;
+  readonly ltRate: number;
+  /** Local date of the planned sale (decides each lot's holding period). */
+  readonly onDate: LocalDate;
+}
+
+/**
+ * The wallet's open lots in "lowest tax this year" order: Documented, then Reconstructed,
+ * Estimated, Unknown; within a tier by estimated tax per sat, lowest first (biggest losses
+ * first). Ties keep oldest-first order.
+ */
+export function lowestTaxOrder(lots: readonly Lot[], wallet: WalletId, options: LowestTaxOptions): Lot[] {
+  const pricePerSat = options.priceCents / SATS_PER_BTC;
+  const keyed = oldestFirstOrder(lots, wallet).map((lot) => {
+    const rate = termFor(lot, options.onDate) === 'long' ? options.ltRate : options.stRate;
+    return { lot, tier: TIERS.indexOf(lot.tier), taxPerSat: rate * (pricePerSat - lot.costCents / lot.sats) };
+  });
+  keyed.sort((a, b) => a.tier - b.tier || a.taxPerSat - b.taxPerSat);
+  return keyed.map((k) => k.lot);
+}
+
+/** Take `sats` from lots in the given order. */
+export function picksFor(orderedLots: readonly Lot[], sats: Sats): Result<LotPick[], PickError> {
+  if (!Number.isSafeInteger(sats) || sats <= 0) return err({ code: 'invalid-amount', message: 'amount must be a positive whole number of sats' });
+  const picks: LotPick[] = [];
+  let left = sats;
+  for (const lot of orderedLots) {
+    if (left === 0) break;
+    const take = Math.min(left, lot.sats);
+    if (take > 0) picks.push({ lotId: lot.id, sats: take });
+    left -= take;
+  }
+  if (left > 0) return err({ code: 'insufficient-sats', message: `short by ${left} sats` });
+  return ok(picks);
+}
+
+/** First problem with `picks` against lots found through `lookup`, or null if they are valid. */
+export function pickProblem(lookup: (id: LotId) => Lot | undefined, wallet: WalletId, picks: readonly LotPick[], totalSats: Sats): PickError | null {
+  if (!Number.isSafeInteger(totalSats) || totalSats <= 0) return { code: 'invalid-amount', message: 'amount must be a positive whole number of sats' };
+  const seen = new Set<LotId>();
+  let sum = 0;
+  for (const p of picks) {
+    if (!Number.isSafeInteger(p.sats) || p.sats <= 0) return { code: 'invalid-amount', lotId: p.lotId, message: 'each pick needs a positive whole number of sats' };
+    if (seen.has(p.lotId)) return { code: 'duplicate-pick', lotId: p.lotId, message: `lot ${p.lotId} is picked twice` };
+    seen.add(p.lotId);
+    const lot = lookup(p.lotId);
+    if (lot === undefined) return { code: 'unknown-lot', lotId: p.lotId, message: `lot ${p.lotId} does not exist` };
+    if (lot.wallet !== wallet) return { code: 'wrong-wallet', lotId: p.lotId, message: `lot ${p.lotId} is in another wallet` };
+    if (lot.sats < p.sats) return { code: 'insufficient-sats', lotId: p.lotId, message: `lot ${p.lotId} has ${lot.sats} sats, not ${p.sats}` };
+    sum += p.sats;
+  }
+  if (sum !== totalSats) return { code: 'picks-sum-mismatch', message: `picks add up to ${sum} sats, not ${totalSats}` };
+  return null;
+}
+
+/** Validate hand picks: each lot in the wallet with enough sats, no repeats, summing to `totalSats`. */
+export function validatePicks(lots: readonly Lot[], wallet: WalletId, picks: readonly LotPick[], totalSats: Sats): Result<readonly LotPick[], PickError> {
+  const byId = new Map(lots.map((l) => [l.id, l]));
+  const problem = pickProblem((id) => byId.get(id), wallet, picks, totalSats);
+  return problem === null ? ok(picks) : err(problem);
+}
+
+/** How a move's picks divide into moved sats (first) and fee sats (after), pick by pick. */
+export function splitMovePicks(picks: readonly LotPick[], movedSats: Sats): { moved: Sats[]; fee: Sats[] } {
+  let left = movedSats;
+  const moved = picks.map((p) => {
+    const m = Math.min(p.sats, left);
+    left -= m;
+    return m;
+  });
+  return { moved, fee: picks.map((p, i) => p.sats - (moved[i] as number)) };
+}
+
+/**
+ * Picks that sell exactly the coins a move delivered (the destination lots `<moveId>:<index>`).
+ * Used for "prepare sale": move the chosen lots to an exchange, then sell these.
+ */
+export function picksAfterMove(moveId: EntryId, picks: readonly LotPick[], movedSats: Sats): LotPick[] {
+  const { moved } = splitMovePicks(picks, movedSats);
+  return moved.flatMap((sats, i) => (sats > 0 ? [{ lotId: `${moveId}:${i}`, sats }] : []));
+}

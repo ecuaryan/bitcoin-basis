@@ -166,3 +166,22 @@ Married filing jointly, 2026 tables, standard deduction $32,200, wages $130,000,
 4. Replay from scratch equals incremental replay; input order doesn't matter.
 5. Export then import reproduces every number.
 6. Splits add back exactly.
+
+## Decisions (ledger)
+
+Readings chosen where the spec is silent or ambiguous. Conservative and simple first.
+
+1. **Field names.** The edit reason is the common `reason`; close-out and unlock-year require it. A lost entry's reason is `cause` (`lost-keys`, `wrong-address`, `hack`, `scam`). Picks are typed `LotPick` (TypeScript already has `Pick`).
+2. **Unknown fields are rejected** on every entry, so a typo can't silently drop data. Instants must be `YYYY-MM-DDTHH:MM:SS(.sss)Z`, from 1970 on.
+3. **Wallet creations replay first**, whatever their `at`, so a wallet added today can hold coins bought years ago. Everything else replays by `at`, then `id`.
+4. **Frozen wallets** accept no new coins and allow no disposals or moves out (close-out is the way to empty them). Archived wallets have no restrictions. A `sell` with `spent: false` may still be logged from a self-custody wallet (a private sale); only the Sell planner refuses it (`canSellFrom`).
+5. **Receive tiers** default to `documented`, except a gift with unknown giver cost, which is `unknown`. A gift's giver date is an instant (`giverAcquiredAt`) so the lot keeps a consistent `acquiredAt`; unknown → the receive time. Inherited coins are dated when received and always long-term.
+6. **Close-out:** `lossDate` defaults to the entry's local date. Lots are allocated oldest first (remainder on the last). If every lot cost $0, recovered dollars split by sats. Recovered more than cost gives a gain, reported as is. A close-out needs a frozen wallet that still holds coins, once only. "Mostly long-term by cost" means long-term cost strictly greater than short-term; a tie is short-term.
+7. **Charity:** short-term picks count the lesser of cost and value (IRC §170(e)); long-term picks count value. The qualified-appraisal flag applies to every charity gift in a tax year whose charity gifts total more than $5,000 in value (similar items are aggregated for the year).
+8. **1040 digital-asset answer** is Yes for any sale, spending, fee, gift, charity gift, close-out, recovery or income in the year. Moves without fees, buys and lost coins alone are No.
+9. **Edits and conflicts:** with two or more versions of one entry, none applies and the original stays as it was. A conflict is resolved by deleting all but one version (a `delete` whose target is a version, not the original). Deleting every version leaves the original. Deleting the newest version of a chain removes the item; replacing a `delete` restores it. Edits of missing entries and cycles are rejected. Two different entries with one id are both rejected; identical copies are fine.
+10. **Closed years** are judged in creation order (`id`, UUIDv7): an entry is rejected if, when it was created, the year was closed by the latest `close-year`/`unlock-year` for it. The rule covers buys, receives, moves, sales, gifts, losses and close-outs (their own local date, a close-out's `lossDate`, and the date of any entry they edit or delete). Opening lots, wallets, settings, balance checks, retirement snapshots and giving-paid entries are exempt. Year closings cannot be edited or deleted.
+11. **Balance checks** list the entries since the last *matching* confirmation.
+12. **Opening-lots CSV:** wallet names must match an existing wallet (ignoring case and outer spaces); unknown or ambiguous names are row errors. Each opening lot's `at` is its `acquiredAt`. `btc` disagreeing with `sats` is a warning (sats win); `cost_per_btc` is ignored on import. The CSV cannot carry "always long-term" (inherited), so export warns for those lots. The full entries JSON is the lossless format.
+13. **Form 8949-style CSV:** one row per lot piece; dates `MM/DD/YYYY`; close-out rows use the recovered share as proceeds; recovery rows show `VARIOUS` as acquired with $0 cost.
+14. **Gift exclusion totals** group recipients by label, ignoring case and outer spaces; the caller supplies the year's exclusion amount from the tax tables.
