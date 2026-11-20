@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { loadPriceSeries, memoryPriceCache, seriesTimes, createLocalPriceCache, type PricePoint } from '../data/price-history.ts';
 import { usePrice } from '../data/price-provider.tsx';
@@ -9,8 +10,10 @@ import { formatMoney } from '../lib/format.ts';
 import { AddWalletButton } from './wallet/AddWallet.tsx';
 import { Amount, Money } from '../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide } from '../ui/AppShell.tsx';
-import { Button } from '../ui/Button.tsx';
+import { buttonClasses } from '../ui/Button.tsx';
 import { Card } from '../ui/Card.tsx';
+import { SyncIndicator } from '../ui/SyncIndicator.tsx';
+import { PageHeader } from '../ui/PageHeader.tsx';
 import { PriceChart } from '../ui/PriceChart.tsx';
 import {
   DocumentationCard,
@@ -63,30 +66,16 @@ function useHoldingsView(): { view: HoldingsView; priceCents: number | null } {
 }
 
 function FirstRun() {
-  const { loadDemo } = useLedger();
   return (
     <Card className="flex flex-col items-start gap-4 lg:max-w-xl">
       <p className="m-0 font-display text-2xl font-semibold tracking-tight">Know what your Bitcoin cost.</p>
-      <p className="m-0 text-[15px] leading-relaxed text-muted">Nothing is logged yet. You can look around with a made-up book first: invented wallets, buys and prices, kept only in this browser.</p>
+      <p className="m-0 text-[15px] leading-relaxed text-muted">Nothing is logged yet. Add a wallet, then log what you bought or import your history.</p>
       <div className="flex flex-wrap gap-2.5">
-        <Button variant="primary" onClick={() => void loadDemo()}>
-          Load demo data
-        </Button>
+        <Link to="/records?v=wallets" className={buttonClasses('primary', 'no-underline hover:text-bg')}>
+          Add a wallet
+        </Link>
       </div>
     </Card>
-  );
-}
-
-function DemoBanner() {
-  const { isDemo, clearAll } = useLedger();
-  if (!isDemo) return null;
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3.5 py-2 text-xs text-muted">
-      <span>You are looking at made-up demo data.</span>
-      <button type="button" onClick={() => void clearAll()} className="min-h-8 bg-transparent px-1 text-xs font-semibold text-amber underline-offset-2 hover:underline">
-        Clear it
-      </button>
-    </div>
   );
 }
 
@@ -158,7 +147,6 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
       <MoneyCard view={view} />
       <DocumentationCard view={view} />
       <RetirementCard view={view} priceCents={priceCents} />
-      <DemoBanner />
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>
   );
@@ -187,7 +175,8 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
             <PriceLine quote={quote} status={status} error={error} className="text-sm" />
           </div>
         </section>
-        <div className="flex gap-2.5">
+        <div className="flex items-center gap-2.5">
+          <SyncIndicator />
           <HideButton variant="text" />
           <LockButton variant="text" />
         </div>
@@ -249,7 +238,6 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
         <DocumentationCard view={view} />
         <RetirementCard view={view} priceCents={priceCents} />
       </div>
-      <DemoBanner />
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>
   );
@@ -265,7 +253,7 @@ export function Holdings() {
   if (view.isEmpty) {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="sr-only">Holdings</h1>
+        <PageHeader title="Holdings" />
         <FirstRun />
       </div>
     );

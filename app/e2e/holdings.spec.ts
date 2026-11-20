@@ -7,7 +7,7 @@ export async function openHoldingsWithDemo(page: Page): Promise<void> {
     window.localStorage.setItem('bb.hide', '0');
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Load demo data' }).click();
+  await page.getByRole('button', { name: 'Try the demo' }).click();
   await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
 }
 
@@ -30,7 +30,7 @@ test('Holdings loads with demo data and has no accessibility violations', async 
 
 test('hidden amounts and the year sheet are accessible too', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Load demo data' }).click();
+  await page.getByRole('button', { name: 'Try the demo' }).click();
   await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
   // Hidden is the default: no digits in the worth line.
   await expect(page.getByText('$•••,•••', { exact: true }).first()).toBeVisible();

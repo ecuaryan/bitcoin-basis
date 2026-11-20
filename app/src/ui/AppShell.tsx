@@ -1,6 +1,9 @@
 import { createContext, lazy, useEffect, Suspense, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
+import { useLedger } from '../data/ledger-provider.tsx';
+import { useVaultOptional } from '../data/vault-provider.tsx';
 import { cx } from '../lib/cx.ts';
+import { SyncIndicator } from './SyncIndicator.tsx';
 import type { LogPreset } from '../screens/log/draft.ts';
 import { EyeIcon, EyeOffIcon, HoldingsIcon, LockIcon, PlusIcon, RecordsIcon, WhatIfIcon } from './icons.tsx';
 import { useMediaQuery } from './motion.ts';
@@ -76,7 +79,12 @@ export function HideButton({ variant = 'icon' }: { variant?: 'icon' | 'text' }) 
 
 export function LockButton({ variant = 'icon' }: { variant?: 'icon' | 'text' }) {
   const toast = useToast();
-  const lock = () => toast.show('Locking arrives with encryption, in the next step.');
+  const vault = useVaultOptional();
+  const { isDemo } = useLedger();
+  const lock = () => {
+    if (vault !== null && !isDemo) vault.lock();
+    else toast.show('This is the demo, so there is nothing to lock.');
+  };
   if (variant === 'text') {
     return (
       <button type="button" onClick={lock} className="min-h-11 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-text hover:bg-surface-2">
@@ -99,6 +107,20 @@ export function Brand({ size = 32, className }: { size?: number; className?: str
         Bitcoin Basis
       </span>
     </span>
+  );
+}
+
+/** Always visible in demo mode: nothing here is real, and nothing leaves this browser. */
+export function DemoBanner({ className }: { className?: string }) {
+  const { isDemo, clearAll } = useLedger();
+  if (!isDemo) return null;
+  return (
+    <section aria-label="Demo mode" className={cx('flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent/50 bg-surface px-3.5 py-2 text-xs text-soft', className)}>
+      <span>Demo — nothing is saved to your server</span>
+      <button type="button" onClick={() => void clearAll()} className="min-h-8 bg-transparent px-1 text-xs font-semibold text-amber underline-offset-2 hover:underline">
+        Exit demo
+      </button>
+    </section>
   );
 }
 
@@ -125,11 +147,13 @@ function PhoneShell({ onLog }: { onLog(): void }) {
       <div aria-hidden="true" className="pointer-events-none absolute -top-[180px] left-1/2 h-[420px] w-[520px] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(247_147_26/0.20),rgb(247_147_26/0))]" />
       <header className="relative flex items-center justify-between px-5 pt-5">
         <Brand />
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <SyncIndicator />
           <HideButton />
           <LockButton />
         </div>
       </header>
+      <DemoBanner className="mx-5 mt-3" />
       <main className="relative flex flex-1 flex-col px-5 pb-[130px] pt-6">
         <Suspense fallback={null}>
           <Outlet />
@@ -178,6 +202,7 @@ function DesktopShell({ onLog }: { onLog(): void }) {
         </button>
       </nav>
       <main className="relative min-w-0 flex-1 px-10 pb-10 pt-8">
+        <DemoBanner className="mb-4" />
         <Suspense fallback={null}>
           <Outlet />
         </Suspense>

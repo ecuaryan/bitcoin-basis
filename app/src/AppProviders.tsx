@@ -1,6 +1,8 @@
 import { useMemo, type ReactNode } from 'react';
 import { BrowserRouter } from 'react-router';
 import { LedgerProvider, useLedger } from './data/ledger-provider.tsx';
+import { useVaultStatus, VaultProvider } from './data/vault-provider.tsx';
+import type { Vault } from './vault/index.ts';
 import type { LedgerStore } from './data/ledger-store.ts';
 import { createFixedPriceService, createMempoolPriceService, type PriceService } from './data/price.ts';
 import { PriceProvider } from './data/price-provider.tsx';
@@ -17,7 +19,10 @@ function PriceBridge({ live, children }: { live: PriceService; children: ReactNo
 }
 
 export interface ProvidersProps {
-  store: LedgerStore;
+  /** The encrypted vault: its store holds the real book. */
+  vault: Vault;
+  /** Where the made-up demo book lives (never the vault: that store is append-only). */
+  demoStore: LedgerStore;
   /** Defaults to mempool.space. */
   priceService?: PriceService;
   /** Start with amounts hidden or shown; defaults to the saved choice (hidden the first time). */
@@ -25,15 +30,27 @@ export interface ProvidersProps {
   children: ReactNode;
 }
 
-export function AppProviders({ store, priceService, initialHidden, children }: ProvidersProps) {
+/** Real data comes from the vault's store; the demo book is only allowed while no vault is on this device. */
+function LedgerBridge({ vault, demoStore, children }: { vault: Vault; demoStore: LedgerStore; children: ReactNode }) {
+  const status = useVaultStatus();
+  return (
+    <LedgerProvider store={vault.store} demoStore={demoStore} demoAllowed={status.state === 'empty'}>
+      {children}
+    </LedgerProvider>
+  );
+}
+
+export function AppProviders({ vault, demoStore, priceService, initialHidden, children }: ProvidersProps) {
   const live = useMemo(() => priceService ?? createMempoolPriceService(), [priceService]);
   return (
     <BrowserRouter>
       <PrefsProvider {...(initialHidden === undefined ? {} : { initialHidden })}>
         <ToastProvider>
-          <LedgerProvider store={store}>
-            <PriceBridge live={live}>{children}</PriceBridge>
-          </LedgerProvider>
+          <VaultProvider vault={vault}>
+            <LedgerBridge vault={vault} demoStore={demoStore}>
+              <PriceBridge live={live}>{children}</PriceBridge>
+            </LedgerBridge>
+          </VaultProvider>
         </ToastProvider>
       </PrefsProvider>
     </BrowserRouter>

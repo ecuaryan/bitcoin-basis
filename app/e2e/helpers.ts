@@ -5,7 +5,7 @@ import { expect, type Page } from '@playwright/test';
 export async function openDemo(page: Page): Promise<void> {
   await page.addInitScript(() => window.localStorage.setItem('bb.hide', '0'));
   await page.goto('/');
-  await page.getByRole('button', { name: 'Load demo data' }).click();
+  await page.getByRole('button', { name: 'Try the demo' }).click();
   await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
 }
 

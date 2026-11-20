@@ -16,7 +16,7 @@ export interface Ledger {
   today: string;
   append(entries: readonly Entry[]): Promise<void>;
   loadDemo(): Promise<void>;
-  /** Remove every entry and leave demo mode. */
+  /** Remove the made-up demo book and leave demo mode. */
   clearAll(): Promise<void>;
 }
 
@@ -43,18 +43,35 @@ function writeDemoFlag(on: boolean): void {
 const EMPTY: readonly Entry[] = [];
 
 /** Replays entries with the engine and shares the result. Screens never touch the store directly. */
-export function LedgerProvider({ store, children, clock = Date.now }: { store: LedgerStore; children: ReactNode; clock?: () => number }) {
-  const [entries, setEntries] = useState<readonly Entry[]>(EMPTY);
-  const [ready, setReady] = useState(false);
-  const [isDemo, setIsDemo] = useState<boolean>(() => readDemoFlag());
+export function LedgerProvider({
+  store: realStore,
+  demoStore: demoStoreProp,
+  demoAllowed = true,
+  children,
+  clock = Date.now,
+}: {
+  /** The real book (the vault's encrypted store). Append-only: this provider never calls `clear()` on it. */
+  store: LedgerStore;
+  /** Where the made-up demo book lives. Defaults to `store` (tests and the plain local app only). */
+  demoStore?: LedgerStore;
+  /** False while a real vault exists on this device: a leftover demo flag is then ignored. */
+  demoAllowed?: boolean;
+  children: ReactNode;
+  clock?: () => number;
+}) {
+  const demoStore = demoStoreProp ?? realStore;
+  // Entries are remembered with the store they came from, so switching stores never shows the old book.
+  const [loaded, setLoaded] = useState<{ from: LedgerStore; list: readonly Entry[] } | null>(null);
+  const [demoFlag, setDemoFlag] = useState<boolean>(() => readDemoFlag());
+  const isDemo = demoFlag && demoAllowed;
+  const store = isDemo ? demoStore : realStore;
 
   useEffect(() => {
     let live = true;
     const load = () => {
       void store.list().then((list) => {
         if (!live) return;
-        setEntries(list);
-        setReady(true);
+        setLoaded({ from: store, list });
       });
     };
     load();
@@ -65,21 +82,24 @@ export function LedgerProvider({ store, children, clock = Date.now }: { store: L
     };
   }, [store]);
 
+  const ready = loaded !== null && loaded.from === store;
+  const entries = ready ? loaded.list : EMPTY;
   const state = useMemo(() => replay(entries), [entries]);
   const holdings = useMemo(() => computeHoldings(state), [state]);
 
   const append = useCallback((add: readonly Entry[]) => store.append(add), [store]);
+  // Demo only ever touches the demo store: the vault's store is append-only and is never cleared.
   const loadDemo = useCallback(async () => {
-    await store.clear();
-    await store.append(buildDemoBook().entries);
+    await demoStore.clear();
+    await demoStore.append(buildDemoBook().entries);
     writeDemoFlag(true);
-    setIsDemo(true);
-  }, [store]);
+    setDemoFlag(true);
+  }, [demoStore]);
   const clearAll = useCallback(async () => {
-    await store.clear();
+    await demoStore.clear();
     writeDemoFlag(false);
-    setIsDemo(false);
-  }, [store]);
+    setDemoFlag(false);
+  }, [demoStore]);
 
   const today = isDemo ? DEMO_TODAY : localDate(new Date(clock()).toISOString().slice(0, 19) + 'Z', state.settings.timeZone);
 

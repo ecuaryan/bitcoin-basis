@@ -17,8 +17,6 @@ const ROUTES: { path: string }[] = [
   { path: '/records?v=settings' },
   { path: '/wallet/wallet-strike' },
   { path: '/wallet/wallet-cold' },
-  { path: '/welcome' },
-  { path: '/unlock' },
   { path: '/kit' },
   { path: '/nowhere' },
 ];
@@ -32,9 +30,9 @@ for (const r of ROUTES) {
   });
 }
 
-test('axe: first run (nothing logged yet)', async ({ page }) => {
+test('axe: first run (Welcome)', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Load demo data' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try the demo' })).toBeVisible();
   await expectNoViolations(page);
 });
 

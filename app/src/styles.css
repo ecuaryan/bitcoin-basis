@@ -137,3 +137,18 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* The emergency kit prints on US Letter with no browser margins (the page draws its own). */
+@page kit {
+  size: letter;
+  margin: 0;
+}
+.kit-print {
+  page: kit;
+}
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+}

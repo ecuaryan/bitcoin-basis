@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { SyncIndicator } from './SyncIndicator.tsx';
 import { HideButton, LockButton, useIsWide } from './AppShell.tsx';
 
 /**
@@ -22,6 +23,7 @@ export function PageHeader({ title, children, visibleOnPhone = false }: { title:
       <h1 className="m-0 font-display text-4xl font-semibold tracking-[-0.02em]">{title}</h1>
       <div className="flex items-center gap-2.5">
         {children}
+        <SyncIndicator />
         <HideButton variant="text" />
         <LockButton variant="text" />
       </div>

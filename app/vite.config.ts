@@ -40,7 +40,7 @@ function serviceWorkerManifest(): Plugin {
     writeBundle(_options, bundle) {
       // Latin font subsets only; other unicode ranges are cached when first used.
       const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && (!f.endsWith('.woff2') || f.includes('-latin-wght-')));
-      const statics = ['/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-32.png', '/icons/favicon-16.png'];
+      const statics = ['/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-32.png', '/icons/favicon-16.png', '/icons/icon-maskable-512.png', '/icons/logo-mark.webp'];
       const urls = [...files.filter((f) => f !== 'index.html').map((f) => `/${f}`), ...statics].sort();
       const version = createHash('sha256').update(urls.join('\n')).digest('hex').slice(0, 12);
       const path = resolve(outDir, 'sw.js');
@@ -50,9 +50,12 @@ function serviceWorkerManifest(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // The fake server and authenticator exist only in `--mode fake` (the e2e build). Every other mode gets `false`,
+  // so the bundler removes them. There is deliberately no environment variable that can switch this on.
+  define: { __BB_FAKE__: JSON.stringify(mode === 'fake') },
   plugins: [react(), tailwindcss(), cspMeta(), serviceWorkerManifest()],
   build: { outDir: 'dist', sourcemap: false, target: 'es2023' },
   server: { host: '127.0.0.1' },
   preview: { host: '127.0.0.1' },
-});
+}));

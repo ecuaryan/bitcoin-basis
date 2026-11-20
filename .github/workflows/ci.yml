@@ -45,6 +45,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run build
+      - run: npm run build:fake -w @bitcoin-basis/app
       # Visual snapshots are platform-specific (darwin baselines); they run locally only.
       - run: npx playwright test --grep-invert @visual
         working-directory: app

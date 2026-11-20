@@ -4,7 +4,7 @@ import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/dist-types/**', '**/coverage/**', '**/node_modules/**', '**/.wrangler/**', 'app/e2e/screenshots/**', 'playwright-report/**', 'test-results/**'] },
+  { ignores: ['**/dist/**', '**/dist-fake/**', '**/dist-types/**', '**/coverage/**', '**/node_modules/**', '**/.wrangler/**', 'app/e2e/screenshots/**', 'playwright-report/**', 'test-results/**'] },
   js.configs.recommended,
   ...tseslint.configs.strict,
   {

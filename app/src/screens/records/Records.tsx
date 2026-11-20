@@ -12,12 +12,14 @@ import { EntriesView, EntryRow, EntrySheet } from './records-entries.tsx';
 import { GivingView } from './records-giving.tsx';
 import { ImportExportView } from './records-io.tsx';
 import { ClosedYearsView, WalletsView } from './records-misc.tsx';
-import { loadAutolock, SettingsView } from './records-settings.tsx';
+import { SecurityView } from './records-security.tsx';
+import { SettingsView } from './records-settings.tsx';
+import { useVaultStatusOptional } from '../../data/vault-provider.tsx';
 import { buildItems } from './records-logic.ts';
 import { useState } from 'react';
 
-type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'io' | 'settings';
-const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'io', 'settings'];
+type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'io' | 'settings' | 'security';
+const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'io', 'settings', 'security'];
 
 function Tile({ to, title, sub, hot, active, className }: { to: string; title: string; sub: string; hot?: boolean; active?: boolean; className?: string }) {
   return (
@@ -56,7 +58,7 @@ function KitCard() {
 /** Records: every entry and its history, giving, closed years, wallets, import and export, settings. */
 export function Records() {
   const wide = useIsWide();
-  const { entries, state, holdings, today } = useLedger();
+  const { entries, state, holdings, today, isDemo } = useLedger();
   const [params] = useSearchParams();
   const asked = params.get('v');
   const view: View | null = VIEWS.find((v) => v === asked) ?? null;
@@ -68,16 +70,17 @@ export function Records() {
   const [openId, setOpenId] = useState<string | null>(null);
   const open = items.find((i) => i.id === openId) ?? null;
   const active = holdings.wallets.filter((w) => !w.frozen && !w.archived).length;
-  const lock = loadAutolock();
+  const vaultStatus = useVaultStatusOptional();
 
   const tiles: ReactNode = (
-    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? 'grid-cols-6' : 'grid-cols-3')}>
+    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? 'grid-cols-7' : 'grid-cols-3')}>
       <Tile to="/tax" title="Tax season" sub={`${year} · Answer: ${answer === 'yes' ? 'Yes' : 'No'}`} hot className="lg:hidden" />
       <Tile to="/records?v=giving" title={state.settings.givingName} sub={due === null ? 'Off' : `${formatMoney(Math.max(0, due.owedCents))} due`} hot={due !== null && due.owedCents > 0} active={view === 'giving'} />
       <Tile to="/records?v=closed" title="Closed years" sub={state.closedYears.length === 0 ? 'None yet' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
       <Tile to="/records?v=wallets" title="Wallets" sub={`${active} active`} active={view === 'wallets'} />
       <Tile to="/records?v=io" title="Import and export" sub="CSV · backup" active={view === 'io'} />
-      <Tile to="/records?v=settings" title="Settings" sub={lock === 'never' ? 'Never locks' : `Lock after ${lock} min`} active={view === 'settings'} />
+      <Tile to="/records?v=settings" title="Settings" sub="Taxes · giving" active={view === 'settings'} />
+      <Tile to="/records?v=security" title="Security" sub={isDemo || vaultStatus === null ? 'Demo' : vaultStatus.autoLockMinutes === 0 ? 'Never locks' : `Locks after ${vaultStatus.autoLockMinutes} min`} active={view === 'security'} />
       <Tile to="/records?v=entries" title="All entries" sub={`${items.length} in total`} active={view === 'entries'} className="hidden lg:order-first lg:flex" />
     </section>
   );
@@ -106,6 +109,7 @@ export function Records() {
   if (view === 'wallets') body = <WalletsView />;
   if (view === 'io') body = <ImportExportView />;
   if (view === 'settings') body = <SettingsView />;
+  if (view === 'security') body = <SecurityView />;
 
   const searchButton = (
     <Link to="/records?v=entries&search=1" aria-label="Search entries" className="flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-soft hover:text-text">

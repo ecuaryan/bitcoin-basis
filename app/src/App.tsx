@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router';
 import { Holdings } from './screens/Holdings.tsx';
-import { Kit, NotFound, Unlock, Welcome } from './screens/stubs.tsx';
+import { NotFound } from './screens/stubs.tsx';
+import { RequireVault } from './screens/auth/RequireVault.tsx';
 import { AppShell, useLogSheet } from './ui/AppShell.tsx';
 import { lazy, Suspense, useEffect } from 'react';
 
@@ -10,6 +11,8 @@ const Records = lazy(() => import('./screens/records/Records.tsx').then((m) => (
 const Tax = lazy(() => import('./screens/tax/Tax.tsx').then((m) => ({ default: m.Tax })));
 const TaxSummary = lazy(() => import('./screens/tax/TaxSummary.tsx').then((m) => ({ default: m.TaxSummary })));
 const WalletDetail = lazy(() => import('./screens/wallet/WalletDetail.tsx').then((m) => ({ default: m.WalletDetail })));
+const Welcome = lazy(() => import('./screens/auth/Welcome.tsx').then((m) => ({ default: m.Welcome })));
+const Kit = lazy(() => import('./screens/auth/Kit.tsx').then((m) => ({ default: m.Kit })));
 const GiftNotePage = lazy(() => import('./screens/log/GiftNote.tsx').then((m) => ({ default: m.GiftNotePage })));
 
 /** `/log` opens the Log sheet over Holdings (a deep link for the + button). */
@@ -23,7 +26,13 @@ export function App() {
   return (
     <Suspense fallback={null}>
       <Routes>
-        <Route element={<AppShell />}>
+        <Route
+          element={
+            <RequireVault>
+              <AppShell />
+            </RequireVault>
+          }
+        >
           <Route index element={<Holdings />} />
           <Route path="what-if" element={<WhatIf />} />
           <Route path="records" element={<Records />} />
@@ -31,11 +40,11 @@ export function App() {
           <Route path="wallet/:id" element={<WalletDetail />} />
           <Route path="log" element={<LogRoute />} />
         </Route>
-        <Route path="tax/summary/:year" element={<TaxSummary />} />
-        <Route path="gift-note/:id" element={<GiftNotePage />} />
+        <Route path="tax/summary/:year" element={<RequireVault><TaxSummary /></RequireVault>} />
+        <Route path="gift-note/:id" element={<RequireVault><GiftNotePage /></RequireVault>} />
         <Route path="welcome" element={<Welcome />} />
-        <Route path="unlock" element={<Unlock />} />
-        <Route path="kit" element={<Kit />} />
+        <Route path="unlock" element={<RequireVault><Navigate to="/" replace /></RequireVault>} />
+        <Route path="kit" element={<RequireVault><Kit /></RequireVault>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

@@ -9,17 +9,6 @@ import { useToast } from '../../ui/Toast.tsx';
 import { useWriter } from '../../ui/use-writer.ts';
 import { draftFrom, FILING_LABELS, patchFrom, type SettingsDraft } from './settings-logic.ts';
 
-const AUTOLOCK_KEY = 'bb.autolock';
-export const AUTOLOCK_OPTIONS = ['1', '5', '15', '30', 'never'] as const;
-export function loadAutolock(): string {
-  try {
-    const v = window.localStorage.getItem(AUTOLOCK_KEY);
-    return AUTOLOCK_OPTIONS.find((o) => o === v) ?? '5';
-  } catch {
-    return '5';
-  }
-}
-
 const STATES = Object.values(STATE_RATES).sort((a, b) => a.name.localeCompare(b.name));
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
@@ -39,7 +28,6 @@ export function SettingsView() {
   const s = state.settings;
   const [draft, setDraft] = useState<SettingsDraft>(() => draftFrom(s));
   const [errors, setErrors] = useState<Partial<Record<keyof SettingsDraft, string>>>({});
-  const [lock, setLock] = useState(loadAutolock);
   const set = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const err = (k: keyof SettingsDraft) => errors[k];
 
@@ -111,25 +99,6 @@ export function SettingsView() {
       <Group title="Your records">
         <Field label="Money put in before this app" inputMode="decimal" value={draft.earlierMoneyIn} onChange={(e) => set('earlierMoneyIn', e.target.value)} suffix="USD" hint={err('earlierMoneyIn') ?? 'Shown in Holdings. Never used in tax math.'} />
         <Field label="Time zone" value={draft.timeZone} onChange={(e) => set('timeZone', e.target.value)} hint={err('timeZone') ?? 'Decides the date, and so the tax year, of each entry.'} />
-        <SelectBox
-          label="Lock after"
-          value={lock}
-          onChange={(e) => {
-            setLock(e.target.value);
-            try {
-              window.localStorage.setItem(AUTOLOCK_KEY, e.target.value);
-            } catch {
-              // Not saved; it comes back as 5 minutes.
-            }
-          }}
-        >
-          {AUTOLOCK_OPTIONS.map((o) => (
-            <option key={o} value={o}>
-              {o === 'never' ? 'Never' : `${o} ${o === '1' ? 'minute' : 'minutes'}`}
-            </option>
-          ))}
-        </SelectBox>
-        <p className="-mt-1 m-0 text-xs text-muted">Locking arrives with encryption in the next step. This choice is kept for then.</p>
       </Group>
 
       <div className="flex flex-wrap gap-2.5">

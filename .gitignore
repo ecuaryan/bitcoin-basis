@@ -18,3 +18,4 @@ playwright/.cache/
 dist-types/
 playwright-report/
 dist-hashes.txt
+dist-fake/

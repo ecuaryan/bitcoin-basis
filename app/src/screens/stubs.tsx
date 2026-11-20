@@ -80,28 +80,6 @@ function Bare({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-export function Welcome() {
-  return (
-    <Bare title="Welcome">
-      <ComingSoon title="First run" body="Creating your book, the recovery code and encryption arrive in the next step. For now, load the demo from Holdings." backTo="/" />
-    </Bare>
-  );
-}
-export function Unlock() {
-  return (
-    <Bare title="Unlock">
-      <ComingSoon title="Unlock" body="Passphrase and device unlock arrive with encryption." backTo="/" />
-    </Bare>
-  );
-}
-export function Kit() {
-  return (
-    <Bare title="Emergency kit">
-      <ComingSoon title="Emergency kit" body="A printable page with your recovery code and the steps to restore everything." backTo="/" />
-    </Bare>
-  );
-}
-
 export function NotFound() {
   return (
     <Bare title="Not found">
