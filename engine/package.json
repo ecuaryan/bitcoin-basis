@@ -1,0 +1,8 @@
+{
+  "name": "@bitcoin-basis/engine",
+  "private": true,
+  "type": "module",
+  "description": "Pure TypeScript calculation engine: lots, tax, giving. No runtime dependencies.",
+  "license": "MIT",
+  "exports": { ".": "./src/index.ts" }
+}

@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "composite": true, "noEmit": false, "emitDeclarationOnly": true, "outDir": "dist", "allowImportingTsExtensions": true, "rewriteRelativeImportExtensions": false, "types": [] },
+  "include": ["src", "test"]
+}
