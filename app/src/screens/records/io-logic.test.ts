@@ -1,0 +1,55 @@
+import { exportEntriesJson, exportOpeningLotsCsv, replay, createUuidV7 } from '@bitcoin-basis/engine';
+import { describe, expect, it } from 'vitest';
+import { buildDemoBook } from '../../demo/demo-data.ts';
+import { previewJson, previewLots, withoutBadRows } from './io-logic.ts';
+
+const state = replay(buildDemoBook().entries);
+const newId = createUuidV7();
+const HEAD = 'wallet,acquired_utc,btc,sats,cost_usd,cost_per_btc,tier,origin';
+const good = 'Strike,2021-03-15 15:00:00,0.01000000,1000000,300.00,30000.00,Documented,Email receipt';
+const bad = 'Nowhere,2021-04-15 15:00:00,0.01000000,1000000,300.00,30000.00,Documented,Email receipt';
+
+describe('previewLots', () => {
+  it('accepts a clean file', () => {
+    const p = previewLots(`${HEAD}\n${good}\n`, state.wallets, 'America/Boise', newId);
+    expect(p.problems).toEqual([]);
+    expect(p.entries).toHaveLength(1);
+  });
+  it('lists each bad row and counts the good ones', () => {
+    const p = previewLots(`${HEAD}\n${good}\n${bad}\n${good}\n`, state.wallets, 'America/Boise', newId);
+    expect(p.entries).toEqual([]);
+    expect(p.problems).toEqual([{ row: 3, message: 'no wallet named "Nowhere"' }]);
+    expect(p.goodRows).toBe(2);
+  });
+  it('can drop the bad rows and import the rest', () => {
+    const text = `${HEAD}\n${good}\n${bad}\n${good}\n`;
+    const p = previewLots(text, state.wallets, 'America/Boise', newId);
+    const again = previewLots(withoutBadRows(text, p.problems), state.wallets, 'America/Boise', newId);
+    expect(again.problems).toEqual([]);
+    expect(again.entries).toHaveLength(2);
+  });
+  it('reports a missing header column once', () => {
+    const p = previewLots('wallet,sats\nStrike,1\n', state.wallets, 'America/Boise', newId);
+    expect(p.problems).toHaveLength(1);
+    expect(p.goodRows).toBe(0);
+  });
+  it('round-trips the book\'s own export', () => {
+    const csv = exportOpeningLotsCsv(state).csv;
+    expect(previewLots(csv, state.wallets, 'America/Boise', newId).problems).toEqual([]);
+  });
+});
+
+describe('previewJson', () => {
+  it('separates new entries from ones already in the book', () => {
+    const entries = buildDemoBook().entries;
+    const text = exportEntriesJson(entries);
+    const half = new Set(entries.slice(0, 10).map((e) => e.id));
+    const p = previewJson(text, half);
+    expect(p.entries).toHaveLength(entries.length);
+    expect(p.fresh).toHaveLength(entries.length - 10);
+  });
+  it('explains a file that is not ours', () => {
+    expect(previewJson('{"a":1}', new Set()).problems[0]?.message).toMatch(/not a Bitcoin Basis/);
+    expect(previewJson('nope', new Set()).problems[0]?.index).toBeNull();
+  });
+});

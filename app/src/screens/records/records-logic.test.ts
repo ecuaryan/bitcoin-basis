@@ -1,0 +1,74 @@
+import { replay, type Entry } from '@bitcoin-basis/engine';
+import { describe as suite, expect, it } from 'vitest';
+import { buildDemoBook } from '../../demo/demo-data.ts';
+import { buildItems, describe, entryYears, kindGroup, matches, type EntryFilter } from './records-logic.ts';
+
+const tz = 'America/Boise';
+const entry = <T extends Entry['kind']>(e: Extract<Entry, { kind: T }>): Entry => e;
+const wallet = entry({ id: 'w1', kind: 'wallet', at: '2026-01-01T00:00:00Z', tz, wallet: 'strike', name: 'Strike', type: 'exchange', defaultProof: 'Email' });
+const buy1 = entry({ id: 'b1', kind: 'buy', at: '2026-02-01T00:00:00Z', tz, wallet: 'strike', sats: 100_000, costCents: 5_000, tier: 'documented' });
+const buy2 = entry({ id: 'b2', kind: 'buy', at: '2026-02-01T00:00:00Z', tz, wallet: 'strike', sats: 150_000, costCents: 7_500, tier: 'documented', replaces: 'b1', reason: 'Wrong amount' });
+const del = entry({ id: 'd1', kind: 'delete', at: '2026-03-01T00:00:00Z', tz, replaces: 'b2', reason: 'Duplicate' });
+const names = new Map(replay([wallet]).wallets.map((w) => [w.id, w]));
+
+suite('buildItems', () => {
+  it('groups an edit under its first entry and keeps the history', () => {
+    const items = buildItems([wallet, buy1, buy2]);
+    const item = items.find((i) => i.id === 'b1');
+    expect(items).toHaveLength(2);
+    expect(item?.versions.map((v) => v.id)).toEqual(['b1', 'b2']);
+    expect(item?.current.id).toBe('b2');
+    expect(item?.deleted).toBe(false);
+  });
+  it('marks a deleted item and shows the version before the delete', () => {
+    const item = buildItems([wallet, buy1, buy2, del]).find((i) => i.id === 'b1');
+    expect(item?.deleted).toBe(true);
+    expect(item?.current.id).toBe('b2');
+  });
+  it('flags two edits of the same entry as a conflict', () => {
+    const other = { ...buy2, id: 'b3', sats: 1 };
+    const item = buildItems([buy1, buy2, other]).find((i) => i.id === 'b1');
+    expect(item?.conflict).toBe(true);
+    expect(item?.versions).toHaveLength(3);
+  });
+  it('puts the newest first', () => {
+    expect(buildItems([wallet, buy1]).map((i) => i.id)).toEqual(['b1', 'w1']);
+  });
+  it('handles the whole demo book', () => {
+    const { entries } = buildDemoBook();
+    expect(buildItems(entries)).toHaveLength(entries.length);
+  });
+});
+
+suite('describe', () => {
+  it('names a buy', () => {
+    const line = describe(buy1, names);
+    expect(line).toMatchObject({ title: 'Bought', detail: 'Strike', sats: 100_000, sign: '+', cents: 5_000 });
+  });
+  it('names a settings change in words', () => {
+    const e = entry({ id: 's', kind: 'settings', at: '2026-01-01T00:00:00Z', tz, patch: { wagesCents: 1 } });
+    expect(describe(e, names).detail).toBe('wages');
+  });
+});
+
+suite('filters', () => {
+  const items = buildItems([wallet, buy1, buy2]);
+  const none: EntryFilter = { text: '', wallet: '', group: '', year: '' };
+  const buyItem = items.find((i) => i.id === 'b1') as ReturnType<typeof buildItems>[number];
+  it('filters by kind, wallet, year and text', () => {
+    expect(matches(buyItem, none, names)).toBe(true);
+    expect(matches(buyItem, { ...none, group: 'sold' }, names)).toBe(false);
+    expect(matches(buyItem, { ...none, group: 'bought' }, names)).toBe(true);
+    expect(matches(buyItem, { ...none, wallet: 'river' }, names)).toBe(false);
+    expect(matches(buyItem, { ...none, wallet: 'strike' }, names)).toBe(true);
+    expect(matches(buyItem, { ...none, year: '2025' }, names)).toBe(false);
+    expect(matches(buyItem, { ...none, year: '2026' }, names)).toBe(true);
+    expect(matches(buyItem, { ...none, text: 'strike bought' }, names)).toBe(true);
+    expect(matches(buyItem, { ...none, text: 'coinbase' }, names)).toBe(false);
+  });
+  it('lists years and groups kinds', () => {
+    expect(entryYears(items)).toEqual([2026, 2025]); // the wallet entry is Dec 31 in Boise
+    expect(kindGroup('opening-lot')).toBe('imported');
+    expect(kindGroup('wallet-freeze')).toBe('wallets');
+  });
+});

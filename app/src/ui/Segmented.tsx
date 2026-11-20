@@ -7,7 +7,7 @@ export interface SegmentedOption<T extends string> {
 }
 
 /** Pick one of a few options. A radio group: arrow keys move, Tab leaves. */
-export function Segmented<T extends string>({ options, value, onChange, label, className }: { options: readonly SegmentedOption<T>[]; value: T; onChange(value: T): void; label: string; className?: string }) {
+export function Segmented<T extends string>({ options, value, onChange, label, className, solid = false }: { solid?: boolean; options: readonly SegmentedOption<T>[]; value: T; onChange(value: T): void; label: string; className?: string }) {
   const id = useId();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -40,7 +40,7 @@ export function Segmented<T extends string>({ options, value, onChange, label, c
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={cx('min-h-10 flex-1 rounded-lg px-3 text-sm transition-colors duration-150', on ? 'bg-accent/15 font-semibold text-amber' : 'font-medium text-soft hover:text-text')}
+            className={cx('min-h-10 flex-1 rounded-lg px-3 text-sm transition-colors duration-150', on ? (solid ? 'bg-accent font-bold text-bg' : 'bg-accent/15 font-semibold text-amber') : 'font-medium text-soft hover:text-text')}
           >
             {o.label}
           </button>

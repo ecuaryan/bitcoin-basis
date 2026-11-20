@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { cx } from '../lib/cx.ts';
-import { ComingSoon } from './ComingSoon.tsx';
+import { LogSheet } from '../screens/log/LogSheet.tsx';
+import type { LogPreset } from '../screens/log/draft.ts';
 import { EyeIcon, EyeOffIcon, HoldingsIcon, LockIcon, PlusIcon, RecordsIcon, WhatIfIcon } from './icons.tsx';
 import { useMediaQuery } from './motion.ts';
 import { usePrefs } from './prefs.tsx';
-import { Sheet } from './Sheet.tsx';
 import { useToast } from './Toast.tsx';
 
 export const WIDE_QUERY = '(min-width: 1024px)';
@@ -16,9 +16,10 @@ export function useIsWide(): boolean {
 
 // ---- Log sheet -------------------------------------------------------------------------
 
-const LogContext = createContext<{ open(): void } | null>(null);
+export type { LogPreset };
+const LogContext = createContext<{ open(preset?: LogPreset): void } | null>(null);
 /** Open the "Log something" sheet from anywhere. */
-export function useLogSheet(): { open(): void } {
+export function useLogSheet(): { open(preset?: LogPreset): void } {
   const ctx = useContext(LogContext);
   if (ctx === null) throw new Error('useLogSheet needs <AppShell>');
   return ctx;
@@ -182,14 +183,17 @@ function DesktopShell({ onLog }: { onLog(): void }) {
 export function AppShell() {
   const wide = useIsWide();
   const [logOpen, setLogOpen] = useState(false);
-  const open = useCallback(() => setLogOpen(true), []);
+  const [preset, setPreset] = useState<LogPreset>({});
+  const open = useCallback((p?: LogPreset) => {
+    setPreset(p ?? {});
+    setLogOpen(true);
+  }, []);
+  const openPlain = useCallback(() => open(), [open]);
   const api = useMemo(() => ({ open }), [open]);
   return (
     <LogContext.Provider value={api}>
-      {wide ? <DesktopShell onLog={open} /> : <PhoneShell onLog={open} />}
-      <Sheet open={logOpen} onClose={() => setLogOpen(false)} title="Log something">
-        <ComingSoon bare title="Logging is coming next" body="Buys, moves, sales, gifts and promo income will be logged here. This sheet is where it will live." />
-      </Sheet>
+      {wide ? <DesktopShell onLog={openPlain} /> : <PhoneShell onLog={openPlain} />}
+      <LogSheet open={logOpen} onClose={() => setLogOpen(false)} preset={preset} />
     </LogContext.Provider>
   );
 }

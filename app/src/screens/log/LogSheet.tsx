@@ -1,0 +1,178 @@
+import { uuidv7, type Entry } from '@bitcoin-basis/engine';
+import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useLedger } from '../../data/ledger-provider.tsx';
+import { cx } from '../../lib/cx.ts';
+import { Button } from '../../ui/Button.tsx';
+import { Callout } from '../../ui/form-fields.tsx';
+import { Sheet } from '../../ui/Sheet.tsx';
+import { BuyForm } from './BuyForm.tsx';
+import type { Draft, FormProps, LogKind, LogPreset } from './draft.ts';
+import { GiftNoteActions, GiftNoteCard } from './GiftNote.tsx';
+import { GiveForm } from './GiveForm.tsx';
+import { useNowMs } from './hooks.ts';
+import { describeEntry, lockedYear } from './model.ts';
+import { MoveForm } from './MoveForm.tsx';
+import { ReceiveForm } from './ReceiveForm.tsx';
+import { Review } from './Review.tsx';
+import { SellForm } from './SellForm.tsx';
+import { Amount, Money } from '../../ui/Amount.tsx';
+
+const TABS: { kind: LogKind; label: string; name: string }[] = [
+  { kind: 'buy', label: 'Bought', name: 'Bought' },
+  { kind: 'receive', label: 'Received', name: 'Received' },
+  { kind: 'move', label: 'Moved', name: 'Moved' },
+  { kind: 'sell', label: 'Sold', name: 'Sold or spent' },
+  { kind: 'give', label: 'Gave', name: 'Gave' },
+];
+
+const FORMS: Record<LogKind, (p: FormProps) => React.JSX.Element> = { buy: BuyForm, receive: ReceiveForm, move: MoveForm, sell: SellForm, give: GiveForm };
+
+function KindTabs({ kind, onPick, panelId }: { kind: LogKind; onPick(k: LogKind): void; panelId: string }) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  function onKeyDown(e: KeyboardEvent, i: number) {
+    const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (dir === 0) return;
+    e.preventDefault();
+    const next = (i + dir + TABS.length) % TABS.length;
+    onPick((TABS[next] as (typeof TABS)[number]).kind);
+    refs.current[next]?.focus();
+  }
+  return (
+    <div role="tablist" aria-label="What happened" className="grid grid-cols-5 gap-1 rounded-[14px] bg-bg p-1">
+      {TABS.map((t, i) => {
+        const on = t.kind === kind;
+        return (
+          <button
+            key={t.kind}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            role="tab"
+            type="button"
+            id={`${panelId}-tab-${t.kind}`}
+            aria-selected={on}
+            aria-controls={panelId}
+            aria-label={t.name}
+            tabIndex={on ? 0 : -1}
+            onClick={() => onPick(t.kind)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+            className={cx('min-h-11 rounded-[10px] px-0.5 text-[13px] font-semibold transition-colors', on ? 'bg-accent text-bg' : 'bg-transparent text-muted hover:text-soft')}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function LogBody({ preset: startPreset, onClose }: { preset: LogPreset; onClose(): void }) {
+  const { entries, state } = useLedger();
+  const panelId = useId();
+  const nowMs = useNowMs();
+  const targetId = startPreset.edit ?? startPreset.remove;
+  const head = useMemo(() => (targetId === undefined ? null : (entries.find((e) => e.id === targetId) ?? null)), [entries, targetId]);
+  const [kind, setKind] = useState<LogKind>(startPreset.kind ?? (head && head.kind !== 'delete' && head.kind in FORMS ? (head.kind as LogKind) : 'buy'));
+  const [preset, setPreset] = useState<LogPreset>(startPreset);
+  const [formKey, setFormKey] = useState(0);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [doneGift, setDoneGift] = useState<string | null>(null);
+  const [removeId] = useState(() => uuidv7());
+  const editing = startPreset.edit !== undefined;
+  const removing = startPreset.remove !== undefined;
+  const walletsById = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
+
+  function switchTo(k: LogKind, p?: LogPreset) {
+    setKind(k);
+    setPreset(p ?? {});
+    setFormKey((n) => n + 1);
+    setDraft(null);
+  }
+
+  function wrap(d: Draft): Draft {
+    if (head === null || !editing) return d;
+    return {
+      ...d,
+      replacing: head.id,
+      savedMessage: 'Change saved.',
+      build: (reason) => d.build(reason).map((e) => ({ ...e, replaces: head.id, reason }) as Entry),
+    };
+  }
+
+  const removeDraft: Draft | null = useMemo(() => {
+    if (!removing || head === null) return null;
+    const line = describeEntry(head, walletsById);
+    return {
+      title: 'Remove this entry',
+      saveLabel: 'Remove entry',
+      savedMessage: 'Entry removed.',
+      removing: true,
+      replacing: head.id,
+      rows: [
+        { label: 'Entry', value: line.title },
+        ...(line.sats === null ? [] : [{ label: 'Amount', value: <Amount sats={line.sats} interactive={false} showUnit /> }]),
+        ...(line.cents === null ? [] : [{ label: line.centsLabel === '' ? 'Value' : line.centsLabel.replace(/^./, (c) => c.toUpperCase()), value: <Money cents={line.cents} /> }]),
+      ],
+      build: (reason) => [{ id: removeId, kind: 'delete', at: new Date(nowMs).toISOString().slice(0, 19) + 'Z', tz: state.settings.timeZone, replaces: head.id, reason }],
+    };
+  }, [removing, head, walletsById, removeId, nowMs, state.settings.timeZone]);
+
+  function saved(d: Draft, entriesSaved: Entry[]) {
+    const after = d.afterSave?.(entriesSaved) ?? null;
+    if (after !== null && 'next' in after) switchTo(after.next.kind, after.next.preset);
+    else if (after !== null && 'giftNote' in after) setDoneGift(after.giftNote);
+    else onClose();
+  }
+
+  if ((editing || removing) && head === null) return <Callout>That entry is not in your book any more.</Callout>;
+  if (head !== null) {
+    const locked = lockedYear(head, state);
+    if (locked !== null) return <Callout tone="warn" title={`${locked} is closed`}>Entries in a closed year are locked. Unlock the year in Records first, then change it.</Callout>;
+  }
+
+  if (doneGift !== null) {
+    const gift = state.gifts.find((g) => g.entryId === doneGift);
+    return (
+      <div className="flex flex-col gap-4 pb-2">
+        <h3 className="m-0 font-display text-lg font-semibold tracking-tight">Gift saved</h3>
+        {gift ? (
+          <>
+            <GiftNoteCard gift={gift} />
+            <GiftNoteActions gift={gift} onOpen={onClose} />
+          </>
+        ) : (
+          <p className="m-0 text-muted">Saved.</p>
+        )}
+        <Button variant="primary" onClick={onClose} className="min-h-14 rounded-[18px] text-[17px]">
+          Done
+        </Button>
+      </div>
+    );
+  }
+
+  if (removeDraft !== null) return <Review draft={removeDraft} onBack={onClose} onSaved={(s) => saved(removeDraft, s)} />;
+
+  const Form = FORMS[kind];
+  const reviewing = draft !== null;
+  return (
+    <div className="flex flex-col gap-4">
+      <div hidden={reviewing} className="flex flex-col gap-4">
+        {editing ? <h3 className="m-0 font-display text-lg font-semibold tracking-tight">Change this entry</h3> : <KindTabs kind={kind} onPick={(k) => switchTo(k)} panelId={panelId} />}
+        <div role={editing ? undefined : 'tabpanel'} id={panelId} aria-labelledby={editing ? undefined : `${panelId}-tab-${kind}`} className="flex flex-col gap-4">
+          <Form key={`${kind}-${formKey}`} initial={editing ? head : null} preset={preset} onReview={(d) => setDraft(wrap(d))} onSwitch={switchTo} />
+        </div>
+      </div>
+      {draft ? <Review draft={draft} onBack={() => setDraft(null)} onSaved={(s) => saved(draft, s)} /> : null}
+    </div>
+  );
+}
+
+/** The Log sheet: five tabs (Bought, Received, Moved, Sold, Gave), each ending on a review screen. Also edits and removals. */
+export function LogSheet({ open, onClose, preset }: { open: boolean; onClose(): void; preset: LogPreset }) {
+  const title = preset.edit !== undefined ? 'Edit entry' : preset.remove !== undefined ? 'Remove entry' : 'Log';
+  return (
+    <Sheet open={open} onClose={onClose} title={title} className="sm:max-w-xl">
+      <LogBody preset={preset} onClose={onClose} />
+    </Sheet>
+  );
+}

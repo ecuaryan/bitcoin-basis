@@ -1,0 +1,355 @@
+import { formatCents, oldestFirstOrder, parseDollars, planPrepareSale, type LotPick, type LedgerState, type SalePlan, type SellEntry, type MoveEntry, type WalletHolding } from '@bitcoin-basis/engine';
+import { useMemo, useState } from 'react';
+import { useLedger } from '../../data/ledger-provider.tsx';
+import { cx } from '../../lib/cx.ts';
+import { satsToCents, shortDate } from '../../lib/format.ts';
+import { Amount, Money } from '../../ui/Amount.tsx';
+import { Button } from '../../ui/Button.tsx';
+import { Field, SelectBox } from '../../ui/Field.tsx';
+import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
+import { Sheet } from '../../ui/Sheet.tsx';
+import { useToast } from '../../ui/Toast.tsx';
+import { needsBrokerInstruction, picksFromSelection, planFor, planForWallet, rangeLabel, type PlanKey } from './sell-logic.ts';
+import { Note, TierChip } from './sell-parts.tsx';
+
+// ---- Wallet picker -----------------------------------------------------------------------
+
+export function WalletSheet({ open, onClose, wallets, selected, onPick }: { open: boolean; onClose(): void; wallets: readonly WalletHolding[]; selected: string | null; onPick(id: string): void }) {
+  return (
+    <Sheet open={open} onClose={onClose} title="Selling from">
+      <ul className="m-0 mb-3 flex list-none flex-col gap-2 p-0">
+        {wallets.map((w) => (
+          <li key={w.wallet}>
+            <button
+              type="button"
+              aria-pressed={w.wallet === selected}
+              onClick={() => {
+                onPick(w.wallet);
+                onClose();
+              }}
+              className={cx(
+                'flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border px-4 text-left text-text',
+                w.wallet === selected ? 'border-accent bg-accent/10' : 'border-line bg-bg hover:bg-surface-2',
+              )}
+            >
+              <span className="flex flex-col">
+                <span className="text-[15px] font-semibold">{w.name}</span>
+                <span className="text-xs text-muted">{w.type === 'self-custody' ? 'Self-custody: move to an exchange to sell' : 'Exchange'}</span>
+              </span>
+              <span className="text-sm font-semibold">
+                <Amount sats={w.sats} showUnit short interactive={false} />
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Sheet>
+  );
+}
+
+// ---- Pick coins --------------------------------------------------------------------------
+
+export function PickCoinsSheet({
+  open,
+  onClose,
+  state,
+  wallet,
+  sats,
+  initial,
+  today,
+  onUse,
+}: {
+  open: boolean;
+  onClose(): void;
+  state: LedgerState;
+  wallet: string;
+  sats: number;
+  /** Lot ids to start from (the plan on screen). */
+  initial: readonly string[];
+  today: string;
+  onUse(order: string[]): void;
+}) {
+  const lots = useMemo(() => oldestFirstOrder(state.lots, wallet), [state.lots, wallet]);
+  const [order, setOrder] = useState<string[]>([...initial]);
+  const { picks, short } = useMemo(() => picksFromSelection(lots, order, sats), [lots, order, sats]);
+  const used = new Map(picks.map((p) => [p.lotId, p.sats]));
+  const toggle = (id: string) => setOrder((o) => (o.includes(id) ? o.filter((x) => x !== id) : [...o, id]));
+  return (
+    <Sheet open={open} onClose={onClose} title="Pick coins">
+      <div className="flex flex-col gap-3 pb-3">
+        <p className="m-0 text-[13px] text-muted">
+          Tick the coins to sell. Each one gives what is still needed; the last is trimmed to fit.
+        </p>
+        <div role="status" className={cx('rounded-xl border px-3 py-2 text-sm font-semibold', short === 0 ? 'border-accent text-amber' : 'border-line text-soft')}>
+          {short === 0 ? (
+            'The coins you ticked cover the amount.'
+          ) : (
+            <>
+              Still needed: <Amount sats={short} showUnit interactive={false} />
+            </>
+          )}
+        </div>
+        <ul className="m-0 flex max-h-[44dvh] list-none flex-col overflow-y-auto p-0">
+          {lots.map((l) => {
+            const taken = used.get(l.id);
+            const on = order.includes(l.id);
+            const blocked = !on && short === 0;
+            return (
+              <li key={l.id} className="flex min-h-12 items-center justify-between gap-3 border-b border-line-soft py-1.5">
+                <label className={cx('flex min-h-11 flex-1 cursor-pointer items-center gap-3', blocked && 'opacity-50')}>
+                  <input type="checkbox" checked={on} disabled={blocked} onChange={() => toggle(l.id)} className="size-5 flex-none accent-accent" />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-semibold">Bought {shortDate(l.acquiredDate, today)}</span>
+                    <TierChip tier={l.tier} />
+                  </span>
+                </label>
+                <span className="flex flex-col items-end text-right">
+                  <span className="text-sm font-semibold">
+                    <Amount sats={taken ?? l.sats} short interactive={false} />
+                  </span>
+                  <span className="text-xs text-muted">
+                    {taken !== undefined && taken < l.sats ? 'part of ' : ''}
+                    cost <Money cents={l.costCents} precision="dollars" />
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="flex gap-2.5">
+          <Button className="flex-1" onClick={() => setOrder([])}>
+            Clear
+          </Button>
+          <Button
+            variant="primary"
+            className="flex-[1.6]"
+            disabled={short !== 0}
+            onClick={() => {
+              onUse(order);
+              onClose();
+            }}
+          >
+            Use these coins
+          </Button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+// ---- Review and save ---------------------------------------------------------------------
+
+function useSaveContext() {
+  const { entries, state, isDemo, today, append } = useLedger();
+  return { entries, state, isDemo, today, append };
+}
+
+/** The review screen every sale ends on: tax effect first, then Save. */
+export function SaleReviewSheet({
+  open,
+  onClose,
+  walletId,
+  sats,
+  strategy,
+  handPicks,
+  priceCents,
+  year,
+  onSaved,
+}: {
+  open: boolean;
+  onClose(): void;
+  walletId: string;
+  sats: number;
+  strategy: PlanKey;
+  handPicks: readonly LotPick[] | undefined;
+  priceCents: number;
+  year: number;
+  onSaved(): void;
+}) {
+  const { entries, state, isDemo, today, append } = useSaveContext();
+  const toast = useToast();
+  const [priceText, setPriceText] = useState(() => formatCents(priceCents));
+  const price = parseDollars(priceText);
+  const wallet = state.wallets.find((w) => w.id === walletId);
+  const planned = useMemo(() => {
+    if (price === null || price <= 0) return null;
+    const r = planForWallet(state, state.settings, { wallet: walletId, sats, priceCents: price, onDate: today, year, ...(handPicks ? { handPicks } : {}) }).plans;
+    return r.ok ? r.value : null;
+  }, [state, walletId, sats, price, today, year, handPicks]);
+  const plan = planned ? planFor(planned, strategy) : null;
+  const closed = state.closedYears.includes(year);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (plan === null || wallet === undefined) return;
+    setSaving(true);
+    const entry: SellEntry = {
+      id: newIdGenerator(entries)(),
+      kind: 'sell',
+      at: entryInstant(isDemo, today),
+      tz: state.settings.timeZone,
+      wallet: walletId,
+      sats,
+      proceedsCents: plan.proceedsCents,
+      picks: plan.picks,
+      spent: false,
+      proof: wallet.defaultProof,
+      note: 'Logged from What if',
+    };
+    await append([entry]);
+    setSaving(false);
+    toast.show('Sale logged.');
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Review this sale">
+      <div className="flex flex-col gap-3.5 pb-3">
+        <Field label="Sale price per BTC" inputMode="decimal" value={priceText} onChange={(e) => setPriceText(e.target.value)} suffix="USD" hint="What your exchange paid. Change it if the fill differed." />
+        {plan === null || wallet === undefined ? (
+          <p className="m-0 text-sm text-loss">Enter a price above zero.</p>
+        ) : (
+          <>
+            <dl className="m-0 flex flex-col rounded-2xl border border-line bg-bg px-4 py-1">
+              {[
+                ['Selling from', wallet.name],
+                ['Amount', <Amount key="a" sats={sats} showUnit interactive={false} />],
+                ['Proceeds', <Money key="p" cents={plan.proceedsCents} />],
+                ['Coins used', `${rangeLabel(plan.coinsFrom, plan.coinsTo)} · ${plan.picks.length} ${plan.picks.length === 1 ? 'coin' : 'coins'}`],
+                ['Cost of those coins', <Money key="c" cents={plan.costCents} />],
+                ...(plan.stGainCents !== 0 ? [[`Short-term ${plan.stGainCents < 0 ? 'loss' : 'gain'}`, <Money key="s" cents={plan.stGainCents} signed />]] : []),
+                ...(plan.ltGainCents !== 0 ? [[`Long-term ${plan.ltGainCents < 0 ? 'loss' : 'gain'}`, <Money key="l" cents={plan.ltGainCents} signed />]] : []),
+                ['Tax this adds (estimate)', <strong key="t"><Money cents={plan.totalTaxCents} /></strong>],
+                [`Carryforward into ${year + 1}`, <Money key="f" cents={plan.carryforwardOut.st + plan.carryforwardOut.lt} precision="dollars" />],
+                ...(plan.givingCents !== null ? [[`${state.settings.givingName} on this sale`, <Money key="g" cents={plan.givingCents} />]] : []),
+                ['Proof', wallet.defaultProof],
+                ['Date', shortDate(today, today) + ' (now)'],
+              ].map(([k, v], i, all) => (
+                <div key={String(k)} className={cx('flex min-h-11 items-center justify-between gap-4 text-sm', i < all.length - 1 && 'border-b border-line')}>
+                  <dt className="text-soft">{k}</dt>
+                  <dd className="m-0 text-right font-semibold">{v}</dd>
+                </div>
+              ))}
+            </dl>
+            {needsBrokerInstruction(plan) && (
+              <Note tone="warn">Tell {wallet.name} which coins to sell before you sell. Without instructions it may use its own order.</Note>
+            )}
+            {plan.estimatedShareBp > 0 && <Note>Some of these coins have an Estimated or Unknown cost. Confirm how to report that with your CPA.</Note>}
+            {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
+            <Note>An estimate, not tax advice. Saving adds a sale entry with these exact coins; you can correct it later, and the old version is kept.</Note>
+          </>
+        )}
+        <div className="flex gap-2.5">
+          <Button className="flex-1" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" className="flex-[1.6]" disabled={plan === null || closed || saving} onClick={() => void save()}>
+            Save this sale
+          </Button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+// ---- Prepare a sale from self-custody ----------------------------------------------------
+
+/** Moves the chosen coins to an exchange wallet (the sale itself happens there, so it is logged afterwards). */
+export function PrepareSaleSheet({
+  open,
+  onClose,
+  walletId,
+  sats,
+  strategy,
+  handPicks,
+  priceCents,
+  year,
+  exchanges,
+  onSaved,
+}: {
+  open: boolean;
+  onClose(): void;
+  walletId: string;
+  sats: number;
+  strategy: PlanKey;
+  handPicks: readonly LotPick[] | undefined;
+  priceCents: number;
+  year: number;
+  exchanges: readonly WalletHolding[];
+  onSaved(destination: string): void;
+}) {
+  const { entries, state, isDemo, today, append } = useSaveContext();
+  const toast = useToast();
+  const [dest, setDest] = useState(exchanges[0]?.wallet ?? '');
+  const [feeText, setFeeText] = useState('0');
+  const feeSats = /^\d+$/.test(feeText.trim()) ? Number(feeText.trim()) : null;
+  const wallet = state.wallets.find((w) => w.id === walletId);
+  const destName = state.wallets.find((w) => w.id === dest)?.name ?? '';
+
+  const result = useMemo(() => {
+    if (feeSats === null || feeSats >= sats || dest === '') return null;
+    const total = sats + feeSats;
+    const have = state.lots.filter((l) => l.wallet === walletId).reduce((s, l) => s + l.sats, 0);
+    if (total > have) return null;
+    const plans = planForWallet(state, state.settings, { wallet: walletId, sats: total, priceCents, onDate: today, year, ...(handPicks && feeSats === 0 ? { handPicks } : {}) }).plans;
+    if (!plans.ok) return null;
+    const plan: SalePlan = planFor(plans.value, strategy === 'hand-picked' && feeSats !== 0 ? 'lowest-tax' : strategy);
+    const draft = planPrepareSale(state, { fromWallet: walletId, toWallet: dest, picks: plan.picks, feeSats, feeValueCents: satsToCents(feeSats, priceCents) });
+    return draft.ok ? { draft: draft.value, plan } : null;
+  }, [state, walletId, dest, sats, feeSats, priceCents, today, year, strategy, handPicks]);
+
+  async function save() {
+    if (result === null) return;
+    const entry: MoveEntry = { ...result.draft, id: newIdGenerator(entries)(), at: entryInstant(isDemo, today), tz: state.settings.timeZone, note: 'Prepared a sale from What if', proof: wallet?.defaultProof ?? '' };
+    await append([entry]);
+    toast.show(`Move logged. Sell on ${destName}, then log the sale here.`);
+    onSaved(dest);
+    onClose();
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Prepare this sale">
+      <div className="flex flex-col gap-3.5 pb-3">
+        <p className="m-0 text-[13px] leading-[1.45] text-soft">
+          Coins in {wallet?.name} cannot be sold directly. Log a move of exactly the coins you chose to an exchange, then sell them there. The move keeps each coin's date and cost.
+        </p>
+        <SelectBox label="Move to" value={dest} onChange={(e) => setDest(e.target.value)}>
+          {exchanges.map((w) => (
+            <option key={w.wallet} value={w.wallet}>
+              {w.name}
+            </option>
+          ))}
+        </SelectBox>
+        <Field label="Network fee (sats)" inputMode="numeric" value={feeText} onChange={(e) => setFeeText(e.target.value)} hint="Paid in BTC from the same coins. A tiny taxable sale." />
+        {result ? (
+          <dl className="m-0 flex flex-col rounded-2xl border border-line bg-bg px-4 py-1 text-sm">
+            {[
+              ['Coins arriving', <Amount key="a" sats={result.draft.sats} showUnit interactive={false} />],
+              ['Coins used', `${rangeLabel(result.plan.coinsFrom, result.plan.coinsTo)} · ${result.plan.picks.length} ${result.plan.picks.length === 1 ? 'coin' : 'coins'}`],
+              ['Fee', <Amount key="f" sats={result.draft.feeSats} showUnit interactive={false} />],
+              ['Tax from this move', 'None except the fee'],
+            ].map(([k, v], i, all) => (
+              <div key={String(k)} className={cx('flex min-h-11 items-center justify-between gap-4', i < all.length - 1 && 'border-b border-line')}>
+                <dt className="text-soft">{k}</dt>
+                <dd className="m-0 text-right font-semibold">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="m-0 text-sm text-loss">The fee must be a whole number of sats, smaller than the amount.</p>
+        )}
+        {result && <p className="m-0 text-[13px] text-muted">Your exchange sells by its own rules unless you tell it which coins.</p>}
+        <div className="flex gap-2.5">
+          <Button className="flex-1" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" className="flex-[1.6]" disabled={result === null} onClick={() => void save()}>
+            Save this move
+          </Button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
