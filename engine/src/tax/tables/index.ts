@@ -8,13 +8,14 @@ export const FEDERAL_TABLES: readonly FederalTable[] = [FEDERAL_2025, FEDERAL_20
 
 export interface TableLookup {
   readonly table: FederalTable;
-  /** True when no table exists for the requested year and the latest one was used instead. */
+  /** True when no table exists for the requested year and the nearest one was used instead. */
   readonly fellBack: boolean;
 }
 
-/** The table for `year`, or the latest table (flagged) when that year has none. */
+/** The table for `year`; else the earliest table for years before it, or the latest for years after (flagged). */
 export function federalTableFor(year: number): TableLookup {
   const exact = FEDERAL_TABLES.find((t) => t.year === year);
   if (exact) return { table: exact, fellBack: false };
-  return { table: FEDERAL_TABLES[FEDERAL_TABLES.length - 1] as FederalTable, fellBack: true };
+  const earliest = FEDERAL_TABLES[0] as FederalTable;
+  return { table: year < earliest.year ? earliest : (FEDERAL_TABLES[FEDERAL_TABLES.length - 1] as FederalTable), fellBack: true };
 }

@@ -15,19 +15,48 @@ import { parseEntry } from './validate.ts';
 export interface Resolution {
   /** Entries to replay (any order). */
   applied: Entry[];
+  /** For each applied entry, the root (first version) of its chain; lots created by it keep that id. */
+  roots: Map<EntryId, EntryId>;
   conflicts: Conflict[];
   closedYears: number[];
   errors: LedgerError[];
 }
 
 /** Kinds that change lots or tax results; they cannot be added to or edited in a closed year. */
-const TAX_KINDS: ReadonlySet<EntryKind> = new Set<EntryKind>(['buy', 'receive', 'move', 'sell', 'give', 'lost', 'wallet-close-out']);
+const TAX_KINDS: ReadonlySet<EntryKind> = new Set<EntryKind>(['buy', 'receive', 'move', 'sell', 'give', 'lost', 'wallet-close-out', 'wallet-freeze']);
 
-function taxYears(e: Entry): number[] {
+/**
+ * Years an entry touches for the closed-year rule. Opening lots arrive in closed years, so a new one is
+ * exempt, but editing or deleting one (`asTarget`, or an opening lot that is itself an edit) is not.
+ */
+function lockedYears(e: Entry, asTarget: boolean): number[] {
+  if (e.kind === 'opening-lot') return asTarget || e.replaces !== undefined ? [taxYear(e.at, e.tz), taxYear(e.acquiredAt, e.tz)] : [];
   if (!TAX_KINDS.has(e.kind)) return [];
   const years = [taxYear(e.at, e.tz)];
   if (e.kind === 'wallet-close-out' && e.lossDate !== undefined) years.push(yearOf(e.lossDate));
   return years;
+}
+
+/** Wallets an entry names (other than the wallet entry that creates one). */
+function walletsUsed(e: Entry): string[] {
+  switch (e.kind) {
+    case 'wallet':
+      return [];
+    case 'move':
+      return [e.from, e.to];
+    case 'receive':
+      return e.source.type === 'frozen-payout' ? [e.wallet, e.source.fromWallet] : [e.wallet];
+    default:
+      return 'wallet' in e ? [e.wallet] : [];
+  }
+}
+
+/** Why `e` may not replace the wallet entry `target`, or null: the wallet id and type are fixed, and a wallet in use cannot be deleted. */
+function walletEditProblem(e: Entry, target: Entry, used: ReadonlySet<string>): string | null {
+  if (target.kind !== 'wallet') return null;
+  if (e.kind === 'delete') return used.has(target.wallet) ? 'a wallet with activity cannot be deleted (archive it instead)' : null;
+  if (e.kind !== 'wallet' || e.wallet !== target.wallet || e.type !== target.type) return "a wallet's id and type cannot change; create a new wallet instead";
+  return null;
 }
 
 /** Stable JSON with sorted keys, to compare two copies of an entry. */
@@ -80,16 +109,21 @@ function yearLocks(entries: Iterable<Entry>): { closedAt: (year: number, asOf: E
   return { closedAt, closedYears: years.filter((y) => closedAt(y, '￿')).sort((a, b) => a - b) };
 }
 
-/** Reject entries dated in a closed year, or editing one, unless the year was unlocked first. */
-function rejectClosedYears(entries: Map<EntryId, Entry>, closedAt: (year: number, asOf: EntryId) => boolean, errors: LedgerError[]): void {
+/**
+ * Reject edits that are never allowed (of year closings; changing a wallet's id or type; deleting a wallet
+ * in use), and entries dated in a closed year, or editing one, unless the year was unlocked first.
+ */
+function rejectLockedChanges(entries: Map<EntryId, Entry>, closedAt: (year: number, asOf: EntryId) => boolean, errors: LedgerError[]): void {
+  const used = new Set([...entries.values()].flatMap(walletsUsed));
   for (const e of [...entries.values()].sort(byId)) {
     const target = e.replaces === undefined ? undefined : entries.get(e.replaces);
-    if (target !== undefined && (target.kind === 'close-year' || target.kind === 'unlock-year')) {
+    const cannot = target === undefined ? null : target.kind === 'close-year' || target.kind === 'unlock-year' ? 'closing or unlocking a year cannot be edited' : walletEditProblem(e, target, used);
+    if (cannot !== null) {
       entries.delete(e.id);
-      errors.push({ entryId: e.id, code: 'cannot-replace', message: 'closing or unlocking a year cannot be edited' });
+      errors.push({ entryId: e.id, code: 'cannot-replace', message: cannot });
       continue;
     }
-    const years = [...taxYears(e), ...(target === undefined ? [] : taxYears(target))];
+    const years = [...lockedYears(e, false), ...(target === undefined ? [] : lockedYears(target, true))];
     const closed = years.find((y) => closedAt(y, e.id));
     if (closed !== undefined) {
       entries.delete(e.id);
@@ -123,7 +157,7 @@ export function resolveVersions(raw: readonly unknown[]): Resolution {
   const errors: LedgerError[] = [];
   const entries = validEntries(raw, errors);
   const { closedAt, closedYears } = yearLocks(entries.values());
-  rejectClosedYears(entries, closedAt, errors);
+  rejectLockedChanges(entries, closedAt, errors);
   rejectOrphans(entries, errors);
 
   const children = new Map<EntryId, Entry[]>();
@@ -150,14 +184,17 @@ export function resolveVersions(raw: readonly unknown[]): Resolution {
   };
 
   const applied: Entry[] = [];
+  const roots = new Map<EntryId, EntryId>();
   for (const e of [...entries.values()].sort(byId)) {
     if (e.replaces !== undefined) continue;
     const head = current(e);
-    if ('entry' in head) applied.push(head.entry);
+    if (!('entry' in head)) continue;
+    applied.push(head.entry);
+    roots.set(head.entry.id, e.id);
   }
   for (const e of [...entries.values()].sort(byId)) {
     if (!visited.has(e.id)) errors.push({ entryId: e.id, code: 'replace-cycle', message: 'its edits form a cycle' });
   }
   errors.sort((a, b) => compareStrings(a.entryId, b.entryId) || compareStrings(a.code, b.code));
-  return { applied, conflicts, closedYears, errors };
+  return { applied, roots, conflicts, closedYears, errors };
 }

@@ -1,12 +1,15 @@
 /** Read-only views over ledger state: holdings, average cost, per-year summaries and gift totals. */
 import { sum } from './book.ts';
-import { mulDivRoundHalfUp, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
+import { mulDivOrNull, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
 import { compareStrings } from './order.ts';
 import { TIERS, type CharityGift, type CloseOut, type Disposal, type GiftGiven, type IncomeItem, type LedgerState, type LostRecord, type Recovery, type Tier, type WalletId, type WalletType } from './types.ts';
 
-/** Average cost in cents per BTC (total cost ÷ BTC held, half-up), or null when nothing is held. */
+/**
+ * Average cost in cents per BTC (total cost ÷ BTC held, half-up), or null when nothing is held or the
+ * figure is too large to represent exactly (e.g. one sat entered at $1,000,000). Show null as "—".
+ */
 export function averageCostPerBtc(costCents: Cents, sats: Sats): Cents | null {
-  return sats === 0 ? null : mulDivRoundHalfUp(costCents, SATS_PER_BTC, sats);
+  return sats === 0 ? null : mulDivOrNull(costCents, SATS_PER_BTC, sats);
 }
 
 export interface WalletHolding {
@@ -105,7 +108,7 @@ export function yearSummary(state: LedgerState, year: number): YearSummary {
   const termTotal = (term: 'short' | 'long'): Cents =>
     sum(disposals.map((d) => (term === 'short' ? d.stGainCents : d.ltGainCents))) +
     sum(closeOuts.map((c) => (term === 'short' ? c.stGainCents : c.ltGainCents))) +
-    sum(recoveries.filter((r) => r.term === term).map((r) => r.gainCents));
+    sum(recoveries.map((r) => (term === 'short' ? r.stGainCents : r.ltGainCents)));
   const anyActivity = disposals.length + closeOuts.length + recoveries.length + income.length + gifts.length + charityGifts.length > 0;
   return {
     year,

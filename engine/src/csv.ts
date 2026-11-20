@@ -59,3 +59,19 @@ export function csvField(value: string): string {
 export function toCsv(rows: readonly (readonly string[])[]): string {
   return rows.map((r) => r.map(csvField).join(',')).join('\n') + '\n';
 }
+
+const FORMULA_START = /^[=+\-@\t\r]/;
+
+/**
+ * Make a text cell safe to open in a spreadsheet: a cell starting with = + - @ tab or CR gets a leading
+ * single quote, so it is shown as text instead of run as a formula (OWASP CSV injection guidance).
+ * Use on text columns only; numeric columns are never changed.
+ */
+export function neutralizeFormula(text: string): string {
+  return FORMULA_START.test(text) ? `'${text}` : text;
+}
+
+/** Undo `neutralizeFormula` when reading a cell back. */
+export function restoreFormula(text: string): string {
+  return text.startsWith("'") && FORMULA_START.test(text.slice(1)) ? text.slice(1) : text;
+}

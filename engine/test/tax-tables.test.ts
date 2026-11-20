@@ -125,10 +125,10 @@ describe('federal tables', () => {
     );
   });
 
-  test('missing year falls back to the latest table', () => {
+  test('years after the tables use the latest; years before use the earliest', () => {
     expect(federalTableFor(2026)).toMatchObject({ fellBack: false, table: { year: 2026 } });
     expect(federalTableFor(2030)).toMatchObject({ fellBack: true, table: { year: 2027 } });
-    expect(federalTableFor(2019)).toMatchObject({ fellBack: true, table: { year: 2027 } });
+    expect(federalTableFor(2019)).toMatchObject({ fellBack: true, table: { year: 2025 } });
   });
 });
 

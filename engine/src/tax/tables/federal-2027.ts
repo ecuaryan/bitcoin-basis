@@ -1,5 +1,5 @@
 /**
- * Federal figures for tax year 2027, from Rev. Proc. 2026-35 (released 2026-11-05): § 3.01 rate tables,
+ * Federal figures for tax year 2027, from Rev. Proc. 2026-35: § 3.01 rate tables,
  * § 3.03 capital gains rate amounts, § 3.15 standard deduction, § 3.46 gift annual exclusion.
  * Qualifying surviving spouse uses the joint figures. Amounts in cents.
  */

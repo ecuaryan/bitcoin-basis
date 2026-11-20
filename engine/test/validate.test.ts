@@ -36,7 +36,7 @@ const VALID: Entry[] = [
       carryforwardLtCents: 1,
       givingEnabled: true,
       givingName: 'Tithe',
-      givingPercent: 10,
+      givingPercentBp: 1000,
       givingMode: 'after-tax',
       earlierMoneyInCents: 5,
       timeZone: 'UTC',
@@ -71,6 +71,14 @@ describe('parseEntry', () => {
     ['unknown field', 'unknown field "costcents"', { ...byId('f'), costcents: 1 }],
     ['missing field', 'missing "tier"', { ...byId('f'), tier: undefined }],
     ['empty id', 'invalid "id"', { ...byId('f'), id: ' ' }],
+    ['id with a colon (lot ids derive from ids)', 'invalid "id"', { ...byId('f'), id: 'M:0' }],
+    ['id over 64 characters', 'invalid "id"', { ...byId('f'), id: 'x'.repeat(65) }],
+    ['replaces with a colon', 'invalid "replaces"', { ...byId('s'), replaces: 'a:b' }],
+    ['delete of a bad id', 'invalid "replaces"', { ...byId('r'), replaces: 'a b' }],
+    ['more than 21M BTC', 'invalid "sats"', { ...byId('f'), sats: 2_100_000_000_000_001 }],
+    ['cost over $1 trillion', 'invalid "costCents"', { ...byId('f'), costCents: 100_000_000_000_001 }],
+    ['wages over $1 trillion', 'invalid "patch"', { ...byId('n'), patch: { wagesCents: 100_000_000_000_001 } }],
+    ['pick of a malformed lot id', 'invalid "picks"', { ...byId('h'), picks: [{ lotId: 'M:0:1', sats: 1 }] }],
     ['bad at', 'invalid "at"', { ...byId('f'), at: '2026-01-02' }],
     ['bad tz', 'invalid "tz"', { ...byId('f'), tz: 'Nowhere/City' }],
     ['tz not a string', 'invalid "tz"', { ...byId('f'), tz: 5 }],
@@ -116,9 +124,10 @@ describe('parseEntry', () => {
     ['patch rate over 100%', 'invalid "patch"', { ...byId('n'), patch: { state: { kind: 'custom', rate: 10_001 } } }],
     ['patch unknown state code', 'invalid "patch"', { ...byId('n'), patch: { state: { kind: 'flat', state: 'ZZ' } } }],
     ['patch NaN rate', 'invalid "patch"', { ...byId('n'), patch: { state: { kind: 'custom', rate: Number.NaN } } }],
-    ['patch percent over 100', 'invalid "patch"', { ...byId('n'), patch: { givingPercent: 101 } }],
-    ['patch percent negative', 'invalid "patch"', { ...byId('n'), patch: { givingPercent: -1 } }],
-    ['patch percent not number', 'invalid "patch"', { ...byId('n'), patch: { givingPercent: '10' } }],
+    ['patch percent over 100%', 'invalid "patch"', { ...byId('n'), patch: { givingPercentBp: 10_001 } }],
+    ['patch percent negative', 'invalid "patch"', { ...byId('n'), patch: { givingPercentBp: -1 } }],
+    ['patch percent not whole basis points', 'invalid "patch"', { ...byId('n'), patch: { givingPercentBp: 100.5 } }],
+    ['patch percent not number', 'invalid "patch"', { ...byId('n'), patch: { givingPercentBp: '10' } }],
     ['patch bad state kind', 'invalid "patch"', { ...byId('n'), patch: { state: { kind: 'flat' } } }],
     ['patch bad zone', 'invalid "patch"', { ...byId('n'), patch: { timeZone: 'Nowhere' } }],
     ['edit without reason', 'an edit or delete needs a reason', { ...byId('s'), reason: undefined }],
@@ -131,6 +140,14 @@ describe('parseEntry', () => {
   ];
   test.each(cases)('%s', (_name, message, value) => {
     expect(parseEntry(value)).toEqual({ ok: false, error: message });
+  });
+
+  test('ids: letters, digits, _ and - up to 64; picks may name move pieces', () => {
+    expect(parseEntry({ ...byId('f'), id: '0' }).ok).toBe(true);
+    expect(parseEntry({ ...byId('f'), id: '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b' }).ok).toBe(true);
+    expect(parseEntry({ ...byId('f'), id: 'x'.repeat(64) }).ok).toBe(true);
+    expect(parseEntry({ ...byId('f'), sats: 2_100_000_000_000_000, costCents: 100_000_000_000_000 }).ok).toBe(true);
+    expect(parseEntry({ ...byId('h'), picks: [{ lotId: 'M_1:12', sats: 1 }] }).ok).toBe(true);
   });
 
   test('fee with value is fine; gift without dates is fine', () => {

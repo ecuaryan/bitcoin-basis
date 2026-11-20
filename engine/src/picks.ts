@@ -6,7 +6,7 @@ import { isLongTerm } from './dates.ts';
 import { mulDivRoundHalfUp, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
 import { compareLotsOldestFirst } from './order.ts';
 import { err, ok } from './result.ts';
-import { TIERS, type EntryId, type LocalDate, type Lot, type LotId, type LotPick, type PickError, type Result, type Term, type WalletId } from './types.ts';
+import { TIERS, type DisposalPick, type EntryId, type LocalDate, type Lot, type LotId, type LotPick, type PickDetail, type PickError, type Result, type Term, type WalletId } from './types.ts';
 
 /** Short- or long-term for coins from `lot` disposed of on `date`. Inherited lots are always long-term. */
 export function termFor(lot: Pick<Lot, 'acquiredDate' | 'alwaysLongTerm'>, date: LocalDate): Term {
@@ -16,6 +16,43 @@ export function termFor(lot: Pick<Lot, 'acquiredDate' | 'alwaysLongTerm'>, date:
 /** Cost of taking `sats` from a lot holding `lotSats` and `lotCost`: all of it, or a half-up share. */
 export function splitCost(lotSats: Sats, lotCost: Cents, sats: Sats): Cents {
   return sats === lotSats ? lotCost : mulDivRoundHalfUp(lotCost, sats, lotSats);
+}
+
+/** Sats taken from a lot, with the gift loss basis (if any) still attached. */
+export interface Piece extends PickDetail {
+  readonly lossBasis: { readonly costCents: Cents; readonly acquiredDate: LocalDate; readonly term: Term } | null;
+}
+
+/** The piece of `lot` that `sats` would be on `date` (the lot is not changed). */
+export function pieceOf(lot: Lot, sats: Sats, date: LocalDate): Piece {
+  const lb = lot.lossBasis;
+  return {
+    lotId: lot.id,
+    sats,
+    costCents: splitCost(lot.sats, lot.costCents, sats),
+    acquiredDate: lot.acquiredDate,
+    tier: lot.tier,
+    term: termFor(lot, date),
+    inherited: lot.alwaysLongTerm,
+    lossBasis: lb === null ? null : { costCents: splitCost(lot.sats, lb.costCents, sats), acquiredDate: lb.acquiredDate, term: isLongTerm(lb.acquiredDate, date) ? 'long' : 'short' },
+  };
+}
+
+/** The piece without its loss basis. */
+export function detailOf(p: Piece): PickDetail {
+  return { lotId: p.lotId, sats: p.sats, costCents: p.costCents, acquiredDate: p.acquiredDate, tier: p.tier, term: p.term, inherited: p.inherited };
+}
+
+/**
+ * Gain on a piece for `proceedsCents`. For a gift received worth less than the giver's cost
+ * (Treas. Reg. 1.1015-1(a)): the giver's cost and date if that gives a gain; the value at the gift and
+ * the gift date if that gives a loss; otherwise no gain or loss (the basis reported equals the proceeds).
+ */
+export function withProceeds(p: Piece, proceedsCents: Cents): DisposalPick {
+  const base = detailOf(p);
+  const lb = p.lossBasis;
+  const basis = lb === null || proceedsCents >= p.costCents ? base : proceedsCents < lb.costCents ? { ...base, ...lb } : { ...base, costCents: proceedsCents };
+  return { ...basis, proceedsCents, gainCents: proceedsCents - basis.costCents };
 }
 
 /** The wallet's open lots, oldest first (acquired date, then acquired instant, then lot id). */
@@ -53,17 +90,23 @@ export function lowestTaxOrder(lots: readonly Lot[], wallet: WalletId, options: 
   return keyed.map((k) => k.lot);
 }
 
-/** Take `sats` from lots in the given order. */
-export function picksFor(orderedLots: readonly Lot[], sats: Sats): Result<LotPick[], PickError> {
-  if (!Number.isSafeInteger(sats) || sats <= 0) return err({ code: 'invalid-amount', message: 'amount must be a positive whole number of sats' });
+/** Take up to `sats` from lots in the given order (as far as they go). */
+export function takeInOrder(orderedLots: readonly Lot[], sats: Sats): LotPick[] {
   const picks: LotPick[] = [];
   let left = sats;
   for (const lot of orderedLots) {
-    if (left === 0) break;
     const take = Math.min(left, lot.sats);
     if (take > 0) picks.push({ lotId: lot.id, sats: take });
     left -= take;
   }
+  return picks;
+}
+
+/** Take `sats` from lots in the given order, or say why not. */
+export function picksFor(orderedLots: readonly Lot[], sats: Sats): Result<LotPick[], PickError> {
+  if (!Number.isSafeInteger(sats) || sats <= 0) return err({ code: 'invalid-amount', message: 'amount must be a positive whole number of sats' });
+  const picks = takeInOrder(orderedLots, sats);
+  const left = sats - picks.reduce((s, p) => s + p.sats, 0);
   if (left > 0) return err({ code: 'insufficient-sats', message: `short by ${left} sats` });
   return ok(picks);
 }

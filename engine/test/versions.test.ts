@@ -11,12 +11,13 @@ const unlockYear = (id: string, year: number): UnlockYearEntry => ({ id, kind: '
 
 const W = wallet('ex');
 const A = buy('A', 'ex', '2024-05-01', '0.1', '6000');
-const lotCosts = (entries: Entry[]): [string, number][] => replay(entries).lots.map((l) => [l.id, l.costCents]);
+/** [lot id, entry version that made it, cost]: lots keep the root id; the origin is the version applied. */
+const lotCosts = (entries: Entry[]): [string, string, number][] => replay(entries).lots.map((l) => [l.id, l.originEntryId, l.costCents]);
 
 describe('edits and deletes', () => {
   test('an edit hides the original and applies the new version', () => {
     const B = edit(A, { id: 'B', reason: 'typo', costCents: cents('6100') });
-    expect(lotCosts([W, A, B])).toEqual([['B', cents('6100')]]);
+    expect(lotCosts([W, A, B])).toEqual([['A', 'B', cents('6100')]]);
   });
   test('a delete removes the target from replay', () => {
     const state = replay([W, A, del('D', 'A')]);
@@ -26,7 +27,7 @@ describe('edits and deletes', () => {
   test('edit chains apply the newest version', () => {
     const B = edit(A, { id: 'B', reason: 'r', costCents: 1 });
     const C = edit(B, { id: 'C', reason: 'r', costCents: 2 });
-    expect(lotCosts([W, A, B, C])).toEqual([['C', 2]]);
+    expect(lotCosts([W, A, B, C])).toEqual([['A', 'C', 2]]);
   });
   test('deleting the newest version removes the item', () => {
     const B = edit(A, { id: 'B', reason: 'r', costCents: 1 });
@@ -41,7 +42,7 @@ describe('edits and deletes', () => {
   test('editing an edit of a delete restores the item', () => {
     const D = del('D', 'A');
     const restore: Entry = { ...A, id: 'R', replaces: 'D', reason: 'deleted by mistake' };
-    expect(lotCosts([W, A, D, restore])).toEqual([['R', cents('6000')]]);
+    expect(lotCosts([W, A, D, restore])).toEqual([['A', 'R', cents('6000')]]);
   });
 });
 
@@ -52,7 +53,7 @@ describe('conflicts', () => {
   test('two edits of one entry: conflict lists both; the original stays as it was', () => {
     const state = replay([W, A, B1, B2]);
     expect(state.conflicts).toEqual([{ targetId: 'A', versions: [B1, B2] }]);
-    expect(lotCosts([W, A, B1, B2])).toEqual([['A', cents('6000')]]);
+    expect(lotCosts([W, A, B1, B2])).toEqual([['A', 'A', cents('6000')]]);
   });
   test('an edit and a delete of one entry also conflict', () => {
     const D = del('D', 'A');
@@ -63,7 +64,7 @@ describe('conflicts', () => {
   test('resolved by deleting the losing version', () => {
     const state = replay([W, A, B1, B2, del('X', 'B2', 'resolved conflict')]);
     expect(state.conflicts).toEqual([]);
-    expect(state.lots.map((l) => [l.id, l.costCents])).toEqual([['B1', 1]]);
+    expect(state.lots.map((l) => [l.id, l.originEntryId, l.costCents])).toEqual([['A', 'B1', 1]]);
   });
   test('choosing a delete over an edit: discard the edit, the item is deleted', () => {
     const state = replay([W, A, B1, del('D', 'A'), del('X', 'B1', 'keep the delete')]);
@@ -71,7 +72,7 @@ describe('conflicts', () => {
     expect(state.lots).toEqual([]);
   });
   test('discarding every version leaves the original', () => {
-    expect(lotCosts([W, A, B1, B2, del('X1', 'B1'), del('X2', 'B2')])).toEqual([['A', cents('6000')]]);
+    expect(lotCosts([W, A, B1, B2, del('X1', 'B1'), del('X2', 'B2')])).toEqual([['A', 'A', cents('6000')]]);
   });
   test('a conflict lists the newest version of each branch', () => {
     const C1 = edit(B1, { id: 'C1', reason: 'again', costCents: 3 });
@@ -150,7 +151,7 @@ describe('closed years', () => {
     const later = edit(fix, { id: 'q-fix', reason: 'again', costCents: 2 });
     const state = replay([W, early, close, unlockYear('m-unlock', 2025), fix, closeYear('p-close', 2025), later]);
     expect(errorCodes(state)).toEqual({ 'q-fix': 'closed-year' });
-    expect(state.lots.map((l) => [l.id, l.costCents])).toEqual([['n-fix', 1]]);
+    expect(state.lots.map((l) => [l.id, l.originEntryId, l.costCents])).toEqual([['a-2025', 'n-fix', 1]]);
     expect(state.closedYears).toEqual([2025]);
     expect(replay([W, close, unlockYear('m-unlock', 2025)]).closedYears).toEqual([]);
     expect(replay([W, close, closeYear('k-2024', 2024), closeYear('k-2023', 2023), unlockYear('z', 2023)]).closedYears).toEqual([2024, 2025]);

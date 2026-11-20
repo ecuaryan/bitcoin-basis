@@ -1,7 +1,7 @@
 /** Replay: entries in, ledger state out. Deterministic, pure, never throws for bad entries. */
-import type { Book } from './book.ts';
+import { newBook } from './book.ts';
 import { DEFAULT_TIME_ZONE, localDate } from './dates.ts';
-import { applyEntry } from './handlers.ts';
+import { applyEntry, settleFrozenWallets } from './handlers.ts';
 import { compareEntries } from './order.ts';
 import type { Entry, LedgerState, Settings } from './types.ts';
 import { resolveVersions } from './versions.ts';
@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS: Settings = {
   carryforwardLtCents: 0,
   givingEnabled: false,
   givingName: 'Giving',
-  givingPercent: 10,
+  givingPercentBp: 1000,
   givingMode: 'before-tax',
   earlierMoneyInCents: 0,
   timeZone: DEFAULT_TIME_ZONE,
@@ -38,7 +38,8 @@ function flagAppraisals(state: LedgerState): void {
  *
  * Applies edits and deletes (`replaces`), reports conflicts, enforces closed years, then applies
  * the remaining entries in order of `at`, then `id` (wallet creations first), using each
- * disposal's saved picks. Entries
+ * disposal's saved picks. Lots keep the id of the first version of the entry that created them, so
+ * edits never orphan saved picks. Entries
  * that cannot be applied are listed in `errors` and skipped; everything else still replays.
  */
 export function replay(entries: readonly Entry[]): LedgerState {
@@ -65,7 +66,7 @@ export function replay(entries: readonly Entry[]): LedgerState {
     errors: resolution.errors,
     applied: [],
   };
-  const book: Book = { wallets: new Map(), lots: new Map(), closeOuts: new Map(), touched: new Map(), state };
+  const book = newBook(state, resolution.roots);
   // Wallets exist for the whole timeline, so a wallet added today can hold coins bought years ago.
   const ordered = [...resolution.applied].sort((a, b) => Number(b.kind === 'wallet') - Number(a.kind === 'wallet') || compareEntries(a, b));
   for (const e of ordered) {
@@ -73,6 +74,7 @@ export function replay(entries: readonly Entry[]): LedgerState {
     if (problem === null) state.applied.push(e.id);
     else state.errors.push({ entryId: e.id, ...problem });
   }
+  settleFrozenWallets(book);
   flagAppraisals(state);
   state.wallets = [...book.wallets.values()].map((w) => ({ ...w }));
   state.lots = [...book.lots.values()].filter((l) => l.sats > 0).map((l) => ({ ...l }));

@@ -7,8 +7,10 @@ import type { Cents, Sats } from './money.ts';
 /** `{ ok: true, value }` or `{ ok: false, error }`. Used instead of exceptions for user-caused problems. */
 export type Result<T, E> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: E };
 
+/** Letters, digits, `_` and `-`, 1 to 64 characters (a UUIDv7 in practice). Never contains `:`. */
 export type EntryId = string;
 export type WalletId = string;
+/** The root entry id of the version chain that created the coins, or `<moveRootId>:<index>` for a moved piece. */
 export type LotId = string;
 /** ISO-8601 UTC instant, e.g. `2026-01-01T06:30:00Z` (optional `.sss` milliseconds). */
 export type IsoInstant = string;
@@ -207,8 +209,8 @@ export interface Settings {
   readonly carryforwardLtCents: Cents;
   readonly givingEnabled: boolean;
   readonly givingName: string;
-  /** Percent, e.g. 10 for 10%. */
-  readonly givingPercent: number;
+  /** Giving percent in basis points (1/10000ths): 1000 = 10%. A whole number, so no float error. */
+  readonly givingPercentBp: number;
   readonly givingMode: 'before-tax' | 'after-tax';
   readonly earlierMoneyInCents: Cents;
   /** Default time zone for new entries. */
@@ -229,7 +231,7 @@ export interface Wallet {
   frozen: boolean;
   /** Set once a `wallet-close-out` has emptied the wallet. */
   closeOutEntryId: EntryId | null;
-  /** Frozen-payout value received before close-out. */
+  /** Frozen-payout value that reduces the close-out loss: payouts dated on or before the loss date (all payouts so far if not closed out). */
   recoveredCents: Cents;
 }
 
@@ -246,6 +248,18 @@ export interface Lot {
   originEntryId: EntryId;
   /** Inherited coins are always long-term. */
   alwaysLongTerm: boolean;
+  /** Time zone of the entry that created the coins (decides `acquiredDate`). */
+  tz: string;
+  /**
+   * A gift received worth less than the giver's cost (Treas. Reg. 1.1015-1(a)): the value at the gift and
+   * the gift date, used instead of the giver's cost and date when a disposal is at a loss. Null otherwise.
+   */
+  lossBasis: LossBasis | null;
+}
+
+export interface LossBasis {
+  costCents: Cents;
+  acquiredDate: LocalDate;
 }
 
 /** One lot's share of a disposal, gift or loss. */
@@ -256,6 +270,8 @@ export interface PickDetail {
   acquiredDate: LocalDate;
   tier: Tier;
   term: Term;
+  /** Inherited coins (Form 8949 shows "INHERITED" as the date acquired). */
+  inherited: boolean;
 }
 export interface DisposalPick extends PickDetail {
   proceedsCents: Cents;
@@ -354,11 +370,14 @@ export interface CloseOut {
   gainCents: Cents;
   stGainCents: Cents;
   ltGainCents: Cents;
-  /** Holding period for later recoveries: long if the closed lots were mostly long-term by cost. */
+  /** @deprecated Later recoveries split short/long (see `Recovery`); this is the term of the larger share. */
   recoveryTerm: Term;
   pieces: CloseOutPiece[];
 }
-/** A payout from a closed-out wallet: a gain with basis $0 in the year received. */
+/**
+ * A payout from a closed-out wallet dated after the loss date: a gain with basis $0 in the year received,
+ * split short/long in proportion to the close-out's short- and long-term losses.
+ */
 export interface Recovery {
   entryId: EntryId;
   wallet: WalletId;
@@ -368,6 +387,9 @@ export interface Recovery {
   year: number;
   sats: Sats;
   gainCents: Cents;
+  stGainCents: Cents;
+  ltGainCents: Cents;
+  /** @deprecated Use `stGainCents` / `ltGainCents`; this is the term of the larger part (long on a tie). */
   term: Term;
 }
 
@@ -433,7 +455,11 @@ export type LedgerErrorCode =
   | 'not-retirement-wallet'
   | 'not-frozen'
   | 'already-closed-out'
-  | 'nothing-to-close-out';
+  | 'nothing-to-close-out'
+  | 'invalid-loss-date'
+  | 'wallet-name-taken'
+  | 'duplicate-lot'
+  | 'out-of-range';
 
 /** An entry that could not be applied. The rest of the ledger replays without it. */
 export interface LedgerError {

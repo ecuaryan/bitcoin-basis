@@ -57,7 +57,7 @@ export interface TaxAssumptions {
   readonly year: number;
   /** Year of the federal table used. */
   readonly tableYear: number;
-  /** True when `year` had no table and the latest one was used. */
+  /** True when `year` had no table: the earliest table is used for years before it, the latest for years after. */
   readonly fellBack: boolean;
   readonly filingStatus: TaxFilingStatus;
   readonly standardDeduction: Cents;
@@ -223,7 +223,7 @@ function compute(input: TaxInput): Core {
   const niit = min(nii, max(ZERO, magi - BigInt(table.niitThreshold[status]))) * BigInt(NIIT_RATE);
 
   const notes: string[] = [];
-  if (fellBack) notes.push(`No ${input.year} federal table; used the ${table.year} figures.`);
+  if (fellBack) notes.push(`No ${input.year} federal table; used the ${table.year < input.year ? 'latest' : 'earliest'} one (${table.year}).`);
   if (state.year !== null && state.year !== input.year) notes.push(`State rate is the ${state.year} rate.`);
 
   return {

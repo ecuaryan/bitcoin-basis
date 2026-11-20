@@ -4,6 +4,7 @@
  */
 import { instantMs, isValidInstant, isValidLocalDate, isValidTimeZone } from './dates.ts';
 import { STATE_RATES } from './tax/tables/state.ts';
+import { MAX_ENTRY_CENTS, MAX_ENTRY_SATS } from './money.ts';
 import { err, ok } from './result.ts';
 import { FILING_STATUSES, LOST_CAUSES, TIERS, WALLET_TYPES, type Entry, type EntryKind, type Result } from './types.ts';
 
@@ -17,16 +18,22 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 const isString: Check = (v) => typeof v === 'string';
 const isText: Check = (v) => typeof v === 'string' && v.trim() !== '';
-const isPositiveInt: Check = (v) => Number.isSafeInteger(v) && (v as number) > 0;
-const isNonNegativeInt: Check = (v) => Number.isSafeInteger(v) && (v as number) >= 0;
+const intIn = (lo: number, hi: number): Check => (v) => Number.isSafeInteger(v) && (v as number) >= lo && (v as number) <= hi;
+/** Sats in one entry: up to 21,000,000 BTC. */
+const isSats = intIn(1, MAX_ENTRY_SATS);
+const isSatsOrZero = intIn(0, MAX_ENTRY_SATS);
+/** Cents in one entry: up to $1 trillion. */
+const isCents = intIn(0, MAX_ENTRY_CENTS);
+/** Entry ids: letters, digits, `_` and `-` (UUIDv7 in practice), so derived lot ids (`<id>:<n>`) never collide. */
+const isId: Check = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v);
+const isLotId: Check = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}(:\d{1,6})?$/.test(v);
 const isBoolean: Check = (v) => typeof v === 'boolean';
 const isInstant: Check = (v) => typeof v === 'string' && isValidInstant(v);
 const isDate: Check = (v) => typeof v === 'string' && isValidLocalDate(v);
 const isYear: Check = (v) => Number.isSafeInteger(v) && (v as number) >= 1970 && (v as number) <= 9999;
 const isTimeZone: Check = (v) => typeof v === 'string' && isValidTimeZone(v);
-const isRateTenThousandths: Check = (v) => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) <= 10_000;
+const isRateTenThousandths = intIn(0, 10_000);
 const isStateCode: Check = (v) => typeof v === 'string' && Object.hasOwn(STATE_RATES, v);
-const isPercent: Check = (v) => typeof v === 'number' && v >= 0 && v <= 100;
 const oneOf =
   (values: readonly string[]): Check =>
   (v) =>
@@ -60,11 +67,11 @@ const taggedUnion =
   (v) =>
     isRecord(v) && typeof v[field] === 'string' && Object.hasOwn(schemas, v[field]) && matches(schemas[v[field]] as Schema)(v);
 
-const isPicks: Check = (v) => Array.isArray(v) && v.length > 0 && v.every(matches({ lotId: req(isText), sats: req(isPositiveInt) }));
+const isPicks: Check = (v) => Array.isArray(v) && v.length > 0 && v.every(matches({ lotId: req(isLotId), sats: req(isSats) }));
 
 const isSource = taggedUnion('type', {
   income: { type: req(isString), description: opt(isString) },
-  gift: { type: req(isString), giverCostCents: opt(isNonNegativeInt), giverAcquiredAt: opt(isInstant) },
+  gift: { type: req(isString), giverCostCents: opt(isCents), giverAcquiredAt: opt(isInstant) },
   inherited: { type: req(isString) },
   'frozen-payout': { type: req(isString), fromWallet: req(isText) },
 });
@@ -77,21 +84,21 @@ const isStateTax = taggedUnion('kind', {
 
 const isSettingsPatch = matches({
   filingStatus: opt(oneOf(FILING_STATUSES)),
-  wagesCents: opt(isNonNegativeInt),
+  wagesCents: opt(isCents),
   state: opt(isStateTax),
-  carryforwardStCents: opt(isNonNegativeInt),
-  carryforwardLtCents: opt(isNonNegativeInt),
+  carryforwardStCents: opt(isCents),
+  carryforwardLtCents: opt(isCents),
   givingEnabled: opt(isBoolean),
   givingName: opt(isText),
-  givingPercent: opt(isPercent),
+  givingPercentBp: opt(isRateTenThousandths),
   givingMode: opt(oneOf(['before-tax', 'after-tax'])),
-  earlierMoneyInCents: opt(isNonNegativeInt),
+  earlierMoneyInCents: opt(isCents),
   timeZone: opt(isTimeZone),
 });
 
 const wallet = req(isText);
-const sats = req(isPositiveInt);
-const cents = req(isNonNegativeInt);
+const sats = req(isSats);
+const cents = req(isCents);
 const tier = req(oneOf(TIERS));
 
 const KIND_SCHEMAS: Readonly<Record<EntryKind, Schema>> = {
@@ -102,27 +109,27 @@ const KIND_SCHEMAS: Readonly<Record<EntryKind, Schema>> = {
   'opening-lot': { wallet, acquiredAt: req(isInstant), sats, costCents: cents, tier, origin: req(isString) },
   buy: { wallet, sats, costCents: cents, tier },
   receive: { wallet, sats, valueCents: cents, source: req(isSource), tier: opt(oneOf(TIERS)) },
-  move: { from: wallet, to: wallet, sats, feeSats: req(isNonNegativeInt), feeValueCents: cents, picks: req(isPicks) },
+  move: { from: wallet, to: wallet, sats, feeSats: req(isSatsOrZero), feeValueCents: cents, picks: req(isPicks) },
   sell: { wallet, sats, proceedsCents: cents, picks: req(isPicks), spent: req(isBoolean), description: opt(isString) },
   give: { wallet, sats, valueCents: cents, to: req(oneOf(['person', 'charity'])), recipient: req(isText), picks: req(isPicks) },
   lost: { wallet, sats, cause: req(oneOf(LOST_CAUSES)), picks: req(isPicks) },
-  'balance-confirm': { wallet, sats: req(isNonNegativeInt) },
-  'retirement-snapshot': { wallet, sats: req(isNonNegativeInt) },
+  'balance-confirm': { wallet, sats: req(isSatsOrZero) },
+  'retirement-snapshot': { wallet, sats: req(isSatsOrZero) },
   settings: { patch: req(isSettingsPatch) },
   'close-year': { year: req(isYear) },
   'unlock-year': { year: req(isYear), reason: req(isText) },
   'giving-paid': { year: req(isYear), cents },
-  delete: { replaces: req(isText), reason: req(isText) },
+  delete: { replaces: req(isId), reason: req(isText) },
 };
 
 const COMMON: Schema = {
-  id: req(isText),
+  id: req(isId),
   kind: req(isString),
   at: req(isInstant),
   tz: req(isTimeZone),
   note: opt(isString),
   proof: opt(isString),
-  replaces: opt(isText),
+  replaces: opt(isId),
   reason: opt(isText),
 };
 

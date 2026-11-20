@@ -26,7 +26,7 @@ describe('worked examples', () => {
     const [d] = state.disposals;
     expect(d).toMatchObject({ kind: 'sell', costCents: cents('14000'), proceedsCents: cents('18750'), gainCents: cents('4750'), ltGainCents: cents('4750'), stGainCents: 0, year: 2026 });
     expect(d?.picks).toEqual([
-      { lotId: 'L1', sats: sats('0.25'), costCents: cents('14000'), acquiredDate: '2021-03-15', tier: 'documented', term: 'long', proceedsCents: cents('18750'), gainCents: cents('4750') },
+      { lotId: 'L1', sats: sats('0.25'), costCents: cents('14000'), acquiredDate: '2021-03-15', tier: 'documented', term: 'long', inherited: false, proceedsCents: cents('18750'), gainCents: cents('4750') },
     ]);
     expect(state.lots.find((l) => l.id === 'L1')).toMatchObject({ sats: sats('0.25'), costCents: cents('14000') });
   });
@@ -56,8 +56,8 @@ describe('worked examples', () => {
     expect(state.errors).toEqual([]);
     // Moved: L1 whole and 0.1 of L2 ($2,250.00), as new lots in the destination keeping their dates.
     expect(state.lots.filter((l) => l.wallet === 'cold')).toEqual([
-      { id: 'M:0', wallet: 'cold', sats: sats('0.5'), costCents: cents('28000'), acquiredDate: '2021-03-15', acquiredAt: noon('2021-03-15'), tier: 'documented', proof: 'Email receipt', originEntryId: 'L1', alwaysLongTerm: false },
-      { id: 'M:1', wallet: 'cold', sats: sats('0.1'), costCents: cents('2250'), acquiredDate: '2023-01-20', acquiredAt: noon('2023-01-20'), tier: 'documented', proof: 'Email receipt', originEntryId: 'L2', alwaysLongTerm: false },
+      { id: 'M:0', wallet: 'cold', sats: sats('0.5'), costCents: cents('28000'), acquiredDate: '2021-03-15', acquiredAt: noon('2021-03-15'), tier: 'documented', proof: 'Email receipt', originEntryId: 'L1', alwaysLongTerm: false, tz: TZ, lossBasis: null },
+      { id: 'M:1', wallet: 'cold', sats: sats('0.1'), costCents: cents('2250'), acquiredDate: '2023-01-20', acquiredAt: noon('2023-01-20'), tier: 'documented', proof: 'Email receipt', originEntryId: 'L2', alwaysLongTerm: false, tz: TZ, lossBasis: null },
     ]);
     // Fee: cost $0.45, value $1.50, gain $1.05.
     expect(state.disposals).toHaveLength(1);
@@ -73,7 +73,7 @@ describe('worked examples', () => {
     expect(state.disposals).toEqual([]);
     expect(state.gifts).toHaveLength(1);
     expect(state.gifts[0]).toMatchObject({ recipient: 'Sam', costCents: cents('225'), valueCents: cents('750'), year: 2026 });
-    expect(state.gifts[0]?.picks).toEqual([{ lotId: 'L2', sats: sats('0.01'), costCents: cents('225'), acquiredDate: '2023-01-20', tier: 'documented', term: 'long', valueCents: cents('750') }]);
+    expect(state.gifts[0]?.picks).toEqual([{ lotId: 'L2', sats: sats('0.01'), costCents: cents('225'), acquiredDate: '2023-01-20', tier: 'documented', term: 'long', inherited: false, valueCents: cents('750') }]);
   });
 
   test('12: average cost of the test book is $54,416.67 per BTC', () => {
@@ -144,7 +144,7 @@ describe('worked examples', () => {
     expect(state.closeOuts).toHaveLength(1);
     expect(state.closeOuts[0]).toMatchObject({ wallet: 'lend', lossDate: '2024-01-15', year: 2024, costCents: cents('40000'), recoveredCents: cents('12000'), gainCents: cents('-28000'), ltGainCents: cents('-28000'), stGainCents: 0, recoveryTerm: 'long' });
     expect(state.lots.filter((l) => l.wallet === 'lend')).toEqual([]);
-    expect(state.recoveries).toEqual([{ entryId: 'P2', wallet: 'ex', fromWallet: 'lend', closeOutEntryId: 'X', date: '2025-06-01', year: 2025, sats: sats('0.02'), gainCents: cents('1500'), term: 'long' }]);
+    expect(state.recoveries).toEqual([{ entryId: 'P2', wallet: 'ex', fromWallet: 'lend', closeOutEntryId: 'X', date: '2025-06-01', year: 2025, sats: sats('0.02'), gainCents: cents('1500'), stGainCents: 0, ltGainCents: cents('1500'), term: 'long' }]);
     expect(state.lots.find((l) => l.id === 'P2')?.costCents).toBe(cents('1500'));
     expect(state.income).toEqual([]);
   });

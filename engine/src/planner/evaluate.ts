@@ -1,7 +1,7 @@
 /** Turn picks into gains and tax for a planned sale. */
 import { sum } from '../book.ts';
-import { mulDivRoundHalfUp, splitProportional, SATS_PER_BTC, type Cents, type Sats } from '../money.ts';
-import { splitCost, termFor } from '../picks.ts';
+import { MAX_ENTRY_CENTS, mulDivOrNull, mulDivRoundHalfUp, splitProportional, SATS_PER_BTC, type Cents, type Sats } from '../money.ts';
+import { pieceOf, withProceeds } from '../picks.ts';
 import { incrementalTax, type Carryforward } from '../tax/tax.ts';
 import type { Lot, LotPick, Tier } from '../types.ts';
 import { taxInput, type TaxContext } from './context.ts';
@@ -28,26 +28,25 @@ export interface SaleEvaluation {
 
 const ROUGH: readonly Tier[] = ['estimated', 'unknown'];
 
-/** Proceeds of selling `sats` at `priceCents` per BTC. */
-export function proceedsFor(sats: Sats, priceCents: Cents): Cents {
-  return mulDivRoundHalfUp(sats, priceCents, SATS_PER_BTC);
+/** Proceeds of selling `sats` at `priceCents` per BTC, or null when over $1 trillion (too large to plan). */
+export function proceedsFor(sats: Sats, priceCents: Cents): Cents | null {
+  const p = mulDivOrNull(sats, priceCents, SATS_PER_BTC);
+  return p !== null && p <= MAX_ENTRY_CENTS ? p : null;
 }
 
-/** `picks` must already be valid for `lots`. Proceeds split across picks by sats (half-up, remainder last). */
+/**
+ * `picks` must already be valid for `lots`. Proceeds split across picks by sats (half-up, remainder last);
+ * gifts worth less than the giver's cost use the dual-basis rule, as in replay.
+ */
 export function evaluatePicks(lots: readonly Lot[], picks: readonly LotPick[], proceedsCents: Cents, ctx: TaxContext): SaleEvaluation {
   const byId = new Map(lots.map((l) => [l.id, l]));
   const used = picks.map((p) => ({ pick: p, lot: byId.get(p.lotId) as Lot }));
   const shares = splitProportional(proceedsCents, picks.map((p) => p.sats));
-  let st = 0;
-  let lt = 0;
-  let cost = 0;
-  used.forEach(({ pick, lot }, i) => {
-    const c = splitCost(lot.sats, lot.costCents, pick.sats);
-    const gain = (shares[i] as number) - c;
-    cost += c;
-    if (termFor(lot, ctx.onDate) === 'long') lt += gain;
-    else st += gain;
-  });
+  const pieces = used.map(({ pick, lot }, i) => withProceeds(pieceOf(lot, pick.sats, ctx.onDate), shares[i] as number));
+  const termGain = (term: 'short' | 'long'): Cents => sum(pieces.filter((p) => p.term === term).map((p) => p.gainCents));
+  const st = termGain('short');
+  const lt = termGain('long');
+  const cost = sum(pieces.map((p) => p.costCents));
   const totalSats = sum(picks.map((p) => p.sats));
   const estimatedSats = sum(used.filter(({ lot }) => ROUGH.includes(lot.tier)).map(({ pick }) => pick.sats));
   const dates = used.map(({ lot }) => lot.acquiredDate).sort();

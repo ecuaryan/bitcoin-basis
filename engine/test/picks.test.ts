@@ -15,6 +15,8 @@ const lot = (id: string, acquiredDate: string, s: number, cost: number, extra: P
   proof: '',
   originEntryId: id,
   alwaysLongTerm: false,
+  tz: 'America/Boise',
+  lossBasis: null,
   ...extra,
 });
 

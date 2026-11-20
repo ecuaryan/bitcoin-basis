@@ -112,8 +112,8 @@ describe('lots', () => {
   test('a buy creates a lot whose id is the entry id; proof defaults to the wallet default', () => {
     const state = replay([wallet('ex'), buy('B1', 'ex', '2024-01-01', '0.1', '4000', 'reconstructed'), { ...buy('B2', 'ex', '2024-01-02', '0.2', '1'), proof: 'Bank statement' }]);
     expect(state.lots).toEqual([
-      { id: 'B1', wallet: 'ex', sats: sats('0.1'), costCents: cents('4000'), acquiredDate: '2024-01-01', acquiredAt: noon('2024-01-01'), tier: 'reconstructed', proof: 'Email receipt', originEntryId: 'B1', alwaysLongTerm: false },
-      { id: 'B2', wallet: 'ex', sats: sats('0.2'), costCents: 100, acquiredDate: '2024-01-02', acquiredAt: noon('2024-01-02'), tier: 'documented', proof: 'Bank statement', originEntryId: 'B2', alwaysLongTerm: false },
+      { id: 'B1', wallet: 'ex', sats: sats('0.1'), costCents: cents('4000'), acquiredDate: '2024-01-01', acquiredAt: noon('2024-01-01'), tier: 'reconstructed', proof: 'Email receipt', originEntryId: 'B1', alwaysLongTerm: false, tz: TZ, lossBasis: null },
+      { id: 'B2', wallet: 'ex', sats: sats('0.2'), costCents: 100, acquiredDate: '2024-01-02', acquiredAt: noon('2024-01-02'), tier: 'documented', proof: 'Bank statement', originEntryId: 'B2', alwaysLongTerm: false, tz: TZ, lossBasis: null },
     ]);
     expect(state.buyCostCents).toBe(cents('4001'));
   });
@@ -257,13 +257,40 @@ describe('frozen platforms', () => {
       ['B1', 'long', cents('30000'), 75_001, cents('30000') * -1 + 75_001],
       ['B2', 'short', cents('10000'), 25_000, -cents('10000') + 25_000],
     ]);
-    expect(c).toMatchObject({ lossDate: '2024-01-15', year: 2024, recoveredCents: 100_001, gainCents: 100_001 - cents('40000'), recoveryTerm: 'long' });
+    expect(c).toMatchObject({ lossDate: '2024-01-15', year: 2024, recoveredCents: 100_001, gainCents: 100_001 - cents('40000'), stGainCents: -cents('10000') + 25_000, ltGainCents: -cents('30000') + 75_001 });
     expect(state.wallets.find((w) => w.id === 'lend')?.closeOutEntryId).toBe('X');
   });
-  test('recovery term is short when the closed lots were mostly short-term by cost (ties are short)', () => {
-    const state = replay([...base, buy('B1', 'lend', '2022-01-01', '0.5', '100'), buy('B2', 'lend', '2023-12-01', '0.5', '100'), freeze('F', 'lend', '2024-01-01'), closeOut('X', 'lend', '2024-02-01'), receive('P', 'ex', '2025-01-01', '0.1', '50', { type: 'frozen-payout', fromWallet: 'lend' })]);
-    expect(state.closeOuts[0]?.recoveryTerm).toBe('short');
-    expect(state.recoveries[0]).toMatchObject({ term: 'short', gainCents: 5000, year: 2025 });
+  test("a recovery splits short/long in proportion to the close-out's short- and long-term losses (remainder on long)", () => {
+    const state = replay([...base, buy('B1', 'lend', '2022-01-01', '0.5', '300'), buy('B2', 'lend', '2023-12-01', '0.5', '100'), freeze('F', 'lend', '2024-01-01'), closeOut('X', 'lend', '2024-02-01'), receive('P', 'ex', '2025-01-01', '0.1', '50.01', { type: 'frozen-payout', fromWallet: 'lend' })]);
+    expect(state.closeOuts[0]).toMatchObject({ stGainCents: -10_000, ltGainCents: -30_000 });
+    expect(state.recoveries[0]).toMatchObject({ gainCents: 5001, stGainCents: 1250, ltGainCents: 3751, year: 2025, term: 'long' });
+    expect(state.closeOuts[0]?.recoveryTerm).toBe('long');
+  });
+  test('a recovery after a close-out with no loss splits by the closed sats', () => {
+    const state = replay([...base, buy('B1', 'lend', '2022-01-01', '0.3', '0'), buy('B2', 'lend', '2023-01-01', '0.1', '0'), freeze('F', 'lend', '2023-02-01'), closeOut('X', 'lend', '2023-03-01'), receive('P', 'ex', '2023-04-01', '0.01', '10', { type: 'frozen-payout', fromWallet: 'lend' })]);
+    expect(state.recoveries[0]).toMatchObject({ stGainCents: 250, ltGainCents: 750 });
+    const mostlyShort = replay([...base, buy('B1', 'lend', '2022-01-01', '0.1', '100'), buy('B2', 'lend', '2023-01-15', '0.1', '300'), freeze('F', 'lend', '2023-02-01'), closeOut('X', 'lend', '2023-03-01'), receive('P', 'ex', '2023-04-01', '0.01', '10', { type: 'frozen-payout', fromWallet: 'lend' })]);
+    expect(mostlyShort.closeOuts[0]?.recoveryTerm).toBe('short');
+    expect(mostlyShort.recoveries[0]).toMatchObject({ stGainCents: 750, ltGainCents: 250, term: 'short' });
+  });
+  test('payouts dated on or before the loss date reduce the loss; later ones are recoveries, whatever the logging order', () => {
+    const entries: Entry[] = [
+      ...base,
+      buy('B', 'lend', '2023-01-01', '1', '40000'),
+      freeze('F', 'lend', '2025-06-01'),
+      receive('P1', 'ex', '2025-12-31', '0.1', '1000', { type: 'frozen-payout', fromWallet: 'lend' }),
+      receive('P2', 'ex', '2026-02-01', '0.1', '9000', { type: 'frozen-payout', fromWallet: 'lend' }),
+      closeOut('X', 'lend', '2026-03-01', '2025-12-31'),
+    ];
+    const state = replay(entries);
+    expect(state.closeOuts[0]).toMatchObject({ year: 2025, recoveredCents: cents('1000'), ltGainCents: cents('-39000') });
+    expect(state.recoveries.map((r) => [r.entryId, r.year, r.ltGainCents])).toEqual([['P2', 2026, cents('9000')]]);
+    expect(state.wallets.find((w) => w.id === 'lend')?.recoveredCents).toBe(cents('1000'));
+  });
+  test('a loss date before the earliest coins is refused', () => {
+    const state = replay([...base, buy('B', 'lend', '2025-06-01', '1', '1'), freeze('F', 'lend', '2025-07-01'), closeOut('X', 'lend', '2026-01-01', '2025-05-31')]);
+    expect(errorCodes(state)).toEqual({ X: 'invalid-loss-date' });
+    expect(replay([...base, buy('B', 'lend', '2025-06-01', '1', '1'), freeze('F', 'lend', '2025-07-01'), closeOut('X', 'lend', '2026-01-01', '2025-06-01')]).errors).toEqual([]);
   });
   test('lots with zero cost: recovered dollars split by sats', () => {
     const state = replay([...base, buy('B1', 'lend', '2022-01-01', '0.3', '0'), buy('B2', 'lend', '2022-01-02', '0.1', '0'), freeze('F', 'lend', '2023-01-01'), receive('P', 'ex', '2023-02-01', '0.01', '100', { type: 'frozen-payout', fromWallet: 'lend' }), closeOut('X', 'lend', '2023-03-01')]);

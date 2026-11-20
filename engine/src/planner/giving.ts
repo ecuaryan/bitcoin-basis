@@ -22,9 +22,9 @@ export function givingOnSale(input: GivingOnSaleInput): Cents {
   return mulDivRoundHalfUp(Math.max(0, net), input.percent, 10_000);
 }
 
-/** The settings' giving percent (e.g. 10) in 1/10000ths. */
-export function givingPercentBp(settings: Pick<Settings, 'givingPercent'>): number {
-  return Math.round(settings.givingPercent * 100);
+/** The settings' giving percent in 1/10000ths (stored that way: 1000 = 10%). */
+export function givingPercentBp(settings: Pick<Settings, 'givingPercentBp'>): number {
+  return settings.givingPercentBp;
 }
 
 export interface GivingSale {
@@ -55,7 +55,7 @@ export interface GivingDue {
 export function givingDue(state: LedgerState, settings: Settings, year: number): GivingDue {
   const summary = yearSummary(state, year);
   const paidEntries = state.givingPaid.filter((g) => g.year === year);
-  // Spending BTC realizes a gain just like a sale; network fees are too small to count.
+  // Decision 16: spending BTC realizes a gain just like a sale, so both count; network fees do not.
   const sells = summary.disposals.filter((d) => d.kind === 'sell' || d.kind === 'spend');
   const sales: GivingSale[] = [];
   if (settings.givingEnabled) {

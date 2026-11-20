@@ -65,9 +65,15 @@ describe('opening-lots CSV import', () => {
   });
 
   test('ambiguous wallet names, missing columns, empty file, bad CSV', () => {
-    const twins = walletsOf([wallet('a', 'exchange', 'Same'), wallet('b', 'exchange', 'same')]);
-    const r = importOpeningLotsCsv(`${HEADER}\nSame,2024-01-01 00:00:00,,1,1,,Documented,`, { wallets: twins, tz: TZ, newId: ids() });
+    // Names are unique among non-archived wallets, so only archived wallets can share one.
+    const archived = (w: Wallet): Wallet => ({ ...w, archived: true });
+    const a = walletsOf([wallet('a', 'exchange', 'Same')]).map(archived);
+    const b = walletsOf([wallet('b', 'exchange', 'same')]);
+    const row = `${HEADER}\nSame,2024-01-01 00:00:00,,1,1,,Documented,`;
+    const r = importOpeningLotsCsv(row, { wallets: [...a, ...b.map(archived)], tz: TZ, newId: ids() });
     expect(r.ok ? null : r.error[0]?.message).toBe('more than one wallet is named "Same"');
+    const preferActive = importOpeningLotsCsv(row, { wallets: [...a, ...b], tz: TZ, newId: ids() });
+    expect(preferActive.ok && preferActive.value.entries[0]?.wallet).toBe('b');
     expect(importOpeningLotsCsv('wallet,sats\n', { wallets, tz: TZ, newId: ids() })).toEqual({ ok: false, error: [{ row: 1, message: 'missing columns: acquired_utc, btc, cost_usd, cost_per_btc, tier, origin' }] });
     expect(importOpeningLotsCsv('', { wallets, tz: TZ, newId: ids() })).toEqual({ ok: false, error: [{ row: 1, message: 'the file is empty' }] });
     expect(importOpeningLotsCsv('"oops', { wallets, tz: TZ, newId: ids() })).toEqual({ ok: false, error: [{ row: 0, message: 'a quoted field is not closed' }] });
@@ -87,10 +93,10 @@ describe('opening-lots CSV export', () => {
     const out = exportOpeningLotsCsv(state);
     // Wallets in creation order ("w-cold" sorts before "w-ex" at the same instant), then oldest first.
     expect(out.csv.split('\n').slice(0, 4)).toEqual([
-      HEADER,
-      '"Cold, ""deep"" storage",2023-01-20 19:00:00,0.10000000,10000000,2250.00,22500.00,Documented,Email receipt',
-      'ex,2021-03-15 19:00:00,0.16666667,16666667,9333.33,55999.98,Documented,Email receipt',
-      'ex,2023-01-20 19:00:00,0.30000000,30000000,6750.00,22500.00,Documented,Email receipt',
+      `${HEADER},tz`,
+      '"Cold, ""deep"" storage",2023-01-20 19:00:00,0.10000000,10000000,2250.00,22500.00,Documented,Email receipt,America/Boise',
+      'ex,2021-03-15 19:00:00,0.16666667,16666667,9333.33,55999.98,Documented,Email receipt,America/Boise',
+      'ex,2023-01-20 19:00:00,0.30000000,30000000,6750.00,22500.00,Documented,Email receipt,America/Boise',
     ]);
     expect(out.warnings).toEqual(['Lot I is inherited (always long-term); the CSV cannot record that.']);
     const wallets = state.wallets;

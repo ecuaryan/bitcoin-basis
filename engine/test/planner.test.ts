@@ -194,7 +194,7 @@ describe('borrow planner', () => {
   const lotsState: LedgerState = replay(testBook());
   const base = (over: Partial<Parameters<typeof planBorrow>[0]> = {}): Parameters<typeof planBorrow>[0] => ({
     ...taxContext(lotsState, SETTINGS, 2026, DATE),
-    loanCents: cents('25000'), ratePerYear: 1150, marginCallLtv: 7000, liquidationLtv: 8000, pledgedSats: sats('1'), priceCents: cents('94812.40'), lots: lotsState.lots, wallet: 'ex', ...over,
+    loanCents: cents('25000'), ratePerYear: 1150, marginCallLtv: 7000, liquidationLtv: 8000, pledgedSats: sats('1'), priceCents: cents('94812.40'), lots: lotsState.lots, wallets: lotsState.wallets, wallet: 'ex', ...over,
   });
   test('mockup: $25,000 loan, 1 BTC, 11.5%, 70%/80% at $94,812.40', () => {
     const r = planBorrow(base());
@@ -213,9 +213,31 @@ describe('borrow planner', () => {
     expect(planBorrow(base({ loanCents: 0 }))).toMatchObject({ ok: false, error: { code: 'invalid-input' } });
     expect(planBorrow(base({ marginCallLtv: 9000 }))).toMatchObject({ ok: false, error: { code: 'invalid-input' } });
     expect(planBorrow(base({ pledgedSats: sats('5') }))).toMatchObject({ ok: false, error: { code: 'insufficient-sats' } });
-    expect(planBorrow(base({ loanCents: 1, pledgedSats: 10_000_000_000, liquidationLtv: 10_000, marginCallLtv: 10_000 }))).toMatchObject({ ok: false, error: { code: 'invalid-input' } });
+    const big = replay([wallet('ex'), buy('B', 'ex', '2024-01-01', '100', '1')]);
+    expect(planBorrow(base({ lots: big.lots, wallets: big.wallets, loanCents: 1, pledgedSats: sats('100'), liquidationLtv: 10_000, marginCallLtv: 10_000 }))).toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'the loan is too small to price' } });
+    expect(planBorrow(base({ priceCents: 0 }))).toMatchObject({ ok: false, error: { code: 'invalid-input' } });
+    expect(planBorrow(base({ liquidationLtv: 10_001 }))).toMatchObject({ ok: false, error: { code: 'invalid-input' } });
+    expect(planBorrow(base({ loanCents: 100_000_000_000_001 }))).toMatchObject({ ok: false, error: { code: 'invalid-input' } });
+    // Figures that would not be safe integers are refused, never returned rounded.
+    expect(planBorrow(base({ loanCents: 1_000_000, pledgedSats: 1, marginCallLtv: 1, liquidationLtv: 10_000 }))).toMatchObject({ ok: false, error: { code: 'invalid-input', message: 'these numbers are too large to compute' } });
     const full = planBorrow(base({ liquidationLtv: 10_000, marginCallLtv: 10_000, pledgedSats: sats('0.5'), loanCents: 7 }));
     expect(full.ok && full.value.liquidation.satsSold).toBeLessThanOrEqual(sats('0.5'));
+  });
+});
+
+describe('borrow planner: the pledging wallet', () => {
+  const freeze: Entry = { id: 'F', kind: 'wallet-freeze', at: noon('2025-01-01'), tz: TZ, wallet: 'cel' };
+  const archive: Entry = { id: 'A', kind: 'wallet-update', at: noon('2025-01-01'), tz: TZ, wallet: 'old', archived: true };
+  const state = replay([wallet('ex'), wallet('cel'), wallet('old'), wallet('ret', 'retirement'), buy('B', 'cel', '2023-01-01', '1', '20000'), buy('O', 'old', '2023-01-01', '1', '20000'), freeze, archive]);
+  const req = (w: string): Parameters<typeof planBorrow>[0] => ({ ...taxContext(state, SETTINGS, 2026, DATE), loanCents: cents('1000'), ratePerYear: 0, marginCallLtv: 7000, liquidationLtv: 8000, pledgedSats: sats('0.5'), priceCents: PRICE, lots: state.lots, wallets: state.wallets, wallet: w });
+  test.each([
+    ['nope', 'unknown-wallet'],
+    ['ret', 'retirement-wallet'],
+    ['cel', 'wallet-frozen'],
+    ['old', 'wallet-archived'],
+    ['ex', 'insufficient-sats'],
+  ])('%s → %s', (w, code) => {
+    expect(planBorrow(req(w))).toMatchObject({ ok: false, error: { code } });
   });
 });
 

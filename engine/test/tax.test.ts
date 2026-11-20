@@ -209,10 +209,13 @@ describe('state', () => {
 });
 
 describe('years', () => {
-  test('missing year falls back to the latest table and says so', () => {
+  test('missing year falls back to the nearest table and says which', () => {
     const r = taxForYear(io({ year: 2031, lt: 1_000_00 }));
     expect(r.assumptions).toMatchObject({ year: 2031, tableYear: 2027, fellBack: true, standardDeduction: 33_200_00 });
-    expect(r.assumptions.notes).toEqual(['No 2031 federal table; used the 2027 figures.', 'State rate is the 2026 rate.']);
+    expect(r.assumptions.notes).toEqual(['No 2031 federal table; used the latest one (2027).', 'State rate is the 2026 rate.']);
+    const early = taxForYear(io({ year: 2019, lt: 1_000_00 }));
+    expect(early.assumptions).toMatchObject({ year: 2019, tableYear: 2025, fellBack: true, standardDeduction: 31_500_00 });
+    expect(early.assumptions.notes[0]).toBe('No 2019 federal table; used the earliest one (2025).');
   });
 
   test('2025 and 2027 tables are used for their own years', () => {
