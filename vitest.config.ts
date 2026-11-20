@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['engine/test/**/*.test.ts', 'app/src/**/*.test.{ts,tsx}', 'worker/test/**/*.test.ts'],
+    include: ['engine/test/**/*.test.ts', 'app/src/**/*.test.{ts,tsx}', 'worker/test/**/*.test.ts', 'tools/test/**/*.test.mjs'],
     coverage: {
       provider: 'v8',
       // The 100% gate covers the calculation engine only.

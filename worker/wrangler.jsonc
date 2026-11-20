@@ -17,8 +17,10 @@
     { "binding": "DATA", "bucket_name": "bitcoin-basis-data" },
     { "binding": "BACKUP", "bucket_name": "bitcoin-basis-backup" }
   ],
-  // Local-dev defaults. On deploy, set the real values, e.g.
-  // wrangler deploy --var ORIGIN:https://bitcoin-basis.example.workers.dev --var RP_ID:bitcoin-basis.example.workers.dev
+  // Local-dev defaults ONLY. The deploy workflow always passes the real values on the command line
+  // (--var ORIGIN:$APP_ORIGIN --var RP_ID:<hostname>) after tools/check-origin.mjs has checked them, so a
+  // production deploy can never fall back to these. Account id comes from CLOUDFLARE_ACCOUNT_ID (CI variable
+  // CF_ACCOUNT_ID); it is not stored here. If you rename the buckets above, rename them in tools/setup.mjs too.
   "vars": {
     "ORIGIN": "http://localhost:8787",
     "RP_ID": "localhost",

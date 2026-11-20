@@ -19,7 +19,9 @@
     "test:coverage": "vitest run --coverage",
     "check": "npm run typecheck && npm run lint && npm run test:coverage",
     "dev": "npm run dev -w @bitcoin-basis/app",
-    "build": "npm run build -w @bitcoin-basis/app",
+    "build": "npm run build -w @bitcoin-basis/app && node tools/sri.mjs",
+    "hash-build": "node tools/hash-build.mjs",
+    "setup": "node tools/setup.mjs",
     "preview": "npm run preview -w @bitcoin-basis/app"
   },
   "devDependencies": {

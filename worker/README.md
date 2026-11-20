@@ -40,6 +40,6 @@ Tests run the real Worker in `workerd` with local R2 (`npm test -w worker`, also
 | `SESSION_SECRET` | secret | 32+ random characters; signs sessions and challenges. Changing it signs everyone out |
 | `SETUP_CODE` | secret | 16+ characters; lets the first passkey register. Useless once the vault is claimed |
 
-Set secrets with `npx wrangler secret put SESSION_SECRET` (never in a file that is committed). The `vars` in `wrangler.jsonc` are local-dev defaults; set the real `ORIGIN` and `RP_ID` at deploy time (`--var ORIGIN:… --var RP_ID:…`).
+Secrets are set once by `npm run setup` (`tools/setup.mjs`), which generates them and pipes them to `wrangler secret put`; they are never in a file. The `vars` in `wrangler.jsonc` are local-dev defaults; the deploy workflow passes the real `ORIGIN` and `RP_ID` with `--var` and refuses to deploy if `APP_ORIGIN` is not an https origin. See [`docs/deploy.md`](../docs/deploy.md).
 
 The cron (`17 3 * * *`, daily) copies objects missing from `BACKUP`, only-if-new, at most 300 per run.

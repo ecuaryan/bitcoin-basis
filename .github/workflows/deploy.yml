@@ -1,0 +1,181 @@
+name: Deploy
+
+# Deploys to Cloudflare only after CI has succeeded for the exact commit.
+#  - push to main (via CI's workflow_run) -> deploy that commit
+#  - tag v* (via CI's workflow_run)       -> deploy it and attach dist-hashes.txt to a GitHub Release
+#  - manual run with a ref (a tag to roll back to, or main) -> deploy that ref if CI passed for it
+# Skips with a notice when CLOUDFLARE_API_TOKEN is not set, so forks do not fail.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or commit to deploy (default: main). Use an older tag to roll back."
+        required: false
+        default: main
+        type: string
+
+permissions: {}
+
+# One deploy at a time; a running deploy is never cancelled.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, deploy, verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    # Only successful CI runs of pushes in this repository (never a fork's pull request).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'v')))
+    permissions:
+      contents: read
+      actions: read # to look up whether CI passed for a manually chosen ref
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+      APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+      WRANGLER_SEND_METRICS: "false"
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      deployed: ${{ steps.plan.outputs.deploy }}
+    steps:
+      - name: Skip when Cloudflare is not configured
+        if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::CLOUDFLARE_API_TOKEN is not configured; skipping deploy. See docs/deploy.md."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.HAS_TOKEN == 'true'
+        with:
+          # workflow_run: exactly the commit CI tested. Manual: the requested ref.
+          ref: ${{ github.event.workflow_run.head_sha || inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide what to deploy
+        id: plan
+        if: env.HAS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          INPUT_REF: ${{ inputs.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          tag=""
+          if [ "$EVENT" = "workflow_run" ]; then
+            case "$RUN_BRANCH" in v*) tag="$RUN_BRANCH" ;; esac
+          elif git show-ref --verify --quiet "refs/tags/${INPUT_REF}" 2>/dev/null; then
+            tag="$INPUT_REF"
+          fi
+          git fetch --no-tags origin main
+          main_tip="$(git rev-parse FETCH_HEAD)"
+          deploy=true
+          if ! git merge-base --is-ancestor "$sha" "$main_tip"; then
+            echo "::error::$sha is not on main. Only commits on main are deployed."
+            exit 1
+          fi
+          if [ "$EVENT" = "workflow_run" ] && [ -z "$tag" ] && [ "$sha" != "$main_tip" ]; then
+            echo "::notice::$sha is no longer the tip of main; a newer commit will deploy instead."
+            deploy=false
+          fi
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            passed="$(gh run list --repo "$REPO" --workflow ci.yml --commit "$sha" --status success --limit 1 --json databaseId --jq length)"
+            if [ "$passed" != "1" ]; then
+              echo "::error::CI has not succeeded for $sha. Not deploying."
+              exit 1
+            fi
+          fi
+          {
+            echo "sha=$sha"
+            echo "tag=$tag"
+            echo "deploy=$deploy"
+          } >> "$GITHUB_OUTPUT"
+          echo "Deploying $sha (tag: ${tag:-none}): $deploy"
+
+      - name: Check the production origin
+        id: origin
+        if: env.HAS_TOKEN == 'true' && steps.plan.outputs.deploy == 'true'
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "::error::GitHub variable CF_ACCOUNT_ID is not set."
+            exit 1
+          fi
+          rp_id="$(node tools/check-origin.mjs "$APP_ORIGIN")"
+          echo "RP_ID=$rp_id" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: env.HAS_TOKEN == 'true' && steps.plan.outputs.deploy == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install
+        if: env.HAS_TOKEN == 'true' && steps.plan.outputs.deploy == 'true'
+        run: npm ci --ignore-scripts
+      - name: Build the app (with subresource integrity)
+        if: env.HAS_TOKEN == 'true' && steps.plan.outputs.deploy == 'true'
+        run: npm run build
+      - name: Hash the build
+        if: env.HAS_TOKEN == 'true' && steps.plan.outputs.deploy == 'true'
+        run: node tools/hash-build.mjs
+
+      - name: Deploy the Worker and app
+        if: env.HAS_TOKEN == 'true' && steps.plan.outputs.deploy == 'true'
+        # ORIGIN and RP_ID are always passed explicitly, so a deploy can never fall back to the localhost defaults.
+        run: >-
+          npx wrangler deploy --config worker/wrangler.jsonc
+          --var "ORIGIN:${APP_ORIGIN}" --var "RP_ID:${RP_ID}"
+
+      - name: Smoke test the live site
+        if: env.HAS_TOKEN == 'true' && steps.plan.outputs.deploy == 'true'
+        run: node tools/smoke-test.mjs "$APP_ORIGIN" --retries 6
+      - name: Verify the live files match this build
+        if: env.HAS_TOKEN == 'true' && steps.plan.outputs.deploy == 'true'
+        run: node tools/verify-deployment.mjs "$APP_ORIGIN" --hashes dist-hashes.txt --all --retries 6
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: env.HAS_TOKEN == 'true' && steps.plan.outputs.deploy == 'true' && steps.plan.outputs.tag != ''
+        with:
+          name: dist-hashes
+          path: dist-hashes.txt
+          if-no-files-found: error
+
+  release:
+    name: Attach hashes to the GitHub Release
+    needs: deploy
+    if: needs.deploy.outputs.deployed == 'true' && needs.deploy.outputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-hashes
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.deploy.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist-hashes.txt --repo "$REPO" --clobber
+          else
+            gh release create "$TAG" dist-hashes.txt --repo "$REPO" --verify-tag --title "$TAG" \
+              --notes "Build hashes for this release are in dist-hashes.txt. See docs/deploy.md to verify a deployment."
+          fi
