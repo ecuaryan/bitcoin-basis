@@ -165,15 +165,15 @@ describe('disposals', () => {
     const state = replay([...testBook(), wallet('cold', 'self-custody'), move('M', 'ex', 'cold', '2026-01-01', sats('0.15'), 0, '0', [pick('L4', '0.1'), pick('L3', '0.05')])]);
     expect(state.disposals).toEqual([]);
     expect(state.lots.filter((l) => l.wallet === 'cold').map((l) => [l.id, l.sats, l.costCents, l.acquiredDate, l.originEntryId])).toEqual([
-      ['M:0', sats('0.1'), cents('8800'), '2025-12-20', 'L4'],
-      ['M:1', sats('0.05'), cents('4875'), '2025-02-10', 'L3'],
+      ['M:L4', sats('0.1'), cents('8800'), '2025-12-20', 'L4'],
+      ['M:L3', sats('0.05'), cents('4875'), '2025-02-10', 'L3'],
     ]);
     expect(state.lots.find((l) => l.id === 'L4')).toBeUndefined();
   });
   test('move fee: moved sats first, then fee sats from the same picks in order', () => {
     // Picks: 0.1 of L4 and 0.0001 of L3; 0.1 moves (all from L4), fee 10,000 sats is from L3.
     const state = replay([...testBook(), wallet('cold'), move('M', 'ex', 'cold', '2026-01-01', sats('0.1'), 10_000, '7.50', [pick('L4', '0.1'), pick('L3', '0.0001')])]);
-    expect(state.lots.filter((l) => l.wallet === 'cold').map((l) => l.id)).toEqual(['M:0']);
+    expect(state.lots.filter((l) => l.wallet === 'cold').map((l) => l.id)).toEqual(['M:L4']);
     expect(state.disposals[0]?.picks.map((p) => [p.lotId, p.sats, p.costCents, p.proceedsCents])).toEqual([['L3', 10_000, 975, 750]]);
   });
   test('move fee spread over two lots splits the fee value by sats', () => {
@@ -182,7 +182,7 @@ describe('disposals', () => {
       ['L1', 100, 100],
       ['L2', 200, 200],
     ]);
-    expect(state.lots.filter((l) => l.wallet === 'cold').map((l) => [l.id, l.sats])).toEqual([['M:0', 100]]);
+    expect(state.lots.filter((l) => l.wallet === 'cold').map((l) => [l.id, l.sats])).toEqual([['M:L1', 100]]);
   });
   test('move needs both wallets usable', () => {
     const state = replay([...testBook(), move('M1', 'nope', 'ex', '2026-01-01', 1, 0, '0', [{ lotId: 'L1', sats: 1 }]), move('M2', 'ex', 'nope', '2026-01-01', 1, 0, '0', [{ lotId: 'L1', sats: 1 }]), move('M3', 'ex', 'nope2', '2026-01-01', 1, 0, '0', [{ lotId: 'L1', sats: 2 }])]);
@@ -191,7 +191,7 @@ describe('disposals', () => {
     expect(errorCodes(bad)).toEqual({ M: 'picks-sum-mismatch' });
   });
   test('moved coins keep their holding period', () => {
-    const state = replay([...testBook(), wallet('cold'), move('M', 'ex', 'cold', '2026-01-01', sats('0.1'), 0, '0', [pick('L1', '0.1')]), sell('S', 'cold', '2026-01-02', [pick('M:0', '0.1')], '7500')]);
+    const state = replay([...testBook(), wallet('cold'), move('M', 'ex', 'cold', '2026-01-01', sats('0.1'), 0, '0', [pick('L1', '0.1')]), sell('S', 'cold', '2026-01-02', [pick('M:L1', '0.1')], '7500')]);
     expect(state.disposals[0]).toMatchObject({ ltGainCents: cents('7500') - cents('5600'), stGainCents: 0 });
   });
 });

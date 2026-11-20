@@ -26,7 +26,8 @@ const isSatsOrZero = intIn(0, MAX_ENTRY_SATS);
 const isCents = intIn(0, MAX_ENTRY_CENTS);
 /** Entry ids: letters, digits, `_` and `-` (UUIDv7 in practice), so derived lot ids (`<id>:<n>`) never collide. */
 const isId: Check = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v);
-const isLotId: Check = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}(:\d{1,6})?$/.test(v);
+/** Lot ids: an entry id, or `<moveId>:<sourceLotId>` for a moved piece (nested for coins moved again). */
+const isLotId: Check = (v) => typeof v === 'string' && v.length <= 4096 && /^[A-Za-z0-9_-]{1,64}(:[A-Za-z0-9_-]{1,64})*$/.test(v);
 const isBoolean: Check = (v) => typeof v === 'boolean';
 const isInstant: Check = (v) => typeof v === 'string' && isValidInstant(v);
 const isDate: Check = (v) => typeof v === 'string' && isValidLocalDate(v);

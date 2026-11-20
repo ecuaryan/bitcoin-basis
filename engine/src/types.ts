@@ -10,7 +10,10 @@ export type Result<T, E> = { readonly ok: true; readonly value: T } | { readonly
 /** Letters, digits, `_` and `-`, 1 to 64 characters (a UUIDv7 in practice). Never contains `:`. */
 export type EntryId = string;
 export type WalletId = string;
-/** The root entry id of the version chain that created the coins, or `<moveRootId>:<index>` for a moved piece. */
+/**
+ * The root entry id of the version chain that created the coins, or `<moveRootId>:<sourceLotId>` for the
+ * piece of a lot moved by a move (e.g. `M2:M1:L1` for coins moved twice).
+ */
 export type LotId = string;
 /** ISO-8601 UTC instant, e.g. `2026-01-01T06:30:00Z` (optional `.sss` milliseconds). */
 export type IsoInstant = string;

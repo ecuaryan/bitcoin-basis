@@ -42,8 +42,8 @@ describe('CSV injection in exports', () => {
     expect(back.ok && back.value.entries.map((e) => [e.wallet, e.origin])).toEqual([['ex', '+cmd|" /C calc"!A0'], ['ex', 'Email receipt']]);
   });
   test('neutralize and restore', () => {
-    expect(['=1', '+1', '-1', '@1', '\t1', '\r1', 'ok', "'=1", ''].map(neutralizeFormula)).toEqual(["'=1", "'+1", "'-1", "'@1", "'\t1", "'\r1", 'ok', "'=1", '']);
-    expect(["'=1", "'ok", 'ok', "'"].map(restoreFormula)).toEqual(['=1', "'ok", 'ok', "'"]);
+    expect(['=1', '+1', '-1', '@1', '\t1', '\r1', 'ok', "'=1", "''-1", "'ok", ''].map(neutralizeFormula)).toEqual(["'=1", "'+1", "'-1", "'@1", "'\t1", "'\r1", 'ok', "''=1", "'''-1", "'ok", '']);
+    expect(["'=1", "''=1", "'''-1", "'ok", 'ok', "'"].map(restoreFormula)).toEqual(['=1', "'=1", "''-1", "'ok", 'ok', "'"]);
   });
 });
 

@@ -75,16 +75,26 @@ export interface LowestTaxOptions {
   readonly onDate: LocalDate;
 }
 
+/** Estimated gain per sat at `pricePerSat` (a float, for ranking only), with the dual-basis rule for gifts. */
+function gainPerSat(lot: Lot, pricePerSat: number, onDate: LocalDate): { gain: number; term: Term } {
+  const cost = lot.costCents / lot.sats;
+  const lb = lot.lossBasis;
+  if (lb === null || pricePerSat >= cost) return { gain: pricePerSat - cost, term: termFor(lot, onDate) };
+  const value = lb.costCents / lot.sats;
+  if (pricePerSat < value) return { gain: pricePerSat - value, term: isLongTerm(lb.acquiredDate, onDate) ? 'long' : 'short' };
+  return { gain: 0, term: termFor(lot, onDate) };
+}
+
 /**
  * The wallet's open lots in "lowest tax this year" order: Documented, then Reconstructed,
  * Estimated, Unknown; within a tier by estimated tax per sat, lowest first (biggest losses
- * first). Ties keep oldest-first order.
+ * first; gifts worth less than the giver's cost use the basis that applies at this price). Ties keep oldest-first order.
  */
 export function lowestTaxOrder(lots: readonly Lot[], wallet: WalletId, options: LowestTaxOptions): Lot[] {
   const pricePerSat = options.priceCents / SATS_PER_BTC;
   const keyed = oldestFirstOrder(lots, wallet).map((lot) => {
-    const rate = termFor(lot, options.onDate) === 'long' ? options.ltRate : options.stRate;
-    return { lot, tier: TIERS.indexOf(lot.tier), taxPerSat: rate * (pricePerSat - lot.costCents / lot.sats) };
+    const { gain, term } = gainPerSat(lot, pricePerSat, options.onDate);
+    return { lot, tier: TIERS.indexOf(lot.tier), taxPerSat: (term === 'long' ? options.ltRate : options.stRate) * gain };
   });
   keyed.sort((a, b) => a.tier - b.tier || a.taxPerSat - b.taxPerSat);
   return keyed.map((k) => k.lot);
@@ -149,10 +159,10 @@ export function splitMovePicks(picks: readonly LotPick[], movedSats: Sats): { mo
 }
 
 /**
- * Picks that sell exactly the coins a move delivered (the destination lots `<moveId>:<index>`).
+ * Picks that sell exactly the coins a move delivered (the destination lots `<moveId>:<sourceLotId>`).
  * Used for "prepare sale": move the chosen lots to an exchange, then sell these.
  */
 export function picksAfterMove(moveId: EntryId, picks: readonly LotPick[], movedSats: Sats): LotPick[] {
   const { moved } = splitMovePicks(picks, movedSats);
-  return moved.flatMap((sats, i) => (sats > 0 ? [{ lotId: `${moveId}:${i}`, sats }] : []));
+  return picks.flatMap((p, i) => ((moved[i] as number) > 0 ? [{ lotId: `${moveId}:${p.lotId}`, sats: moved[i] as number }] : []));
 }

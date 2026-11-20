@@ -111,8 +111,9 @@ export function applyMove(book: Book, e: MoveEntry, date: LocalDate): Problem | 
   if (bad !== null) return bad;
   const { moved, fee } = splitMovePicks(e.picks, e.sats);
   const root = lotIdOf(book, e);
-  const pieceId = (i: number): string => `${root}:${i}`;
-  const blocked = lotIdsTaken(book, moved.flatMap((m, i) => (m > 0 ? [pieceId(i)] : []))) ?? addVolume(book, 0, e.feeValueCents);
+  // Pieces are keyed by source lot (picks name each lot once), so reordering picks in an edit keeps their ids.
+  const pieceId = (lotId: string): string => `${root}:${lotId}`;
+  const blocked = lotIdsTaken(book, e.picks.filter((_, i) => (moved[i] as number) > 0).map((p) => pieceId(p.lotId))) ?? addVolume(book, 0, e.feeValueCents);
   if (blocked !== null) return blocked;
   e.picks.forEach((p, i) => {
     const sats = moved[i] as number;
@@ -120,7 +121,7 @@ export function applyMove(book: Book, e: MoveEntry, date: LocalDate): Problem | 
     const src = book.lots.get(p.lotId) as Lot;
     const piece = takeFromLot(book, p.lotId, sats, date);
     const lossBasis = piece.lossBasis === null ? null : { costCents: piece.lossBasis.costCents, acquiredDate: piece.lossBasis.acquiredDate };
-    book.lots.set(pieceId(i), { ...src, id: pieceId(i), wallet: to.id, sats, costCents: piece.costCents, lossBasis });
+    book.lots.set(pieceId(p.lotId), { ...src, id: pieceId(p.lotId), wallet: to.id, sats, costCents: piece.costCents, lossBasis });
   });
   const feePieces = e.picks.flatMap((p, i) => ((fee[i] as number) > 0 ? [takeFromLot(book, p.lotId, fee[i] as number, date)] : []));
   if (feePieces.length > 0) book.state.disposals.push(makeDisposal(e, 'fee', from.id, date, feePieces, e.feeValueCents, null));

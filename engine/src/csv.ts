@@ -60,11 +60,13 @@ export function toCsv(rows: readonly (readonly string[])[]): string {
   return rows.map((r) => r.map(csvField).join(',')).join('\n') + '\n';
 }
 
-const FORMULA_START = /^[=+\-@\t\r]/;
+/** A formula trigger, possibly behind quotes we added (so a leading `'` round-trips too). */
+const FORMULA_START = /^'*[=+\-@\t\r]/;
 
 /**
- * Make a text cell safe to open in a spreadsheet: a cell starting with = + - @ tab or CR gets a leading
- * single quote, so it is shown as text instead of run as a formula (OWASP CSV injection guidance).
+ * Make a text cell safe to open in a spreadsheet: a cell starting with = + - @ tab or CR (after any
+ * apostrophes) gets a leading single quote, so it is shown as text instead of run as a formula (OWASP CSV
+ * injection guidance). `'=x` becomes `''=x`, so `restoreFormula` gives back exactly what was written.
  * Use on text columns only; numeric columns are never changed.
  */
 export function neutralizeFormula(text: string): string {

@@ -99,8 +99,8 @@ describe('splits and moves', () => {
   });
   test('picksAfterMove names the destination lots for a follow-up sale', () => {
     expect(picksAfterMove('M', [{ lotId: 'a', sats: 5 }, { lotId: 'b', sats: 5 }, { lotId: 'c', sats: 2 }], 7)).toEqual([
-      { lotId: 'M:0', sats: 5 },
-      { lotId: 'M:1', sats: 2 },
+      { lotId: 'M:a', sats: 5 },
+      { lotId: 'M:b', sats: 2 },
     ]);
   });
   test('prepare-sale flow: move chosen lots to the exchange, then sell exactly them', () => {

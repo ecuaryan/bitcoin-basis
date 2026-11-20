@@ -78,7 +78,8 @@ describe('parseEntry', () => {
     ['more than 21M BTC', 'invalid "sats"', { ...byId('f'), sats: 2_100_000_000_000_001 }],
     ['cost over $1 trillion', 'invalid "costCents"', { ...byId('f'), costCents: 100_000_000_000_001 }],
     ['wages over $1 trillion', 'invalid "patch"', { ...byId('n'), patch: { wagesCents: 100_000_000_000_001 } }],
-    ['pick of a malformed lot id', 'invalid "picks"', { ...byId('h'), picks: [{ lotId: 'M:0:1', sats: 1 }] }],
+    ['pick of a malformed lot id', 'invalid "picks"', { ...byId('h'), picks: [{ lotId: 'M::1', sats: 1 }] }],
+    ['pick lot id too long', 'invalid "picks"', { ...byId('h'), picks: [{ lotId: Array.from({ length: 70 }, () => 'x'.repeat(64)).join(':'), sats: 1 }] }],
     ['bad at', 'invalid "at"', { ...byId('f'), at: '2026-01-02' }],
     ['bad tz', 'invalid "tz"', { ...byId('f'), tz: 'Nowhere/City' }],
     ['tz not a string', 'invalid "tz"', { ...byId('f'), tz: 5 }],
@@ -147,7 +148,7 @@ describe('parseEntry', () => {
     expect(parseEntry({ ...byId('f'), id: '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b' }).ok).toBe(true);
     expect(parseEntry({ ...byId('f'), id: 'x'.repeat(64) }).ok).toBe(true);
     expect(parseEntry({ ...byId('f'), sats: 2_100_000_000_000_000, costCents: 100_000_000_000_000 }).ok).toBe(true);
-    expect(parseEntry({ ...byId('h'), picks: [{ lotId: 'M_1:12', sats: 1 }] }).ok).toBe(true);
+    expect(parseEntry({ ...byId('h'), picks: [{ lotId: 'M2:M_1:L-1', sats: 1 }] }).ok).toBe(true);
   });
 
   test('fee with value is fine; gift without dates is fine', () => {

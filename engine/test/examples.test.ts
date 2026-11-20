@@ -56,8 +56,8 @@ describe('worked examples', () => {
     expect(state.errors).toEqual([]);
     // Moved: L1 whole and 0.1 of L2 ($2,250.00), as new lots in the destination keeping their dates.
     expect(state.lots.filter((l) => l.wallet === 'cold')).toEqual([
-      { id: 'M:0', wallet: 'cold', sats: sats('0.5'), costCents: cents('28000'), acquiredDate: '2021-03-15', acquiredAt: noon('2021-03-15'), tier: 'documented', proof: 'Email receipt', originEntryId: 'L1', alwaysLongTerm: false, tz: TZ, lossBasis: null },
-      { id: 'M:1', wallet: 'cold', sats: sats('0.1'), costCents: cents('2250'), acquiredDate: '2023-01-20', acquiredAt: noon('2023-01-20'), tier: 'documented', proof: 'Email receipt', originEntryId: 'L2', alwaysLongTerm: false, tz: TZ, lossBasis: null },
+      { id: 'M:L1', wallet: 'cold', sats: sats('0.5'), costCents: cents('28000'), acquiredDate: '2021-03-15', acquiredAt: noon('2021-03-15'), tier: 'documented', proof: 'Email receipt', originEntryId: 'L1', alwaysLongTerm: false, tz: TZ, lossBasis: null },
+      { id: 'M:L2', wallet: 'cold', sats: sats('0.1'), costCents: cents('2250'), acquiredDate: '2023-01-20', acquiredAt: noon('2023-01-20'), tier: 'documented', proof: 'Email receipt', originEntryId: 'L2', alwaysLongTerm: false, tz: TZ, lossBasis: null },
     ]);
     // Fee: cost $0.45, value $1.50, gain $1.05.
     expect(state.disposals).toHaveLength(1);

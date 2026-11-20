@@ -88,7 +88,7 @@ describe('gifts and inheritance', () => {
       sell('S', 'ex', '2026-06-01', [pick('G', '0.06')], '3000'),
     ];
     const state = replay(entries);
-    expect(state.lots.map((l) => [l.id, l.costCents, l.lossBasis?.costCents])).toEqual([['M:0', cents('4000'), cents('2400')]]);
+    expect(state.lots.map((l) => [l.id, l.costCents, l.lossBasis?.costCents])).toEqual([['M:G', cents('4000'), cents('2400')]]);
     expect(state.disposals[0]).toMatchObject({ stGainCents: cents('-600'), costCents: cents('3600') });
   });
 });

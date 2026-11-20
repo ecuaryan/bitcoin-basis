@@ -7,7 +7,7 @@
  * more, that is a conflict: none of them applies and X stays as it was, until all but one of
  * them is discarded by deleting it (a delete that replaces a version, not X itself).
  */
-import { taxYear, yearOf } from './dates.ts';
+import { localDate, taxYear, yearOf } from './dates.ts';
 import { compareStrings } from './order.ts';
 import type { CloseYearEntry, Conflict, Entry, EntryId, EntryKind, LedgerError, UnlockYearEntry } from './types.ts';
 import { parseEntry } from './validate.ts';
@@ -109,12 +109,43 @@ function yearLocks(entries: Iterable<Entry>): { closedAt: (year: number, asOf: E
   return { closedAt, closedYears: years.filter((y) => closedAt(y, '￿')).sort((a, b) => a - b) };
 }
 
+/** Root (first version) of each entry's edit chain, following `replaces` (stops at a missing target or a cycle). */
+function chainRoots(entries: ReadonlyMap<EntryId, Entry>): Map<EntryId, EntryId> {
+  const roots = new Map<EntryId, EntryId>();
+  for (const e of entries.values()) {
+    const seen = new Set<EntryId>([e.id]);
+    let cur = e;
+    for (let up = entries.get(cur.replaces ?? ''); up !== undefined && !seen.has(up.id); up = entries.get(up.replaces ?? '')) {
+      seen.add(up.id);
+      cur = up;
+    }
+    roots.set(e.id, cur.id);
+  }
+  return roots;
+}
+
+/**
+ * Years a new opening lot would change: those of its wallet's freezes and close-outs dated on or after
+ * it (a close-out sweeps up the lots in the wallet). Edited opening lots are covered by `lockedYears`.
+ */
+function openingLotYears(e: Entry, entries: ReadonlyMap<EntryId, Entry>): number[] {
+  if (e.kind !== 'opening-lot' || e.replaces !== undefined) return [];
+  const date = localDate(e.at, e.tz);
+  return [...entries.values()]
+    .filter((f) => (f.kind === 'wallet-freeze' || f.kind === 'wallet-close-out') && f.wallet === e.wallet && localDate(f.at, f.tz) >= date)
+    .flatMap((f) => lockedYears(f, true));
+}
+
 /**
  * Reject edits that are never allowed (of year closings; changing a wallet's id or type; deleting a wallet
- * in use), and entries dated in a closed year, or editing one, unless the year was unlocked first.
+ * in use), and entries dated in a closed year, or editing one, unless the year was unlocked first. An edit
+ * is judged against every version of its chain (root included), since resolving a conflict or replacing a
+ * delete can bring any of them back into replay.
  */
 function rejectLockedChanges(entries: Map<EntryId, Entry>, closedAt: (year: number, asOf: EntryId) => boolean, errors: LedgerError[]): void {
   const used = new Set([...entries.values()].flatMap(walletsUsed));
+  const roots = chainRoots(entries);
+  const chain = (root: EntryId): Entry[] => [...entries.values()].filter((v) => roots.get(v.id) === root);
   for (const e of [...entries.values()].sort(byId)) {
     const target = e.replaces === undefined ? undefined : entries.get(e.replaces);
     const cannot = target === undefined ? null : target.kind === 'close-year' || target.kind === 'unlock-year' ? 'closing or unlocking a year cannot be edited' : walletEditProblem(e, target, used);
@@ -123,7 +154,8 @@ function rejectLockedChanges(entries: Map<EntryId, Entry>, closedAt: (year: numb
       errors.push({ entryId: e.id, code: 'cannot-replace', message: cannot });
       continue;
     }
-    const years = [...lockedYears(e, false), ...(target === undefined ? [] : lockedYears(target, true))];
+    const versions = target === undefined ? [] : chain(roots.get(e.id) as EntryId).filter((v) => v.id !== e.id);
+    const years = [...lockedYears(e, false), ...versions.flatMap((v) => lockedYears(v, true)), ...openingLotYears(e, entries)];
     const closed = years.find((y) => closedAt(y, e.id));
     if (closed !== undefined) {
       entries.delete(e.id);

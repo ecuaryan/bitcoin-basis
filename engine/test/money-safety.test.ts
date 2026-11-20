@@ -22,10 +22,10 @@ describe('editing an entry keeps its lots (lot id = root of the version chain)',
     expect(state.disposals.map((d) => [d.entryId, d.costCents])).toEqual([['S', cents('20040')]]);
     expect(totalSats(state)).toBe(sats('0.6'));
   });
-  test('fixing the fee value of a move keeps the sale of the moved coins (pieces stay M:i)', () => {
+  test('fixing the fee value of a move keeps the sale of the moved coins (pieces stay M:<lot>)', () => {
     const entries: Entry[] = [wallet('cold', 'self-custody'), wallet('ex'), buy('B', 'cold', '2024-01-10', '1', '40000')];
     const m = move('M', 'cold', 'ex', '2026-01-05', sats('0.5'), 1000, '1.00', [pick('B', '0.50001')]);
-    const s = sell('S', 'ex', '2026-02-01', [{ lotId: 'M:0', sats: sats('0.5') }], '40000');
+    const s = sell('S', 'ex', '2026-02-01', [{ lotId: 'M:B', sats: sats('0.5') }], '40000');
     const fix = edit(m, { id: 'M-fix', reason: 'fee value typo', feeValueCents: 95 });
     const state = replay([...entries, m, s, fix]);
     expect(errorCodes(state)).toEqual({});
@@ -42,15 +42,15 @@ describe('editing an entry keeps its lots (lot id = root of the version chain)',
 });
 
 describe('lot ids never collide', () => {
-  test('an entry id "<moveId>:0" is rejected, so the move piece cannot overwrite it', () => {
+  test('an entry id "<moveId>:<lot>" is rejected, so the move piece cannot overwrite it', () => {
     const entries: Entry[] = [
       wallet('ex'), wallet('cold', 'self-custody'),
-      buy('M:0', 'ex', '2024-01-01', '1', '10000'),
+      buy('M:B', 'ex', '2024-01-01', '1', '10000'),
       buy('B', 'cold', '2024-02-01', '2', '30000'),
       move('M', 'cold', 'ex', '2025-01-01', sats('2'), 0, '0', [pick('B', '2')]),
     ];
     const state = replay(entries);
-    expect(errorCodes(state)).toEqual({ 'M:0': 'invalid-entry' });
+    expect(errorCodes(state)).toEqual({ 'M:B': 'invalid-entry' });
     expect(totalSats(state)).toBe(sats('2'));
     expect(state.lots.reduce((a, l) => a + l.costCents, 0)).toBe(cents('30000'));
   });
@@ -63,8 +63,8 @@ describe('lot ids never collide', () => {
     expect(at(buy('B', 'ex', '2024-01-01', '1', '1'))).toMatchObject({ code: 'duplicate-lot' });
     expect(at(receive('B', 'ex', '2024-01-01', '1', '1', { type: 'income' }))).toMatchObject({ code: 'duplicate-lot' });
     expect(book.state.income).toEqual([]);
-    expect(at(buy('M:0', 'cold', '2024-01-01', '1', '1'))).toBeNull();
-    expect(at(move('M', 'ex', 'cold', '2024-01-01', sats('1'), 0, '0', [pick('B', '1')]))).toMatchObject({ code: 'duplicate-lot', message: 'lot M:0 already exists' });
+    expect(at(buy('M:B', 'cold', '2024-01-01', '1', '1'))).toBeNull();
+    expect(at(move('M', 'ex', 'cold', '2024-01-01', sats('1'), 0, '0', [pick('B', '1')]))).toMatchObject({ code: 'duplicate-lot', message: 'lot M:B already exists' });
     expect(book.lots.get('B')?.sats).toBe(sats('1'));
   });
 });
