@@ -7,15 +7,17 @@ The contract between the app (`app/src/vault/`) and the sync Worker (`worker/`).
 | Item | Algorithm | Notes |
 |---|---|---|
 | Data key (DK) | AES-256-GCM, random | Encrypts every entry. Lives unwrapped only in memory while unlocked. |
-| Passkey KEK | HKDF-SHA-256 over the passkey PRF output | `salt` = 32 random bytes stored with that credential, `info` = `bitcoin-basis/kek/passkey/v1`. Derives an AES-256-GCM key used only to wrap the DK. |
+| Passkey KEK | HKDF-SHA-256 over the passkey PRF output | The PRF is evaluated on the constant input `PRF_INPUT` (below). HKDF `salt` = `prfSalt`, 32 random bytes stored with that credential (used only here, never as PRF input), `info` = `bitcoin-basis/kek/passkey/v1`. Derives an AES-256-GCM key used only to wrap the DK. |
 | Recovery KEK | HKDF-SHA-256 over the 128-bit recovery secret | `salt` = 32 random bytes (the vault's recovery salt), `info` = `bitcoin-basis/kek/recovery/v1`. |
 | Recovery auth token | HKDF-SHA-256, same input and salt | `info` = `bitcoin-basis/auth/recovery/v1`, 32 bytes. The server stores only `SHA-256(token)`. |
-| Wrapping | AES-256-GCM `encrypt` of the raw DK | 12-byte random IV, AAD = `bitcoin-basis/wrap/v1|<vaultId>|<kind>` where kind is `passkey:<credentialId>` or `recovery:<version>`. `wrappedDk` = `iv (12) || ciphertext+tag (48)` = 60 bytes. |
+| Wrapping | AES-256-GCM `encrypt` of the raw DK | 12-byte random IV, AAD = UTF-8 `bitcoin-basis/wrap/v1|<vaultId>|<kind>`, where `<vaultId>` is the base64url vault id and kind is exactly `passkey:<credentialId>` (the credential id in unpadded base64url, the same string as the WebAuthn `id`) or `recovery:<version>` (the version as a plain decimal integer, `recovery:1`, not the 6-digit storage key). `wrappedDk` = `iv (12) || ciphertext+tag (48)` = 60 bytes. |
 | Entry sealing | AES-256-GCM | 12-byte random IV per blob, AAD = `bitcoin-basis/blob/v1|<vaultId>`. |
 
 **Encoding.** Every binary value in JSON is unpadded base64url. Exact sizes, checked by the server: `vaultId` 16 random bytes, `salt` / `prfSalt` / `authVerifier` / `authToken` 32 bytes, `wrappedDk` 60 bytes, credential ids 16–512 bytes.
 
-**PRF.** Registration options ask for the `prf` extension (`prf: {}`). The PRF `eval` input is the app's business: it adds it to the options before calling WebAuthn. The server never sees PRF output.
+**PRF.** Registration options ask for the `prf` extension (`prf: {}`). The app adds the `eval` input itself before calling WebAuthn: always `eval.first = PRF_INPUT = SHA-256("bitcoin-basis/prf/v1")` (32 bytes, hex `a47c720225990a579313aa61a5339189f172aa3305c50e82600db23fc835ee16`), the same constant for every credential, on `create` and on every `get`. Because the input doesn't depend on which passkey answers, one prompt always returns both the assertion and the PRF output, including a discoverable prompt on a fresh device with a synced passkey. The per-credential `prfSalt` is applied afterwards, as the HKDF salt. The server never sees PRF output: the response JSON the app sends carries at most `prf.enabled`. <!-- gitleaks:allow (public constant) -->
+
+**PRF is required to set up and to add a passkey.** `register/verify` needs a PRF-wrapped DK, so the app checks for PRF before claiming the server (or registering another passkey) and stops with an error if the passkey or browser has none. A device without PRF can still restore and unlock the vault with the recovery code; it just can't add a passkey that unlocks it.
 
 No slow KDF is used for the recovery code: it carries 128 bits of entropy, so brute force is already infeasible.
 
@@ -37,7 +39,7 @@ Blob wire format: `version (1 byte = 1) || iv (12) || ciphertext+tag`.
 
 IndexedDB database `bitcoin-basis` (all values are ciphertext or public metadata):
 
-- `vault`: `{ vaultId, recovery: { version, salt, wrappedDk }, credentials: [{ id, prfSalt, wrappedDk }], cursor, origin }`
+- `vault`: `{ vaultId, recovery: { version, salt, wrappedDk } | null, credentials: [{ id, prfSalt, wrappedDk }], cursor, origin }`. `recovery` is `null` on a device that was first unlocked with a synced passkey (it never receives the recovery wrapping, so it unlocks offline only by passkey until the recovery code is entered once). `credentials` lists only passkeys with PRF. `cursor` is the highest server key held.
 - `blobs`: server key → sealed bytes (everything ever synced: the device keeps a full copy)
 - `outbox`: local id → sealed bytes not yet uploaded
 
@@ -85,7 +87,7 @@ Passkey sign counters are not enforced (synced passkeys report 0, and the store 
 | `GET /api/blobs?after=<key>&limit=<1–200, default 100>` | session | `{ blobs: [{ key, data (base64url) }], more }`, ascending by key; a page also stops at about 4 MiB of blobs. `after` may be any `e/<13 digits>` prefix |
 | `POST /api/logout` | none | clears the cookie |
 
-**Listing cursor.** Keys are stamped with the server clock when the upload starts, so an upload that finishes late can land just behind a key a device has already listed. Devices therefore list with `after` set to `e/<last key's ms − 600000>` (ten minutes of overlap) and skip keys they already hold, and run a full compare (no `after`) now and then.
+**Listing cursor.** Keys are stamped with the server clock when the upload starts, so an upload that finishes late can land just behind a key a device has already listed. Devices therefore list with `after` set to `e/<last key's ms − 600000>` (ten minutes of overlap) and skip keys they already hold, and run a full compare (no `after`) now and then (the app does one on the first sync after each unlock and every six hours, and reports blobs the server no longer lists). A full compare re-downloads every blob, because listings carry the data; a keys-only listing is a possible future optimization.
 
 The setup code is a 128-bit random value set as the Worker secret `SETUP_CODE` by the setup script. It works only while `meta/claimed` doesn't exist. After that, registering a new passkey requires a session (an unlocked device).
 
