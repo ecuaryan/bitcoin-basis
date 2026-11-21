@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- The desktop sidebar has icons, matching the phone's tabs, so Settings (the gear, at the bottom) is easy to spot.
 - Paragraphs stop at about 70 characters, so text stays easy to read on wide screens.
 - **First run, import only**: “You're all set” and the empty Holdings screen now offer “Import a spreadsheet or backup” next to adding a wallet, so you can start from a file without creating a wallet by hand. Empty-tier rows explain what to do.
 - **Recovery code groups are numbered** on the printed kit, and the check step shows which block is group 4 (the fourth of six) and says to look where you saved it: your password manager or the kit.

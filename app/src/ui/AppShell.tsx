@@ -233,15 +233,18 @@ function PhoneShell({ onLog }: { onLog(): void }) {
   );
 }
 
-function SideLink({ to, label, end, also = false }: { to: string; label: string; end?: boolean; also?: boolean }) {
+function SideLink({ to, label, icon, end, also = false }: { to: string; label: string; icon: ReactNode; end?: boolean; also?: boolean }) {
   return (
     <NavLink
       to={to}
       end={end ?? false}
       className={({ isActive }) =>
-        cx('press flex min-h-11 items-center rounded-xl px-3 text-[15px] no-underline', isActive || also ? 'bg-accent/12 font-semibold text-amber' : 'font-medium text-soft hover:bg-surface')
+        cx('press flex min-h-11 items-center gap-3 rounded-xl px-3 text-[15px] no-underline', isActive || also ? 'bg-accent/12 font-semibold text-amber' : 'font-medium text-soft hover:bg-surface')
       }
     >
+      <span aria-hidden="true" className="flex flex-none">
+        {icon}
+      </span>
       {label}
     </NavLink>
   );
@@ -256,12 +259,12 @@ function DesktopShell({ onLog }: { onLog(): void }) {
         <div className="pb-[22px]">
           <BrandLink size={34} className="px-1.5" />
         </div>
-        <SideLink to="/" end also={inWallet} label="Holdings" />
-        <SideLink to="/what-if" label="What if" />
-        <SideLink to="/tax" label="Tax season" />
-        <SideLink to="/records" label="Records" />
+        <SideLink to="/" end also={inWallet} label="Holdings" icon={<HoldingsIcon size={20} />} />
+        <SideLink to="/what-if" label="What if" icon={<WhatIfIcon size={20} />} />
+        <SideLink to="/tax" label="Tax season" icon={<TaxIcon size={20} />} />
+        <SideLink to="/records" label="Records" icon={<RecordsIcon size={20} />} />
         <div className="flex-1" />
-        <SideLink to="/settings" label="Settings" />
+        <SideLink to="/settings" label="Settings" icon={<GearIcon size={20} />} />
         <button type="button" onClick={onLog} className="press flex min-h-12 items-center justify-center gap-2 rounded-[14px] bg-accent text-[15px] font-bold text-bg hover:bg-amber">
           <PlusIcon size={18} />
           Log
