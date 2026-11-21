@@ -80,3 +80,19 @@ test('Retirement: a spreadsheet row for a retirement wallet becomes a retirement
   await expect(page.getByText('Added 1 coin, 1 retirement purchase and 1 wallet.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'All your Bitcoin' })).toContainText('Retirement');
 });
+
+test('Retirement: a new wallet in the spreadsheet written as retirement purchases is asked about, then made as Retirement', async ({ page }) => {
+  await setUp(page);
+  await page.getByRole('link', { name: 'Records', exact: true }).click();
+  await page.getByRole('link', { name: /^Import and/ }).click();
+  const csv = ['wallet,acquired_utc,btc,sats,cost_usd,cost_per_btc,tier,origin', 'Coinbase,2023-01-20 14:02:11,0.01,1000000,230.00,,Documented,Email receipt', 'Swan IRA,2023-02-01 10:00:00,0.02,2000000,400.00,,,Statement'].join('\n');
+  await page.getByLabel('Choose a spreadsheet (CSV)').setInputFiles({ name: 'history.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  const status = page.getByRole('status').filter({ hasText: 'history.csv' });
+  await expect(status).toContainText('Is it a retirement account?');
+  await expect(status.getByRole('button', { name: /^Create/ })).toHaveCount(0);
+  await status.getByRole('radiogroup', { name: 'What kind of wallet is Swan IRA' }).getByRole('radio', { name: /Retirement/ }).click();
+  await expect(status).toContainText('1 retirement purchase will be added');
+  await status.getByRole('button', { name: /^Create wallets and add/ }).click();
+  await expect(page.getByText(/Added 1 coin, 1 retirement purchase and 2 wallets/)).toBeVisible();
+  await expect(page.getByRole('region', { name: 'All your Bitcoin' })).toContainText('Retirement');
+});

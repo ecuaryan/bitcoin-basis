@@ -8,11 +8,12 @@
 - **Balance notes check the purchases**: with purchases logged, a retirement wallet's balance is their total; its latest balance note is checked against the purchases up to that date and any difference is shown. Wallets with notes only look as before.
 - **All your Bitcoin** on Holdings: Taxable, Retirement and All Bitcoin side by side (BTC, worth, gain where the cost is known), reached from a quiet "with retirement" line under the hero. The taxable figures are unchanged.
 - Hide amounts now also hides gain percentages and the cost-per-BTC hint while logging a purchase.
-- **Import and export**: rows in the coins spreadsheet whose wallet is one of your retirement wallets become retirement purchases (add the wallet first; leave tier and the loan columns empty on those rows). The spreadsheet export includes them, and the backup file carries them with their history.
+- **Import and export**: rows in the coins spreadsheet whose wallet is one of your retirement wallets become retirement purchases (leave tier and the loan columns empty on those rows; if the wallet is new, the preview asks whether it is a retirement account and never assumes it). The spreadsheet export includes them, and the backup file carries them with their history.
 - The demo's retirement account has three made-up purchases.
 
 ### Fixed
 
+- **First run, import only**: “You're all set” and the empty Holdings screen now offer “Import a spreadsheet or backup” next to adding a wallet, so you can start from a file without creating a wallet by hand. Empty-tier rows explain what to do.
 - **Recovery code groups are numbered** on the printed kit, and the check step shows which block is group 4 (the fourth of six) and says to look where you saved it: your password manager or the kit.
 - **Recovery code from your password manager**: where the browser supports it (Chrome, Edge, Android), “Fill in from my password manager” puts in the saved recovery code, so you don't type 30 characters. The field still works with ordinary autofill elsewhere.
 - **Emergency kit**: stays on one letter page with many wallets (a print test checks six wallets, a long name and a code). The square code now only opens the app (the recovery code is typed), so using the kit no longer puts the code in browser history or asks for a new code and a new kit. The yearly test instructions moved off the paper; the app still reminds you. A note for the tax preparer appears when there are retirement wallets. Toasts no longer print.

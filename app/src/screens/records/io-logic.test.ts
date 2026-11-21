@@ -23,7 +23,7 @@ describe('planWallets', () => {
   const row = (w: string) => good.replace('Strike', w);
   it('counts new wallets once each, in file order, case and spacing ignored', () => {
     const p = planWallets(`${head}\n${row('Zeta')}\n${row('zeta ')}\n${row('Beta')}\n`, state.wallets);
-    expect(p.created).toEqual([{ name: 'Zeta', coins: 2 }, { name: 'Beta', coins: 1 }]);
+    expect(p.created).toEqual([{ name: 'Zeta', coins: 2, retirementLike: false }, { name: 'Beta', coins: 1, retirementLike: false }]);
     expect(p.matched).toEqual([]);
   });
   it('keeps exact names as they are and says when a name only differs by case or spacing', () => {
@@ -176,5 +176,33 @@ describe('retirement rows', () => {
     const p = previewImport(exportOpeningLotsCsv(state).csv, state.wallets, 'America/Boise', newId, state.closedYears, state.loans);
     expect(p.problems).toEqual([]);
     expect(p.retirementBuys.map((b) => b.sats)).toEqual(state.retirementBuys.map((b) => b.sats));
+  });
+});
+
+describe('a new wallet whose rows are written as retirement purchases', () => {
+  const ira = good.replace('Strike', 'Swan IRA').replace(',Documented,', ',,');
+  const text = `${HEAD}\n${good}\n${ira}\n${ira.replace('2021-03-15', '2021-05-01')}\n`;
+  it('is flagged as possibly retirement, and is never read as one until the person says so', () => {
+    const p = previewImport(text, state.wallets, 'America/Boise', newId, []);
+    expect(p.newWallets.map((w) => [w.name, w.retirementLike, w.guessedType])).toEqual([['Swan IRA', true, 'exchange']]);
+    expect(p.retirementBuys).toEqual([]);
+    expect(p.problems.map((x) => x.row)).toEqual([3, 4]);
+    expect(p.problems[0]?.message).toContain('the tier is empty');
+    expect(p.problems[0]?.message).toContain('Retirement wallet');
+  });
+  it('once named a retirement account, its rows become retirement purchases and the wallet is made as Retirement', () => {
+    const p = previewImport(text, state.wallets, 'America/Boise', newId, [], [], ['Swan IRA']);
+    expect(p.problems).toEqual([]);
+    expect(p.entries).toHaveLength(1);
+    expect(p.retirementBuys).toHaveLength(2);
+    expect(p.retirementBuys.every((b) => b.wallet === p.newWallets[0]?.id)).toBe(true);
+    expect(walletEntries(p.newWallets, { 'Swan IRA': 'retirement' }, '2026-01-01T00:00:00Z', 'UTC')[0]?.type).toBe('retirement');
+  });
+  it('a wallet with any tier or loan column filled in is never offered as retirement', () => {
+    const mixed = `${HEAD}\n${good.replace('Strike', 'New Place')}\n${ira.replace('Swan IRA', 'New Place')}\n`;
+    const p = previewImport(mixed, state.wallets, 'America/Boise', newId, [], [], ['New Place']);
+    expect(p.newWallets[0]?.retirementLike).toBe(false);
+    expect(p.retirementBuys).toEqual([]);
+    expect(walletEntries(p.newWallets, { 'New Place': 'retirement' }, '2026-01-01T00:00:00Z', 'UTC')[0]?.type).toBe('exchange');
   });
 });

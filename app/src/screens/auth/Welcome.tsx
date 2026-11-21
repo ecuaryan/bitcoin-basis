@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { explainError, passkeyRestoreFallback, wasCancelled } from '../../data/explain-error.ts';
 import { incomingRecovery, kitHandoff } from '../../data/recovery-handoff.ts';
@@ -79,14 +79,14 @@ export function Welcome() {
     setError(null);
     setMode('home');
   };
-  const finish = () => {
+  const finish = (to: '/?add=wallet' | '/records?v=io' = '/?add=wallet') => {
     kitHandoff.clear();
-    navigate('/?add=wallet', { replace: true });
+    navigate(to, { replace: true });
   };
 
   if (mode === 'code' && pending !== null) return <CodeStep code={pending.code} onNext={() => setMode('confirm')} />;
   if (mode === 'confirm' && pending !== null) return <ConfirmStep code={pending.code} onDone={() => setMode('done')} />;
-  if (mode === 'done') return <DoneStep onFinish={finish} />;
+  if (mode === 'done') return <DoneStep onFinish={() => finish()} onImport={() => finish('/records?v=io')} />;
   if (mode === 'restored') {
     return (
       <RestoredStep
@@ -387,21 +387,26 @@ function ConfirmStep({ code, onDone }: { code: string; onDone(): void }) {
   );
 }
 
-function DoneStep({ onFinish }: { onFinish(): void }) {
+function DoneStep({ onFinish, onImport }: { onFinish(): void; onImport(): void }) {
   return (
     <Frame glowTop={60}>
       <section className="relative flex flex-1 flex-col items-center justify-center gap-4 text-center lg:flex-none lg:pb-10">
         <LogoMark size={72} />
         <h1 className="m-0 font-display text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">You&apos;re all set</h1>
-        <p className="m-0 max-w-[300px] text-[15px] leading-normal text-soft">Your records are encrypted and synced. Start with the wallet or exchange you use most.</p>
+        <p className="m-0 max-w-[300px] text-[15px] leading-normal text-soft">Your records are encrypted and synced. Start with the wallet or exchange you use most, or bring in a spreadsheet of your history.</p>
       </section>
       <div className="relative flex flex-col gap-2.5">
         <BigButton onClick={onFinish}>Add my first wallet</BigButton>
-        <BigLink to="/kit" variant="secondary">
-          <PrinterIcon size={18} />
-          Print the emergency kit
-        </BigLink>
-        <span className="text-center text-xs text-muted">The recovery code is only shown until you leave this page.</span>
+        <BigButton variant="secondary" onClick={onImport}>
+          Import a spreadsheet or backup
+        </BigButton>
+        <div className="flex flex-col items-center">
+          <Link to="/kit" className="flex min-h-11 items-center gap-1.5 px-2 text-sm font-semibold text-amber no-underline underline-offset-2 hover:underline">
+            <PrinterIcon size={16} />
+            Print the emergency kit
+          </Link>
+          <span className="text-center text-xs text-muted">The recovery code is only shown until you leave this page.</span>
+        </div>
       </div>
     </Frame>
   );

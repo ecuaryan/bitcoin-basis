@@ -131,10 +131,15 @@ function FirstRun() {
     <DesktopCenter>
       <Card className="flex flex-col items-start gap-4">
         <p className="m-0 font-display text-2xl font-semibold tracking-tight">Know what your Bitcoin cost.</p>
-        <p className="m-0 text-[15px] leading-relaxed text-muted">Start with the wallet or exchange you use most.</p>
-        <Button variant="primary" onClick={() => setOpen(true)} className="w-full sm:w-auto">
-          Add a wallet
-        </Button>
+        <p className="m-0 text-[15px] leading-relaxed text-muted">Start with the wallet or exchange you use most, or bring in a spreadsheet of your history.</p>
+        <div className="flex w-full flex-col gap-2.5 sm:flex-row">
+          <Button variant="primary" onClick={() => setOpen(true)}>
+            Add a wallet
+          </Button>
+          <Link to="/records?v=io" className={buttonClasses('secondary', 'text-text no-underline hover:text-text')}>
+            Import a spreadsheet or backup
+          </Link>
+        </div>
       </Card>
       <AddWalletSheet open={open} onClose={() => setOpen(false)} />
     </DesktopCenter>

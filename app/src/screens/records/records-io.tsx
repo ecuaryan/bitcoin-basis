@@ -55,6 +55,8 @@ const KIND_OPTIONS: readonly SegmentedOption<WalletType>[] = [
   { value: 'exchange', label: 'Exchange' },
   { value: 'self-custody', label: 'Self-custody', sub: '(your own wallet)' },
 ];
+/** For a new wallet whose rows are written as retirement purchases (no tier, no loan): it may be an IRA or Roth. */
+const KIND_OPTIONS_WITH_RETIREMENT: readonly SegmentedOption<WalletType>[] = [...KIND_OPTIONS, { value: 'retirement', label: 'Retirement', sub: '(IRA, Roth)' }];
 const BATCH = 200;
 
 function ImportLots() {
@@ -67,8 +69,11 @@ function ImportLots() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [failed, setFailed] = useState(false);
   const tz = state.settings.timeZone;
-  const run = (text: string) => previewImport(text, state.wallets, tz, newIdGenerator(entries), state.closedYears, state.loans);
-  const preview = useMemo(() => (file ? run(file.text) : null), [file, state.wallets, state.closedYears, state.loans]); // eslint-disable-line react-hooks/exhaustive-deps
+  const retirementNames = useMemo(() => Object.keys(types).filter((n) => types[n] === 'retirement'), [types]);
+  const run = (text: string) => previewImport(text, state.wallets, tz, newIdGenerator(entries), state.closedYears, state.loans, retirementNames);
+  const preview = useMemo(() => (file ? run(file.text) : null), [file, state.wallets, state.closedYears, state.loans, retirementNames]); // eslint-disable-line react-hooks/exhaustive-deps
+  // New wallets written like retirement purchases: ask what they are before showing anything else.
+  const undecided = preview?.newWallets.filter((w) => w.retirementLike && types[w.name] === undefined) ?? [];
   const goodOnly = useMemo(() => (preview && preview.problems.length > 0 && preview.goodRows > 0 ? run(withoutBadRows(preview.text, preview.problems)) : null), [preview]); // eslint-disable-line react-hooks/exhaustive-deps
   const read = (text: string, name: string) => {
     setTypes({});
@@ -118,17 +123,32 @@ function ImportLots() {
           <DownloadIcon size={16} /> Download a blank template
         </button>
       </div>
-      <p className="m-0 text-[13px] leading-[1.45] text-muted">One row per purchase. A wallet name that is new gets created for you. Rows for a retirement wallet become retirement purchases; add that wallet first. You&apos;ll see a preview before anything is added.</p>
+      <p className="m-0 text-[13px] leading-[1.45] text-muted">One row per purchase. A wallet name that is new gets created for you. Rows for a retirement account leave the tier empty and become retirement purchases, kept apart from tax math. You&apos;ll see a preview before anything is added.</p>
       <details className="text-[13px] text-muted">
         <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-soft">What columns?</summary>
         <p className="m-0 pb-1 leading-[1.5]">
-          wallet (a name you have, or a new one), acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked. An optional funded_by column names the loan that paid for a row, like HELOC. A row whose wallet is one of your retirement wallets is saved as a retirement purchase, kept apart from tax math: leave its tier and funded_by empty. Retirement wallets are never created from a file.
+          wallet (a name you have, or a new one), acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked. An optional funded_by column names the loan that paid for a row, like HELOC. A row whose wallet is a retirement account is saved as a retirement purchase, kept apart from tax math: leave its tier and funded_by empty. If that wallet is new, the preview asks whether it is a retirement account.
         </p>
       </details>
       {file && preview && (
         <div role="status" className="flex flex-col gap-3 rounded-2xl border border-line bg-bg p-3 text-sm">
           <span className="text-xs text-muted">{file.name}</span>
-          {preview.problems.length === 0 ? (
+          {undecided.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              <span className="font-semibold">{undecided.length === 1 ? 'One question first' : 'A few questions first'}</span>
+              <ul className="m-0 flex list-none flex-col gap-3 p-0" aria-label="Wallets to name">
+                {undecided.map((w) => (
+                  <li key={w.entryId} className="flex flex-col gap-1.5">
+                    <span className="text-[13px] leading-[1.45] text-soft">
+                      <strong className="text-text">{w.name}</strong> is new, and its {w.coins === 1 ? 'row has' : `${w.coins} rows have`} no tier. Is it a retirement account?
+                    </span>
+                    <Segmented<WalletType> label={`What kind of wallet is ${w.name}`} value={'' as WalletType} onChange={(v) => setTypes({ ...types, [w.name]: v })} options={KIND_OPTIONS_WITH_RETIREMENT} className="w-full [&_button]:flex-1 [&_button]:whitespace-nowrap" />
+                  </li>
+                ))}
+              </ul>
+              <span className="text-xs text-muted">Retirement purchases are kept apart from tax math. Other wallets need a tier on each row.</span>
+            </div>
+          ) : preview.problems.length === 0 ? (
             <ReadyBlock p={preview} types={types} setTypes={setTypes} rates={rates} setRates={setRates} progress={progress} failed={failed} onAdd={() => void add(preview)} />
           ) : (
             <>
@@ -191,7 +211,7 @@ function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onA
                 <span className="min-w-0 break-words">
                   {w.name} <span className="text-muted">· {coins(w.coins)}</span>
                 </span>
-                <Segmented<WalletType> label={`What kind of wallet is ${w.name}`} value={types[w.name] ?? w.guessedType} onChange={(v) => setTypes({ ...types, [w.name]: v })} options={KIND_OPTIONS} className="w-full sm:w-auto [&_button]:flex-1 [&_button]:whitespace-nowrap" />
+                <Segmented<WalletType> label={`What kind of wallet is ${w.name}`} value={types[w.name] ?? w.guessedType} onChange={(v) => setTypes({ ...types, [w.name]: v })} options={w.retirementLike ? KIND_OPTIONS_WITH_RETIREMENT : KIND_OPTIONS} className="w-full sm:w-auto [&_button]:flex-1 [&_button]:whitespace-nowrap" />
               </li>
             ))}
           </ul>

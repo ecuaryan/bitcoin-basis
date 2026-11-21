@@ -79,6 +79,11 @@ export interface NewWallet {
   name: string;
   coins: number;
   guessedType: Exclude<WalletType, 'retirement'>;
+  /**
+   * Every row for it has an empty tier and no loan columns: the way retirement purchases are written. It may be a
+   * retirement account, so the person is asked; it is never assumed (a taxable coin must not leave the tax book by accident).
+   */
+  retirementLike: boolean;
   /** The wallet entry's id, made now so it sorts before the coins. */
   entryId: string;
 }
@@ -91,7 +96,7 @@ export interface WalletMatch {
 }
 
 export interface WalletPlan {
-  created: { name: string; coins: number }[];
+  created: { name: string; coins: number; retirementLike: boolean }[];
   /** File names that differ from an existing wallet only by case or spacing. */
   matched: WalletMatch[];
   /** The file with those names rewritten to the exact name, ready for the importer. */
@@ -109,10 +114,13 @@ export function planWallets(text: string, wallets: readonly Wallet[]): WalletPla
   const [header, ...rows] = parsed.value;
   const col = header?.findIndex((h) => h.trim().toLowerCase() === 'wallet') ?? -1;
   if (header === undefined || col < 0) return none;
+  const at = (name: string): number => header.findIndex((h) => h.trim().toLowerCase() === name);
+  const blankCols = ['tier', 'funded_by', 'funded_by_id', 'funded_draw_usd', 'funded_draw_date'].map(at).filter((i) => i >= 0);
+  const blank = (cells: readonly string[]): boolean => blankCols.every((i) => (cells[i] ?? '').trim() === '');
   const exact = new Set(wallets.map((w) => w.name.trim()));
   const byKey = new Map<string, Wallet>();
   for (const w of wallets) if (!byKey.has(nameKey(w.name)) || byKey.get(nameKey(w.name))?.archived) byKey.set(nameKey(w.name), w);
-  const created = new Map<string, { name: string; coins: number }>();
+  const created = new Map<string, { name: string; coins: number; retirementLike: boolean }>();
   const matched = new Map<string, WalletMatch>();
   const out = rows.map((cells) => {
     const raw = (cells[col] ?? '').trim();
@@ -125,8 +133,9 @@ export function planWallets(text: string, wallets: readonly Wallet[]): WalletPla
       next[col] = have.name.trim();
       return next;
     }
-    const first = created.get(key) ?? { name: raw.replace(/\s+/g, ' '), coins: 0 };
+    const first = created.get(key) ?? { name: raw.replace(/\s+/g, ' '), coins: 0, retirementLike: true };
     first.coins += 1;
+    first.retirementLike &&= blank(cells);
     created.set(key, first);
     const next = [...cells];
     next[col] = first.name;
@@ -211,15 +220,19 @@ function slugOf(name: string): string {
  * Read an opening-lots CSV where some wallets may not exist yet. New wallets are described in `newWallets`
  * (the coins already point at their ids) so the caller can add the wallets first, then the coins.
  */
-export function previewImport(text: string, wallets: readonly Wallet[], tz: string, newId: () => string, closedYears: readonly number[], loans: readonly LoanRef[] = []): ImportPreview {
+export function previewImport(text: string, wallets: readonly Wallet[], tz: string, newId: () => string, closedYears: readonly number[], loans: readonly LoanRef[] = [], retirementNames: readonly string[] = []): ImportPreview {
   const plan = planWallets(text, wallets);
   const newWallets: NewWallet[] = plan.created.map((c) => {
     const entryId = newId();
-    return { id: `${slugOf(c.name)}-${entryId.slice(-6)}`, name: c.name, coins: c.coins, guessedType: guessWalletType(c.name), entryId };
+    return { id: `${slugOf(c.name)}-${entryId.slice(-6)}`, name: c.name, coins: c.coins, guessedType: guessWalletType(c.name), retirementLike: c.retirementLike, entryId };
   });
-  const pretend: Wallet[] = newWallets.map((w) => ({ id: w.id, name: w.name, type: w.guessedType, defaultProof: '', archived: false, frozen: false, closeOutEntryId: null, recoveredCents: 0 }));
+  // Only a wallet the person said is a retirement account is read as one, and only if its rows are written that way.
+  const asRetirement = (w: NewWallet): boolean => w.retirementLike && retirementNames.includes(w.name);
+  const pretend: Wallet[] = newWallets.map((w) => ({ id: w.id, name: w.name, type: asRetirement(w) ? 'retirement' : w.guessedType, defaultProof: '', archived: false, frozen: false, closeOutEntryId: null, recoveredCents: 0 }));
   const planned = newLoanNames(plan.text, loans).map((name) => ({ name, entryId: newId(), id: newId() }));
-  const p = previewLots(plan.text, [...wallets, ...pretend], tz, newId, [...loans, ...planned.map((l) => ({ id: l.id, name: l.name, closed: false }))]);
+  const read = previewLots(plan.text, [...wallets, ...pretend], tz, newId, [...loans, ...planned.map((l) => ({ id: l.id, name: l.name, closed: false }))]);
+  // An empty tier is how retirement purchases are written, so say what to do if that is what the row is.
+  const p = { ...read, problems: read.problems.map((x) => (x.message.startsWith('tier "" ') ? { ...x, message: 'the tier is empty. Use Documented, Reconstructed, Estimated or Unknown; or, if this is a retirement account purchase, its wallet must be a Retirement wallet' } : x)) };
   const lotDate = new Map(p.entries.map((e) => [e.id, localDate(e.acquiredAt, e.tz)]));
   const newLoans: NewLoan[] = planned.flatMap((l) => {
     const mine = p.links.filter((k) => k.loan === l.id);
@@ -246,7 +259,12 @@ export function previewImport(text: string, wallets: readonly Wallet[], tz: stri
 
 /** The wallet entries to add before the coins, with the types the person picked (by wallet name). */
 export function walletEntries(wallets: readonly NewWallet[], types: Readonly<Record<string, WalletType>>, at: string, tz: string): WalletEntry[] {
-  return wallets.map((w) => ({ id: w.entryId, kind: 'wallet', wallet: w.id, name: w.name, type: types[w.name] ?? w.guessedType, defaultProof: 'Email receipt', at, tz }));
+  return wallets.map((w) => {
+    const picked = types[w.name];
+    // Retirement only where the preview read it that way (rows written as retirement purchases).
+    const type = picked === 'retirement' && !w.retirementLike ? w.guessedType : (picked ?? w.guessedType);
+    return { id: w.entryId, kind: 'wallet', wallet: w.id, name: w.name, type, defaultProof: 'Email receipt', at, tz };
+  });
 }
 
 /** Entries in chunks, so a big file is written a bit at a time and progress can show. */
