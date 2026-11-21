@@ -7,6 +7,9 @@ import { demoPriceAt } from '../demo/demo-data.ts';
 import { cx } from '../lib/cx.ts';
 import { buildHoldingsView, type HoldingsView } from '../lib/holdings-view.ts';
 import { countOf } from '../lib/format.ts';
+import { BalanceNudge } from './BalanceNudge.tsx';
+import { LOSSES_HELP, LOSSES_TITLE } from '../lib/losses.ts';
+import { useHelp } from '../ui/Help.tsx';
 import { AddWalletButton, AddWalletSheet } from './wallet/AddWallet.tsx';
 import { Amount, Money } from '../ui/Amount.tsx';
 import { DesktopCenter, HideButton, LockButton, useIsWide, useLogSheet } from '../ui/AppShell.tsx';
@@ -69,6 +72,40 @@ function useHoldingsView(): { view: HoldingsView; priceCents: number | null } {
   const priceCents = quote?.usdCents ?? null;
   const view = useMemo(() => buildHoldingsView(state, holdings, priceCents, today), [state, holdings, priceCents, today]);
   return { view, priceCents };
+}
+
+/** The unused losses from earlier returns, with a "?" that says what they are. */
+function LossesStat({ view, variant }: { view: HoldingsView; variant: 'row' | 'tile' }) {
+  const help = useHelp(`What are ${LOSSES_TITLE.toLowerCase()}?`, LOSSES_HELP);
+  const { today } = useLedger();
+  const forYear = view.lossesYear !== null && view.lossesYear !== Number(today.slice(0, 4)) ? ` (for ${view.lossesYear})` : '';
+  const money = <Money cents={view.carryforwardCents} precision="dollars" />;
+  if (variant === 'row') {
+    return (
+      <div className="flex flex-col gap-2 border-t border-line pt-2.5">
+        <div className="flex items-baseline justify-between">
+          <span className="flex items-baseline gap-1 text-xs text-muted">
+            {LOSSES_TITLE}
+            {forYear}
+            {help.button}
+          </span>
+          <span className="text-[15px] font-semibold">{money}</span>
+        </div>
+        {help.panel}
+      </div>
+    );
+  }
+  return (
+    <>
+      <span className="flex items-baseline gap-1 text-[13px] text-muted">
+        {LOSSES_TITLE}
+        {forYear}
+        {help.button}
+      </span>
+      <span className="text-2xl font-semibold">{money}</span>
+      {help.panel}
+    </>
+  );
 }
 
 /** No wallet yet: one card, one button, and the sheet opens right here. */
@@ -164,6 +201,8 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
         </div>
       </section>
 
+      <BalanceNudge />
+
       <Card as="section" aria-label="Average cost versus price" className="flex flex-col gap-3">
         <div className="flex items-start justify-between">
           <div className="flex flex-col gap-0.5">
@@ -177,12 +216,7 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
         </div>
         <PriceChart points={series} averageCostCents={view.averageCostCentsPerBtc} width={320} height={84} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} />
         <ChartFooter points={series} className="text-[11px]" />
-        <div className="flex items-baseline justify-between border-t border-line pt-2.5">
-          <span className="text-xs text-muted">Losses to use later</span>
-          <span className="text-[15px] font-semibold">
-            <Money cents={view.carryforwardCents} precision="dollars" />
-          </span>
-        </div>
+        <LossesStat view={view} variant="row" />
       </Card>
 
       <Card as="section" aria-label="Your coins by age" className="flex flex-col gap-2.5">
@@ -240,6 +274,8 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
         </div>
       </header>
 
+      <BalanceNudge />
+
       <div className="grid grid-cols-3 gap-4">
         <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
           <span className="text-[13px] text-muted">Your average cost</span>
@@ -250,10 +286,7 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
           <GainText cents={view.gainCents} className="text-2xl font-semibold" />
         </Card>
         <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
-          <span className="text-[13px] text-muted">Losses to use later</span>
-          <span className="text-2xl font-semibold">
-            <Money cents={view.carryforwardCents} precision="dollars" />
-          </span>
+          <LossesStat view={view} variant="tile" />
         </Card>
       </div>
 

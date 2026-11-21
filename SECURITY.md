@@ -84,6 +84,7 @@ Records are only in IndexedDB, sealed. Everything else on the device is in `loca
 | `bb.hide` | `0` or `1`: whether amounts are hidden |
 | `bb.unit` | the unit shown (BTC, sats or dollars) |
 | `bb.kit-tested`, `bb.kit-first-seen` | dates for the emergency-kit test reminder |
+| `bb.nudge-until` | a date: the balance reminder on Holdings stays quiet until then (set when you tap Not now) |
 | `bb.last-price` | the last public BTC price seen |
 | `bb.price-history.v1` | public BTC prices by hour, for the chart |
 

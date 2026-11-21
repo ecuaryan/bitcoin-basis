@@ -1,5 +1,7 @@
 import { formatBtc, oldestFirstOrder, parseBtc, yearOf } from '@bitcoin-basis/engine';
 import { useDeferredValue, useMemo, useState } from 'react';
+import { Link } from 'react-router';
+import { hasLosses, staleLosses } from '../../lib/losses.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
@@ -56,6 +58,7 @@ export function Sell() {
   const activeKey: PlanKey = planKey === 'hand-picked' && plans?.handPicked == null ? 'lowest-tax' : planKey;
   const active = plans ? planFor(plans, activeKey) : null;
   const closed = state.closedYears.includes(year);
+  const stale = staleLosses(state.settings, year);
 
   function pickWallet(id: string) {
     setChosen(id);
@@ -159,14 +162,23 @@ export function Sell() {
     body = (
       <>
         <PlanChoice label="Coins to use" className={cx('grid gap-2.5', plans.handPicked ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2')}>
-          <PlanCard title="Oldest first" plan={plans.oldestFirst} year={year} active={activeKey === 'oldest-first'} onSelect={() => setPlanKey('oldest-first')} carryBest={carriedOut(plans.oldestFirst) > carriedOut(plans.lowestTax)} />
-          <PlanCard title="Lowest tax" plan={plans.lowestTax} year={year} active={activeKey === 'lowest-tax'} onSelect={() => setPlanKey('lowest-tax')} carryBest={carriedOut(plans.lowestTax) > carriedOut(plans.oldestFirst)} />
-          {plans.handPicked && <PlanCard title="Your picks" plan={plans.handPicked} year={year} active={activeKey === 'hand-picked'} onSelect={() => setPlanKey('hand-picked')} className="col-span-2 lg:col-span-1" />}
+          <PlanCard title="Oldest first" plan={plans.oldestFirst} active={activeKey === 'oldest-first'} onSelect={() => setPlanKey('oldest-first')} carryBest={carriedOut(plans.oldestFirst) > carriedOut(plans.lowestTax)} />
+          <PlanCard title="Lowest tax" plan={plans.lowestTax} active={activeKey === 'lowest-tax'} onSelect={() => setPlanKey('lowest-tax')} carryBest={carriedOut(plans.lowestTax) > carriedOut(plans.oldestFirst)} />
+          {plans.handPicked && <PlanCard title="Your picks" plan={plans.handPicked} active={activeKey === 'hand-picked'} onSelect={() => setPlanKey('hand-picked')} className="col-span-2 lg:col-span-1" />}
         </PlanChoice>
         <Card as="section" aria-label="What this means" className="flex flex-col gap-3 !rounded-2xl !p-3.5">
           <Note tone="warn">
             <Sentence parts={summary} />
           </Note>
+          {active.totalTaxCents <= 0 && active.gainCents > 0 && hasLosses(state.settings, year, today) && <Note>Covered by losses from past years.</Note>}
+          {stale !== null && (
+            <Note tone="warn">
+              Your losses from past years are saved for {stale.savedFor}.{' '}
+              <Link to="/records?v=settings" className="font-semibold">
+                Update them for {year}
+              </Link>
+            </Note>
+          )}
           {active.headsUp && <Note tone="warn">This sale adds more than $1,000 of estimated tax. You may need to make an estimated payment before filing.</Note>}
           {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
           <details className="group">

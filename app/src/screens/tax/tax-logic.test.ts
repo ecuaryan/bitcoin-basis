@@ -1,7 +1,7 @@
 import { createUuidV7, replay, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_TODAY } from '../../demo/demo-data.ts';
-import { answerReason, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, joinWords, overExclusion, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory } from './tax-logic.ts';
+import { answerReason, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, joinWords, overExclusion, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory, nextYearLosses } from './tax-logic.ts';
 import { yearSummary } from '@bitcoin-basis/engine';
 
 const state = replay(buildDemoBook().entries);
@@ -48,6 +48,25 @@ describe('totalsByKind and yearTaxView', () => {
     const before = yearTaxView(state, state.settings, 2025, DEMO_TODAY);
     expect(before.carriedIn).toEqual({ st: 0, lt: 0 });
     expect(now.giftExclusionCents).toBe(1_900_000);
+  });
+});
+
+describe('losses from past years', () => {
+  const saved = { ...state.settings, carryforwardStCents: 100_000, carryforwardLtCents: 200_000 };
+  it('apply to the year they are saved for', () => {
+    expect(yearTaxView(state, { ...saved, carryforwardYear: 2025 }, 2026, DEMO_TODAY).carriedIn).toEqual({ st: 0, lt: 0 });
+    expect(yearTaxView(state, { ...saved, carryforwardYear: 2025 }, 2025, DEMO_TODAY).carriedIn).toEqual({ st: 100_000, lt: 200_000 });
+    expect(yearTaxView(state, { ...saved, carryforwardYear: 2026 }, 2026, DEMO_TODAY).carriedIn).toEqual({ st: 100_000, lt: 200_000 });
+  });
+  it('are offered for next year when closing, unless Settings already hold them', () => {
+    const loss = { ...state.settings, carryforwardStCents: 0, carryforwardLtCents: 99_000_000, carryforwardYear: 2026 };
+    const out = nextYearLosses(state, loss, 2026, DEMO_TODAY);
+    expect(out).not.toBeNull();
+    if (out === null) return;
+    expect(out.st + out.lt).toBeGreaterThan(0);
+    const same = { ...loss, carryforwardStCents: out.st, carryforwardLtCents: out.lt, carryforwardYear: 2027 };
+    expect(nextYearLosses(state, same, 2026, DEMO_TODAY)).toBeNull();
+    expect(nextYearLosses(replay([]), { ...state.settings, carryforwardLtCents: 0, carryforwardStCents: 0 }, 2019, DEMO_TODAY)).toBeNull();
   });
 });
 

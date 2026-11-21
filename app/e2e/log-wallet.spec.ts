@@ -108,20 +108,25 @@ test('gift to a person shows the gift note; charity gift shows the CPA note', as
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('confirm a balance: match, then mismatch', async ({ page }) => {
+test('confirm a balance: yes, then no with a different number', async ({ page }) => {
   await demo(page);
   await go(page, '/wallet/wallet-strike');
   await expect(page.getByRole('heading', { name: 'Strike', level: 1 })).toBeVisible();
-  await expect(page.getByText('0.6188 2140 BTC')).toBeVisible();
-  const box = page.getByLabel('What the app or device shows');
-  await box.fill('0.6188214');
-  await page.getByRole('button', { name: 'Check', exact: true }).click();
-  await expect(page.getByText('Strike matches. Confirmed today.')).toBeVisible();
-  await expect(page.getByText('Confirmed today', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.6188 2140 BTC').first()).toBeVisible();
+  const card = page.getByRole('region', { name: 'Does it match?' });
+  await expect(card).toContainText('Does Strike show 0.6188 2140 BTC?');
+  await card.getByRole('button', { name: 'Yes' }).click();
+  await expect(page.getByText('Confirmed. Strike matches.')).toBeVisible();
+  await expect(card.getByText('Confirmed today', { exact: true })).toBeVisible();
+  await expect(card.getByLabel('What Strike shows')).toHaveCount(0);
+  await card.getByRole('button', { name: "No, it's different" }).click();
+  const box = card.getByLabel('What Strike shows');
+  await expect(box).toBeFocused();
   await box.fill('0.6253214');
-  await page.getByRole('button', { name: 'Check', exact: true }).click();
+  await card.getByRole('button', { name: 'Check', exact: true }).click();
   await expect(page.getByText(/Strike shows .* more\./)).toBeVisible();
   await expect(page.getByText('0.0065 0000 BTC')).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Log it' })).toBeVisible();
   await axeClean(page);
 });
 

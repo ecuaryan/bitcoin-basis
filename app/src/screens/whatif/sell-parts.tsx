@@ -65,7 +65,7 @@ export function PlanChoice({ label, className, children }: { label: string; clas
 }
 
 /** One column of the side-by-side comparison. Tapping it is the choice. */
-export function PlanCard({ title, plan, year, active, onSelect, carryBest = false, className }: { title: string; plan: SalePlan; year: number; active: boolean; onSelect(): void; carryBest?: boolean; className?: string }) {
+export function PlanCard({ title, plan, active, onSelect, carryBest = false, className }: { title: string; plan: SalePlan; active: boolean; onSelect(): void; carryBest?: boolean; className?: string }) {
   const titleId = useId();
   const rows: { label: string; cents: number }[] = [];
   if (plan.stGainCents !== 0) rows.push({ label: `Short-term ${plan.stGainCents < 0 ? 'loss' : 'gain'}`, cents: plan.stGainCents });
@@ -102,7 +102,7 @@ export function PlanCard({ title, plan, year, active, onSelect, carryBest = fals
       <Row label="Tax this adds" tone={tone} big>
         <Money cents={plan.totalTaxCents} countUp />
       </Row>
-      <Row label={`Carryforward into ${year + 1}`} tone={tone}>
+      <Row label="Losses left for next year" tone={tone}>
         <span className={cx(carryBest && 'text-amber')}>
           <Money cents={carried} precision="dollars" countUp />
         </span>

@@ -19,6 +19,13 @@ describe('settings form', () => {
     expect(d.givingPercent).toBe('12.05');
     expect(patchFrom(s, d)).toEqual({ ok: true, patch: {} });
   });
+  it('saves the year with changed losses from past years, and only then', () => {
+    const d = { ...draftFrom(DEFAULT_SETTINGS), carryforwardLt: '2,480' };
+    expect(patchFrom(DEFAULT_SETTINGS, d, 2026)).toEqual({ ok: true, patch: { carryforwardLtCents: 248_000, carryforwardYear: 2026 } });
+    expect(patchFrom(DEFAULT_SETTINGS, d)).toEqual({ ok: true, patch: { carryforwardLtCents: 248_000 } });
+    const saved = { ...DEFAULT_SETTINGS, carryforwardLtCents: 248_000, carryforwardYear: 2025 };
+    expect(patchFrom(saved, draftFrom(saved), 2026)).toEqual({ ok: true, patch: {} });
+  });
   it('explains what is wrong', () => {
     const r = patchFrom(DEFAULT_SETTINGS, { ...draftFrom(DEFAULT_SETTINGS), wages: 'lots', givingName: ' ', timeZone: 'Mars/Base' });
     expect(r.ok).toBe(false);

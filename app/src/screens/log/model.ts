@@ -26,6 +26,7 @@ import {
   type Wallet,
 } from '@bitcoin-basis/engine';
 import { formatWhen } from '../../lib/format.ts';
+import { hasLosses } from '../../lib/losses.ts';
 
 // ---- Amounts ---------------------------------------------------------------------------
 
@@ -313,13 +314,13 @@ export function computeEffect(entry: Entry, before: LedgerState, after: LedgerSt
       if (d === undefined) return NONE('No tax');
       const tax = capitalTax(before, d.year, d.date, d.stGainCents, d.ltGainCents);
       const head = d.gainCents < 0 ? 'Taxable loss' : 'Taxable gain';
-      const covered = tax === 0 && d.gainCents > 0 && before.settings.carryforwardStCents + before.settings.carryforwardLtCents > 0;
+      const covered = tax === 0 && d.gainCents > 0 && hasLosses(before.settings, d.year, d.date);
       return {
         tone: 'taxable',
         headline: entry.spent ? `${head} (spent)` : head,
         lines: [{ label: entry.spent ? 'Worth when spent' : 'Dollars received', cents: d.proceedsCents }, { label: 'Cost of these coins', cents: d.costCents }, ...gainLines(d.stGainCents, d.ltGainCents)],
         taxCents: tax,
-        notes: covered ? ['Covered by losses from earlier years.'] : [],
+        notes: covered ? ['Covered by losses from past years.'] : [],
         cpa: [],
       };
     }

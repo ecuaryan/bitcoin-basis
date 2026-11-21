@@ -243,7 +243,7 @@ function build(t: Tuning): Entry[] {
         entries.push({
           ...base,
           kind: 'settings',
-          patch: { filingStatus: 'married-joint', wagesCents: 13_000_000, state: { kind: 'flat', state: 'ID' }, carryforwardLtCents: 2_480_000, earlierMoneyInCents: 1_200_000 },
+          patch: { filingStatus: 'married-joint', wagesCents: 13_000_000, state: { kind: 'flat', state: 'ID' }, carryforwardLtCents: 2_480_000, carryforwardYear: 2026, earlierMoneyInCents: 1_200_000 },
         });
         break;
       case 'buy': {

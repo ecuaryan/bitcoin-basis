@@ -7,7 +7,7 @@ test('Sell: compare, slide, pick coins and log a sale', async ({ page }) => {
   const oldest = page.getByRole('radio', { name: 'Oldest first' });
   const lowest = page.getByRole('radio', { name: 'Lowest tax' });
   await expect(oldest).toContainText('Tax this adds');
-  await expect(lowest).toContainText('Carryforward into 2027');
+  await expect(lowest).toContainText('Losses left for next year');
   await page.getByText('Why?', { exact: true }).click();
   await expect(page.getByRole('region', { name: 'What this means' })).toContainText('Estimates, not tax advice');
   await expectNoViolations(page);

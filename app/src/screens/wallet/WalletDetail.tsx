@@ -1,5 +1,5 @@
 import { mulDivRoundHalfUp, oneYearAnniversary, SATS_PER_BTC, termFor, uuidv7, type BalanceConfirmEntry, type Entry, type Lot, type RetirementSnapshotEntry, type Wallet } from '@bitcoin-basis/engine';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
@@ -91,17 +91,37 @@ function Balance({ wallet, sats, costCents, avg, lotCount, priceCents }: { walle
 
 type Unit2 = 'btc' | 'sats';
 
-function ConfirmBalance({ wallet, inputRef }: { wallet: Wallet; inputRef: React.RefObject<HTMLInputElement | null> }) {
+function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: number; inputRef: React.RefObject<HTMLInputElement | null> }) {
   const { entries, state, append, today } = useLedger();
   const toast = useToast();
   const { open } = useLogSheet();
   const [unit, setUnit] = useState<Unit2>('btc');
   const amount = useAmount(null, null);
+  const [different, setDifferent] = useState(false);
   const [pending, setPending] = useState<{ entry: BalanceConfirmEntry; diff: number; since: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const confirmed = lastConfirmed(state, wallet.id);
   const lastCheck = state.balanceChecks.filter((c) => c.wallet === wallet.id).at(-1);
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
+
+  useEffect(() => {
+    if (different) inputRef.current?.focus();
+  }, [different, inputRef]);
+
+  const entryFor = (reported: number): BalanceConfirmEntry => ({ id: uuidv7(), kind: 'balance-confirm', wallet: wallet.id, sats: reported, at: nowInstant(Date.now()), tz: state.settings.timeZone });
+  function reset() {
+    setDifferent(false);
+    setPending(null);
+    setError(null);
+    amount.setText('');
+  }
+
+  /** Yes: the app's own balance is what the wallet shows. */
+  async function yes() {
+    await append([entryFor(sats)]);
+    toast.show(`Confirmed. ${wallet.name} matches.`);
+    reset();
+  }
 
   async function check() {
     setError(null);
@@ -111,7 +131,7 @@ function ConfirmBalance({ wallet, inputRef }: { wallet: Wallet; inputRef: React.
       setError('Enter the balance you see.');
       return;
     }
-    const entry: BalanceConfirmEntry = { id: uuidv7(), kind: 'balance-confirm', wallet: wallet.id, sats: reported, at: nowInstant(Date.now()), tz: state.settings.timeZone };
+    const entry = entryFor(reported);
     const t = trialReplay(entries, state, [entry]);
     const result = t.after.balanceChecks.find((c) => c.entryId === entry.id);
     if (result === undefined) {
@@ -120,8 +140,8 @@ function ConfirmBalance({ wallet, inputRef }: { wallet: Wallet; inputRef: React.
     }
     if (result.matches) {
       await append([entry]);
-      toast.show(`${wallet.name} matches. Confirmed today.`);
-      amount.setText('');
+      toast.show(`Confirmed. ${wallet.name} matches.`);
+      reset();
     } else {
       setPending({ entry, diff: result.differenceSats, since: result.entriesSinceLastMatch });
     }
@@ -129,50 +149,72 @@ function ConfirmBalance({ wallet, inputRef }: { wallet: Wallet; inputRef: React.
 
   const sinceEntries = pending === null ? [] : pending.since.map((id) => entries.find((e) => e.id === id)).filter((e): e is Entry => e !== undefined);
   return (
-    <Card as="section" aria-label="Confirm balance" className="flex flex-col gap-3">
+    <Card as="section" aria-label="Does it match?" className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="m-0 text-[15px] font-semibold">Does the balance match?</h2>
+        <h2 className="m-0 text-[15px] font-semibold">Does it match?</h2>
         <span className="text-xs text-muted" role="status">
           {confirmed === null ? 'Not confirmed yet' : confirmed === today ? 'Confirmed today' : `Last confirmed ${shortDate(confirmed, today)}`}
         </span>
       </div>
-      <form
-        className="flex flex-col gap-2.5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void check();
-        }}
-      >
-        <div className="flex items-end gap-2">
-          {(() => {
-            const unitPicker = (
-              <select
-                aria-label="Unit of the balance"
-                value={unit}
-                onChange={(e) => {
-                  const u = e.target.value as Unit2;
-                  setUnit(u);
-                  amount.setUnit(u);
-                  amount.setText('');
-                }}
-                className="cursor-pointer appearance-none rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-soft"
-              >
-                <option value="btc">BTC ▾</option>
-                <option value="sats">sats ▾</option>
-              </select>
-            );
-            const common = { ref: inputRef, label: 'What the app or device shows', frameClassName: 'flex-1', error, trailing: unitPicker } as const;
-            const changed = (t: string) => {
-              amount.setText(t);
-              setPending(null);
-            };
-            return unit === 'btc' ? <BtcInput {...common} value={amount.text} onChange={changed} /> : <TextField {...common} inputMode="numeric" autoComplete="off" placeholder="0" value={amount.text} onChange={(e) => changed(e.target.value.replace(/\D/g, ''))} />;
-          })()}
-          <Button type="submit" variant="secondary" className="mb-0 h-[52px]">
-            Check
+      {confirmed === null ? <p className="-mt-1.5 m-0 text-xs leading-snug text-muted">A quick check that nothing was missed. If the numbers differ, a buy or fee wasn&apos;t logged.</p> : null}
+      <p className="m-0 text-[15px] leading-snug">
+        Does {wallet.name} show{' '}
+        <strong className="font-semibold">
+          <Amount sats={sats} showUnit interactive={false} />
+        </strong>
+        ?
+      </p>
+      {!different ? (
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" onClick={() => void yes()}>
+            Yes
+          </Button>
+          <Button variant="ghost" onClick={() => setDifferent(true)}>
+            No, it&apos;s different
           </Button>
         </div>
-      </form>
+      ) : (
+        <form
+          className="flex flex-col gap-2.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void check();
+          }}
+        >
+          <div className="flex items-end gap-2">
+            {(() => {
+              const unitPicker = (
+                <select
+                  aria-label="Unit of the balance"
+                  value={unit}
+                  onChange={(e) => {
+                    const u = e.target.value as Unit2;
+                    setUnit(u);
+                    amount.setUnit(u);
+                    amount.setText('');
+                  }}
+                  className="cursor-pointer appearance-none rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-soft"
+                >
+                  <option value="btc">BTC ▾</option>
+                  <option value="sats">sats ▾</option>
+                </select>
+              );
+              const common = { ref: inputRef, label: `What ${wallet.name} shows`, frameClassName: 'flex-1', error, trailing: unitPicker } as const;
+              const changed = (t: string) => {
+                amount.setText(t);
+                setPending(null);
+              };
+              return unit === 'btc' ? <BtcInput {...common} value={amount.text} onChange={changed} /> : <TextField {...common} inputMode="numeric" autoComplete="off" placeholder="0" value={amount.text} onChange={(e) => changed(e.target.value.replace(/\D/g, ''))} />;
+            })()}
+            <Button type="submit" variant="secondary" className="mb-0 h-[52px]">
+              Check
+            </Button>
+          </div>
+          <Button variant="ghost" onClick={reset} className="-ml-4 self-start">
+            Back
+          </Button>
+        </form>
+      )}
       {pending === null && lastCheck !== undefined && !lastCheck.matches ? <p className="m-0 text-xs text-amber">The last check did not match. Enter the balance again after you have logged what is missing.</p> : null}
       {pending !== null ? (
         <div role="status" className="flex flex-col gap-2.5 rounded-2xl border border-amber/40 bg-amber/10 p-3.5 text-[13px] leading-snug">
@@ -561,7 +603,7 @@ export function WalletDetail() {
       ) : (
         <Balance wallet={wallet} sats={holdingSats} costCents={costCents} avg={holding?.averageCostCentsPerBtc ?? null} lotCount={lots.length} priceCents={priceCents} />
       )}
-      {!frozenView ? <ConfirmBalance wallet={wallet} inputRef={confirmRef} /> : null}
+      {!frozenView ? <ConfirmBalance wallet={wallet} sats={holdingSats} inputRef={confirmRef} /> : null}
     </>
   );
   const right = (

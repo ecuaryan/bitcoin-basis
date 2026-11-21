@@ -57,7 +57,8 @@ export function draftFrom(s: Settings): SettingsDraft {
 export type DraftResult = { ok: true; patch: SettingsPatch } | { ok: false; errors: Partial<Record<keyof SettingsDraft, string>> };
 
 /** The settings that changed, or what is wrong with the form. */
-export function patchFrom(current: Settings, d: SettingsDraft): DraftResult {
+/** `year` is the tax year typed-in losses are for (the current year); changing the losses saves it with them. */
+export function patchFrom(current: Settings, d: SettingsDraft, year?: number): DraftResult {
   const errors: Partial<Record<keyof SettingsDraft, string>> = {};
   const money = (key: keyof SettingsDraft, text: string): number => {
     const c = parseDollars(text);
@@ -98,6 +99,7 @@ export function patchFrom(current: Settings, d: SettingsDraft): DraftResult {
   for (const key of Object.keys(next) as (keyof Settings)[]) {
     if (JSON.stringify(next[key]) !== JSON.stringify(current[key])) patch[key] = next[key];
   }
+  if (year !== undefined && (st !== current.carryforwardStCents || lt !== current.carryforwardLtCents)) patch.carryforwardYear = year;
   return { ok: true, patch: patch as SettingsPatch };
 }
 

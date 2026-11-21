@@ -68,8 +68,8 @@ export function summarize(oldest: SalePlan, lowest: SalePlan): Segment[] {
   const carryDiff = carriedOut(lowest) - carriedOut(oldest);
   if (oldest.totalTaxCents <= 0 && lowest.totalTaxCents <= 0) {
     out.push('Neither choice owes tax this year. ');
-    if (carryDiff > 0) out.push({ bold: 'Lowest tax keeps ' }, { cents: carryDiff, bold: true }, { bold: ' more carryforward' }, ' for a future sale. ');
-    else if (carryDiff < 0) out.push({ bold: 'Oldest first keeps ' }, { cents: -carryDiff, bold: true }, { bold: ' more carryforward' }, ' for a future sale. ');
+    if (carryDiff > 0) out.push({ bold: 'Lowest tax keeps ' }, { cents: carryDiff, bold: true }, { bold: ' more losses' }, ' for next year. ');
+    else if (carryDiff < 0) out.push({ bold: 'Oldest first keeps ' }, { cents: -carryDiff, bold: true }, { bold: ' more losses' }, ' for next year. ');
   } else if (oldest.totalTaxCents === lowest.totalTaxCents) {
     out.push('Both choices add the same tax: ', { cents: oldest.totalTaxCents, bold: true }, '. ');
   } else if (lowest.totalTaxCents < oldest.totalTaxCents) {

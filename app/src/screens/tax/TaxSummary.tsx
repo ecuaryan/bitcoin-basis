@@ -83,20 +83,20 @@ export function TaxSummary() {
               </tr>
               {v.carriedIn.st + v.carriedIn.lt > 0 && (
                 <tr>
-                  <td className={td}>Loss carried in</td>
+                  <td className={td}>Losses from past years</td>
                   <td className={td} />
                   <td className={`${td} text-right`}>{m(v.carriedIn.st + v.carriedIn.lt)}</td>
                 </tr>
               )}
               <tr>
-                <td className={td}>Short-term / long-term after carryforward</td>
+                <td className={td}>Short-term / long-term after losses from past years</td>
                 <td className={td} />
                 <td className={`${td} text-right`}>
                   {m(v.netting.st)} / {m(v.netting.lt)}
                 </td>
               </tr>
               <tr>
-                <td className={td}>Carries into {year + 1}</td>
+                <td className={td}>Losses left for {year + 1}</td>
                 <td className={td} />
                 <td className={`${td} text-right`}>{m(v.carryOut.st + v.carryOut.lt)}</td>
               </tr>

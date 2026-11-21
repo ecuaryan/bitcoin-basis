@@ -207,9 +207,11 @@ export interface Settings {
   readonly filingStatus: FilingStatus;
   readonly wagesCents: Cents;
   readonly state: StateTaxSetting;
-  /** Loss carried into the current year, as positive cents. */
+  /** Unused losses from past years' returns, as positive cents. */
   readonly carryforwardStCents: Cents;
   readonly carryforwardLtCents: Cents;
+  /** The tax year those losses are for. Missing (older entries): the current year. */
+  readonly carryforwardYear?: number;
   readonly givingEnabled: boolean;
   readonly givingName: string;
   /** Giving percent in basis points (1/10000ths): 1000 = 10%. A whole number, so no float error. */

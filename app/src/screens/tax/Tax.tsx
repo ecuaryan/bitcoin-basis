@@ -1,4 +1,4 @@
-import { form8949Csv, incomeCsv, yearSummary } from '@bitcoin-basis/engine';
+import { form8949Csv, incomeCsv, yearOf, yearSummary } from '@bitcoin-basis/engine';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -16,8 +16,10 @@ import { Sheet } from '../../ui/Sheet.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import { LockIcon } from '../../ui/icons.tsx';
-import { answerReason, defaultTaxYear, flagsForYear, form1099Rows, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
+import { answerReason, defaultTaxYear, flagsForYear, form1099Rows, nextYearLosses, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
 import { sessionMemory } from '../../data/session-memory.ts';
+import { LOSSES_CHECK, staleLosses } from '../../lib/losses.ts';
+import { useWriter } from '../../ui/use-writer.ts';
 import { useTitle } from '../../ui/use-title.ts';
 
 const CHECKED_KEY = '1099.checked';
@@ -54,10 +56,56 @@ function Count({ n, children }: { n: number; children: ReactNode }) {
 function CloseYearSheet({ year, onClose }: { year: number; onClose(): void }) {
   const { entries, state, isDemo, today, append } = useLedger();
   const toast = useToast();
+  const write = useWriter();
+  const [closedNow, setClosedNow] = useState(false);
+  // Worked out when the sheet opens, so closing the year does not change what is offered.
+  const [carry] = useState(() => nextYearLosses(state, state.settings, year, today));
   async function close() {
     await append([{ id: newIdGenerator(entries)(), kind: 'close-year', at: entryInstant(isDemo, today), tz: state.settings.timeZone, year }]);
-    toast.show(`${year} is closed.`);
+    if (carry === null) {
+      toast.show(`${year} is closed.`);
+      onClose();
+    } else setClosedNow(true);
+  }
+  async function saveThese() {
+    if (carry === null) return;
+    await write({ kind: 'settings', patch: { carryforwardStCents: carry.st, carryforwardLtCents: carry.lt, carryforwardYear: year + 1 } });
+    toast.show(`Saved for ${year + 1}.`);
     onClose();
+  }
+  if (closedNow && carry !== null) {
+    return (
+      <Sheet open onClose={onClose} title={`${year} is closed`}>
+        <div className="flex flex-col gap-4 pb-3">
+          <section aria-label={`Losses left for ${year + 1}`} className="flex flex-col gap-2 rounded-2xl border border-line bg-bg p-3.5">
+            <span className="text-sm font-semibold">Losses left for {year + 1}</span>
+            <dl className="m-0 flex flex-col gap-1 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-soft">Short-term</dt>
+                <dd className="m-0 font-semibold">
+                  <Money cents={carry.st} />
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-soft">Long-term</dt>
+                <dd className="m-0 font-semibold">
+                  <Money cents={carry.lt} />
+                </dd>
+              </div>
+            </dl>
+          </section>
+          <p className="m-0 text-[13px] leading-snug text-muted">{LOSSES_CHECK}</p>
+          <div className="flex gap-2.5">
+            <Button className="flex-1" onClick={onClose}>
+              Not now
+            </Button>
+            <Button variant="primary" className="flex-[1.6]" onClick={() => void saveThese()}>
+              Use these for {year + 1}
+            </Button>
+          </div>
+        </div>
+      </Sheet>
+    );
   }
   return (
     <Sheet open onClose={onClose} title={`Close ${year}?`}>
@@ -125,6 +173,7 @@ export function Tax() {
   const gifts = useMemo(() => overExclusion(state, year), [state, year]);
   const flags = useMemo(() => flagsForYear(state, year), [state, year]);
   const closed = state.closedYears.includes(year);
+  const stale = year === yearOf(today) ? staleLosses(state.settings, year) : null;
   const yes = summary.digitalAssetAnswer === 'yes';
   const doneCount = forms.filter((f) => checked.includes(`${year}:${f.wallet.id}`)).length;
 
@@ -169,11 +218,11 @@ export function Tax() {
     ['Long-term total', <Money key="lt" cents={view.ltCents} signed />],
   ];
   const afterRows: [string, ReactNode][] = [
-    ...(view.carriedIn.st + view.carriedIn.lt > 0 ? ([['Losses from earlier years', <Money key="ci" cents={view.carriedIn.st + view.carriedIn.lt} />]] as [string, ReactNode][]) : []),
-    ['Short-term after earlier losses', <Money key="ast" cents={view.netting.st} signed />],
-    ['Long-term after earlier losses', <Money key="alt" cents={view.netting.lt} signed />],
+    ...(view.carriedIn.st + view.carriedIn.lt > 0 ? ([['Losses from past years', <Money key="ci" cents={view.carriedIn.st + view.carriedIn.lt} />]] as [string, ReactNode][]) : []),
+    ['Short-term after losses from past years', <Money key="ast" cents={view.netting.st} signed />],
+    ['Long-term after losses from past years', <Money key="alt" cents={view.netting.lt} signed />],
     ...(view.netting.lossDeduction > 0 ? ([['Used against other income', <Money key="ld" cents={view.netting.lossDeduction} />]] as [string, ReactNode][]) : []),
-    [`Losses to use later (${year + 1})`, <Money key="co" cents={view.carryOut.st + view.carryOut.lt} />],
+    [`Losses left for ${year + 1}`, <Money key="co" cents={view.carryOut.st + view.carryOut.lt} />],
   ];
 
   const income = (
@@ -339,8 +388,16 @@ export function Tax() {
       <div className={cx(wide ? 'grid grid-cols-2 items-start gap-6' : 'flex flex-col gap-3')}>
         <div className="flex flex-col gap-3">
           {answer}
+          {stale !== null && (
+            <p className="m-0 text-[13px] leading-snug text-amber">
+              Your losses from past years are saved for {stale.savedFor}.{' '}
+              <Link to="/records?v=settings" className="font-semibold">
+                Update them for {year}
+              </Link>
+            </p>
+          )}
           <Rows label="Summary" rows={summaryRows} />
-          <Rows label="After earlier losses" rows={afterRows} />
+          <Rows label="After losses from past years" rows={afterRows} />
           {income}
         </div>
         <div className="flex flex-col gap-3">

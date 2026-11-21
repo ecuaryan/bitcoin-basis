@@ -97,9 +97,11 @@ test('Records: changing settings changes the Sell tax', async ({ page }) => {
   await expect(oldest).toContainText('Tax this adds');
   const before = await oldest.innerText();
   await go(page, '/records?v=settings');
-  await expect(page.getByLabel('Long-term loss carried in')).toBeVisible();
+  const losses = page.getByRole('group', { name: 'Losses from past years' });
+  await expect(losses.getByLabel('Long-term')).toBeVisible();
+  await expect(losses).toContainText('for 2026');
   await expectNoViolations(page);
-  await page.getByLabel('Long-term loss carried in').fill('0');
+  await losses.getByLabel('Long-term').fill('0');
   await page.getByLabel('Wages and other income (a year)').fill('300000');
   await page.getByLabel('Wages and other income (a year)').blur();
   await expect(page.getByText('Saved.')).toBeVisible();

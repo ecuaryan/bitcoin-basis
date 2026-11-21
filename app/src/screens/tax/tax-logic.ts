@@ -1,3 +1,4 @@
+import { lossesForYear } from '../../lib/losses.ts';
 import { federalTableFor, taxForYear, yearOf, yearSummary, type Cents, type Entry, type LedgerState, type Netting, type Settings, type Wallet, stateChoiceFromSettings, giftsOverExclusion, type RecipientTotal, type YearSummary } from '@bitcoin-basis/engine';
 
 /** Years worth choosing: any with activity or a closing, plus this year; newest first. */
@@ -78,7 +79,7 @@ export function totalsByKind(s: YearSummary): { sales: KindTotals; spending: Kin
 }
 
 export interface YearTaxView {
-  /** Totals before any carryforward. */
+  /** Totals before losses from past years. */
   stCents: Cents;
   ltCents: Cents;
   carriedIn: { st: Cents; lt: Cents };
@@ -91,12 +92,12 @@ export interface YearTaxView {
 }
 
 /**
- * ST and LT totals after carryforward. The only carryforward the app knows is the one in Settings, which is
- * the loss carried into the current year; earlier years show their own totals without it.
+ * ST and LT totals after losses from past years. The only ones the app knows are those in Settings, saved for one
+ * year (the current year when no year was saved); other years show their own totals without them.
  */
 export function yearTaxView(state: LedgerState, settings: Settings, year: number, today: string): YearTaxView {
   const s = yearSummary(state, year);
-  const carriedIn = yearOf(today) === year ? { st: settings.carryforwardStCents, lt: settings.carryforwardLtCents } : { st: 0, lt: 0 };
+  const carriedIn = lossesForYear(settings, year, today);
   const r = taxForYear({ year, filingStatus: settings.filingStatus, wages: settings.wagesCents, st: s.stGainCents, lt: s.ltGainCents, carryforward: carriedIn, state: stateChoiceFromSettings(settings) });
   const { table, fellBack } = federalTableFor(year);
   return {
@@ -161,4 +162,12 @@ export function yearLockHistory(entries: readonly Entry[]): { id: string; year: 
   return entries
     .flatMap((e) => (e.kind === 'close-year' || e.kind === 'unlock-year' ? [{ id: e.id, year: e.year, kind: e.kind, at: e.at, reason: e.reason }] : []))
     .sort((a, b) => (a.id < b.id ? 1 : -1));
+}
+
+/** What closing `year` leaves for the next one, or null when there is nothing to carry or Settings already say so. */
+export function nextYearLosses(state: LedgerState, settings: Settings, year: number, today: string): { st: Cents; lt: Cents } | null {
+  const out = yearTaxView(state, settings, year, today).carryOut;
+  if (out.st + out.lt === 0) return null;
+  const saved = settings.carryforwardYear === year + 1 && settings.carryforwardStCents === out.st && settings.carryforwardLtCents === out.lt;
+  return saved ? null : out;
 }

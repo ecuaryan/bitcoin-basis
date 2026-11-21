@@ -92,7 +92,7 @@ Common fields: `id` (UUIDv7 in practice; any 1-64 letters, digits, `_` or `-`, n
 
 ## Settings (as entries)
 
-Filing status, wages, state (flat-rate, no-tax or custom rate), loss carryforward into the current year (short and long, cents), giving on/off, name ("Giving" by default), percent (`givingPercentBp`, whole basis points: 1000 = 10%), before/after tax, earlier money in (cents), time zone.
+Filing status, wages, state (flat-rate, no-tax or custom rate), losses from past years (unused losses from earlier returns; short and long, cents) with the tax year they are for (`carryforwardYear`; entries without it mean the current year), giving on/off, name ("Giving" by default), percent (`givingPercentBp`, whole basis points: 1000 = 10%), before/after tax, earlier money in (cents), time zone.
 
 ## Outputs
 
@@ -191,3 +191,4 @@ Readings chosen where the spec is silent or ambiguous. Conservative and simple f
 18. **No throws from user input.** Besides the per-entry limits (Decision 2), replay keeps running totals of sats acquired and of cents entered (costs, values, giver costs, proceeds, gift values, fee values, giving paid). An entry that would push either past 2^52 is an `out-of-range` error and skipped, so every sum the engine reports stays an exact safe integer with room to spare. Derived figures that still cannot be represented (an average cost per BTC from one sat bought for $1,000,000) are `null`.
 19. **Tax tables:** a year before the earliest table uses the earliest; a year after the latest uses the latest; `fellBack` is set and the note names the table used and whether it is the earliest or latest.
 20. **Rounding** is half away from zero, symmetric for negatives (−0.5 → −1), everywhere "half-up" appears (`divRoundHalfUp`, `mulDivRoundHalfUp`, `splitProportional`). Kept deliberately: it treats gains and losses alike, and splits still add back exactly because the remainder goes on the last piece.
+21. **Losses from past years are saved for one year.** `carryforwardStCents` and `carryforwardLtCents` apply only to `carryforwardYear` (one optional year for both); any other year gets zero (`carryforwardFor`). Entries written before the field existed have no year: the app treats them as the current year, and the planner (which has no "today") applies them to the year it is asked about, exactly as before. Saving the amounts in Settings stamps the current year. Closing a tax year offers the losses it leaves for the next year and saves them with `carryforwardYear: year + 1`. Tax season and Sell show a one-line prompt when the saved year is earlier than the year shown. The user-facing name is "losses from past years"; the field names keep the code word.

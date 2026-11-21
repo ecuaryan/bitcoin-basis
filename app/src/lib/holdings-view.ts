@@ -42,6 +42,8 @@ export interface HoldingsView {
   /** Proceeds from sales, spending and network fees paid in BTC. */
   moneyOutCents: number;
   carryforwardCents: number;
+  /** The tax year the saved losses are for, if one was saved. */
+  lossesYear: number | null;
   isEmpty: boolean;
 }
 
@@ -105,6 +107,7 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
     moneyInCents: h.moneyPutInCents,
     moneyOutCents: state.disposals.reduce((s, d) => s + d.proceedsCents, 0),
     carryforwardCents: state.settings.carryforwardStCents + state.settings.carryforwardLtCents,
+    lossesYear: state.settings.carryforwardYear ?? null,
     isEmpty: state.wallets.length === 0 && state.lots.length === 0,
   };
 }

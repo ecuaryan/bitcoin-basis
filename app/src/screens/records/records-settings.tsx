@@ -1,6 +1,9 @@
-import { FILING_STATUSES, STATE_RATES } from '@bitcoin-basis/engine';
+import { FILING_STATUSES, STATE_RATES, yearOf } from '@bitcoin-basis/engine';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
+import { Button } from '../../ui/Button.tsx';
+import { useHelp } from '../../ui/Help.tsx';
+import { LOSSES_HELP, LOSSES_TITLE, staleLosses } from '../../lib/losses.ts';
 import { Card } from '../../ui/Card.tsx';
 import { MoneyInput, PercentInput } from '../../ui/formatted-inputs.tsx';
 import { Field, SelectBox, Toggle } from '../../ui/Field.tsx';
@@ -21,7 +24,11 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 /** Settings are entries too: saving adds a settings entry with only what changed. */
 export function SettingsView() {
-  const { state } = useLedger();
+  const { state, today } = useLedger();
+  const thisYear = yearOf(today);
+  const lossesYear = state.settings.carryforwardYear ?? thisYear;
+  const stale = staleLosses(state.settings, thisYear);
+  const help = useHelp(`What are ${LOSSES_TITLE.toLowerCase()}?`, LOSSES_HELP);
   const write = useWriter();
   const toast = useToast();
   const s = state.settings;
@@ -30,15 +37,16 @@ export function SettingsView() {
   const err = (k: keyof SettingsDraft) => errors[k];
 
   /** Changes save as you go: choices at once, typed fields when you leave them. Nothing to forget to press. */
-  async function save(d: SettingsDraft) {
-    const r = patchFrom(s, d);
+  async function save(d: SettingsDraft, relabelYear = false) {
+    const r = patchFrom(s, d, thisYear);
     if (!r.ok) {
       setErrors(r.errors);
       return;
     }
     setErrors({});
-    if (Object.keys(r.patch).length === 0) return;
-    await write({ kind: 'settings', patch: r.patch });
+    const patch = relabelYear ? { ...r.patch, carryforwardYear: thisYear } : r.patch;
+    if (Object.keys(patch).length === 0) return;
+    await write({ kind: 'settings', patch });
     toast.show('Saved.');
   }
   /** A choice (select or switch): set it and save it. */
@@ -85,11 +93,28 @@ export function SettingsView() {
           </SelectBox>
         )}
         {draft.stateKind === 'custom' && <PercentInput label="Your state rate" value={draft.stateRate} {...num('stateRate')} error={err('stateRate')} />}
-        <div className="grid grid-cols-2 gap-2.5">
-          <MoneyInput label="Short-term loss carried in" value={draft.carryforwardSt} {...num('carryforwardSt')} error={err('carryforwardSt')} />
-          <MoneyInput label="Long-term loss carried in" value={draft.carryforwardLt} {...num('carryforwardLt')} error={err('carryforwardLt')} />
+        <div role="group" aria-label={LOSSES_TITLE} className="flex flex-col gap-2.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="flex items-baseline gap-1 text-sm font-semibold">
+              {LOSSES_TITLE}
+              {help.button}
+            </span>
+            <span className="text-xs text-muted">for {lossesYear}</span>
+          </div>
+          {help.panel}
+          {stale !== null && (
+            <p className="m-0 flex flex-wrap items-center gap-x-3 text-xs text-amber">
+              These are for {stale.savedFor}. Update them for {thisYear}.
+              <Button variant="ghost" onClick={() => void save({ ...draft }, true)}>
+                Still right for {thisYear}
+              </Button>
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-2.5">
+            <MoneyInput label="Short-term" value={draft.carryforwardSt} {...num('carryforwardSt')} error={err('carryforwardSt')} />
+            <MoneyInput label="Long-term" value={draft.carryforwardLt} {...num('carryforwardLt')} error={err('carryforwardLt')} />
+          </div>
         </div>
-        <p className="m-0 text-xs text-muted">Losses from earlier years that you carry into this one. Find them on last year&apos;s return.</p>
       </Group>
 
       <Group title="Giving">

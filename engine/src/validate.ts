@@ -89,6 +89,7 @@ const isSettingsPatch = matches({
   state: opt(isStateTax),
   carryforwardStCents: opt(isCents),
   carryforwardLtCents: opt(isCents),
+  carryforwardYear: opt(isYear),
   givingEnabled: opt(isBoolean),
   givingName: opt(isText),
   givingPercentBp: opt(isRateTenThousandths),

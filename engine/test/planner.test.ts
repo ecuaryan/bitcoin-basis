@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { replay, DEFAULT_SETTINGS } from '../src/replay.ts';
 import { averageCostPerBtc, holdings } from '../src/reports.ts';
 import { capitalTaxEffect } from '../src/tax/tax.ts';
-import { stateChoiceFromSettings } from '../src/tax/settings.ts';
+import { carryforwardFor, stateChoiceFromSettings } from '../src/tax/settings.ts';
 import { picksAfterMove } from '../src/picks.ts';
 import { givingDue, givingOnSale, planBorrow, planPrepareSale, planSale, taxContext, taxInput, DEFERRED_NOTE } from '../src/planner/index.ts';
 import type { Entry, LedgerState, Settings } from '../src/types.ts';
@@ -74,6 +74,18 @@ describe('sell planner: spec examples', () => {
     expect(oldestFirst.carryforwardOut).toEqual({ st: 0, lt: 0 });
     const ctx = taxContext(state, settings, 2026, DATE);
     expect(capitalTaxEffect(taxInput(ctx, oldestFirst.stGainCents, oldestFirst.ltGainCents)).total).toBe(cents('-216.25'));
+  });
+
+  test('losses from past years apply only to the year they are saved for', () => {
+    const saved = { ...SETTINGS, carryforwardLtCents: cents('6000') };
+    expect(carryforwardFor(saved, 2026)).toEqual({ st: 0, lt: cents('6000') });
+    expect(carryforwardFor(saved, 2030, 2026)).toEqual({ st: 0, lt: 0 });
+    expect(carryforwardFor(saved, 2026, 2026)).toEqual({ st: 0, lt: cents('6000') });
+    expect(carryforwardFor({ ...saved, carryforwardYear: 2026 }, 2026, 2030)).toEqual({ st: 0, lt: cents('6000') });
+    expect(carryforwardFor({ ...saved, carryforwardYear: 2027 }, 2026)).toEqual({ st: 0, lt: 0 });
+    const other = plans(testBook(), { ...saved, carryforwardYear: 2027 });
+    expect(other.oldestFirst.totalTaxCents).toBe(cents('799.25'));
+    expect(plans(testBook(), { ...saved, carryforwardYear: 2026 }).oldestFirst.carryforwardOut).toEqual({ st: 0, lt: 0 });
   });
 
   test('settings state maps to the tax module', () => {

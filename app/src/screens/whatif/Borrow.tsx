@@ -12,6 +12,7 @@ import { BtcInput, MoneyInput, PercentInput } from '../../ui/formatted-inputs.ts
 import { SelectBox } from '../../ui/Field.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { loadScenarios, parsePercentBp, priceScale, roomPercent, saveScenarios, type SavedScenario } from './borrow-logic.ts';
+import { hasLosses } from '../../lib/losses.ts';
 import { Note } from './sell-parts.tsx';
 import { percentFromBp, rangeLabel } from './sell-logic.ts';
 
@@ -159,7 +160,7 @@ export function Borrow() {
   } else if (price !== null) {
     const { plan } = outcome;
     const sale = plan.liquidation.sale;
-    const covered = sale.totalTaxCents === 0 && sale.gainCents > 0 && state.settings.carryforwardStCents + state.settings.carryforwardLtCents > 0;
+    const covered = sale.totalTaxCents === 0 && sale.gainCents > 0 && hasLosses(state.settings, year, today);
     const rows: [string, ReactNode][] = [
       ['Interest a year', <Money key="i" cents={plan.interestPerYearCents} precision="dollars" />],
       [
@@ -172,7 +173,7 @@ export function Borrow() {
         'Tax that sale would add',
         <span key="t">
           <Money cents={sale.totalTaxCents} precision="dollars" /> · {sale.gainCents < 0 ? 'loss' : 'gain'} <Money cents={Math.abs(sale.gainCents)} precision="dollars" />
-          {covered ? ' covered by carryforward' : ''}
+          {covered ? ' covered by losses from past years' : ''}
         </span>,
       ],
     ];

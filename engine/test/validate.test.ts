@@ -34,6 +34,7 @@ const VALID: Entry[] = [
       state: { kind: 'custom', rate: 530 },
       carryforwardStCents: 0,
       carryforwardLtCents: 1,
+      carryforwardYear: 2026,
       givingEnabled: true,
       givingName: 'Tithe',
       givingPercentBp: 1000,

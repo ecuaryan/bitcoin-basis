@@ -1,6 +1,6 @@
 /** Shared tax context for planners: the settings plus the year's already-realized gains. */
 import { yearSummary } from '../reports.ts';
-import { stateChoiceFromSettings } from '../tax/settings.ts';
+import { carryforwardFor, stateChoiceFromSettings } from '../tax/settings.ts';
 import type { Carryforward, StateChoice, TaxInput } from '../tax/tax.ts';
 import type { Cents } from '../money.ts';
 import type { FilingStatus, LedgerState, LocalDate, Settings } from '../types.ts';
@@ -13,7 +13,7 @@ export interface TaxContext {
   readonly filingStatus: FilingStatus;
   readonly wagesCents: Cents;
   readonly state: StateChoice;
-  /** Losses carried into the year. */
+  /** Losses from past years that apply to this year. */
   readonly carryforward: Carryforward;
   /** Gains already realized that year (negative for a loss). */
   readonly ytdStCents: Cents;
@@ -29,7 +29,7 @@ export function taxContext(state: LedgerState, settings: Settings, year: number,
     filingStatus: settings.filingStatus,
     wagesCents: settings.wagesCents,
     state: stateChoiceFromSettings(settings),
-    carryforward: { st: settings.carryforwardStCents, lt: settings.carryforwardLtCents },
+    carryforward: carryforwardFor(settings, year),
     ytdStCents: y.stGainCents,
     ytdLtCents: y.ltGainCents,
   };

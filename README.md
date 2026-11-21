@@ -28,7 +28,7 @@ All screenshots use the built-in synthetic demo data.
 - **Holdings:** what your Bitcoin is worth, average cost, gain on paper, a stack by year, and balances per wallet. Every lot is tagged Documented, Reconstructed, Estimated or Unknown, so you can see how well each cost is backed up.
 - **Log:** buy, receive (income, gift, inherited, payout from a frozen platform), move between wallets (with the fee), sell or spend, give, and record lost coins.
 - **Wallet by wallet:** coins are tracked per wallet, as the 2025 IRS rules ask (Rev. Proc. 2024-28). Saved coin choices: every sale remembers exactly which lots it used, so adding an older purchase later never changes a past sale.
-- **Sell and Borrow planners:** compare oldest first with lowest tax (coins used, short- and long-term gain, tax this adds, carryforward). Borrow shows loan-to-value, margin-call and liquidation prices, and the tax a liquidation would add.
+- **Sell and Borrow planners:** compare oldest first with lowest tax (coins used, short- and long-term gain, tax this adds, losses left for next year). Borrow shows loan-to-value, margin-call and liquidation prices, and the tax a liquidation would add.
 - **Tax season:** gains, losses, income and gifts for a year, the 1040 digital-asset answer, and CSV downloads (Form 8949-style, income) for your preparer. Federal tables for 2025 to 2027; state as a flat rate, no tax, or a custom rate.
 - **Records:** entries with history (edits and deletes are new entries, nothing is overwritten), close a year, import opening lots from a CSV, export everything, settings, and security.
 - **Frozen or failed platform:** close-out with the loss, and later payouts as recovery gains.
