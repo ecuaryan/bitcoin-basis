@@ -5,6 +5,11 @@ import { cx } from '../lib/cx.ts';
 export const INPUT_CLASSES =
   'w-full min-h-[52px] rounded-[14px] border border-line bg-bg px-3.5 text-[15px] text-text placeholder:text-muted/70 focus-visible:border-accent disabled:opacity-60';
 
+/** A box that wraps an input (prefix, unit, trailing text): the box draws the one focus ring; the input inside draws none. */
+export const FRAME_FOCUS = 'focus-within:border-accent focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-amber';
+/** For the bare input inside such a box. */
+export const INNER_INPUT = 'border-0 bg-transparent outline-none focus-visible:border-0 focus-visible:outline-none';
+
 interface FieldFrameProps {
   label: string;
   id: string;
@@ -58,14 +63,14 @@ export function TextField({ label, hint, error, frameClassName, trailing, classN
       id={id}
       aria-invalid={error ? true : undefined}
       aria-describedby={describedBy(id, hint, error)}
-      className={cx(INPUT_CLASSES, trailing ? 'flex-1 !min-h-0 border-0 bg-transparent px-0 focus-visible:border-0' : '', className)}
+      className={cx(INPUT_CLASSES, trailing ? cx('flex-1 !min-h-0 px-0', INNER_INPUT) : '', className)}
       {...rest}
     />
   );
   return (
     <FieldFrame label={label} id={id} hint={hint} error={error} className={frameClassName}>
       {trailing ? (
-        <div className="flex min-h-[52px] items-center justify-between gap-3 rounded-[14px] border border-line bg-bg px-3.5 focus-within:border-accent">
+        <div className={cx('flex min-h-[52px] items-center justify-between gap-3 rounded-[14px] border border-line bg-bg px-3.5', FRAME_FOCUS)}>
           {input}
           <span className="flex-none text-xs text-muted">{trailing}</span>
         </div>

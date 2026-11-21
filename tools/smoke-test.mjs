@@ -14,15 +14,20 @@ export const REQUIRED_HEADERS = [
   "cross-origin-resource-policy",
 ];
 
+/** The security-header problems of one response (empty = all present). Shared with verify-deployment.mjs. */
+export function securityHeaderProblems(label, headers) {
+  const problems = [];
+  for (const h of REQUIRED_HEADERS) if (!headers.get(h)) problems.push(`${label}: missing ${h} header`);
+  if (headers.get("x-content-type-options")?.toLowerCase() !== "nosniff") problems.push(`${label}: x-content-type-options is not nosniff`);
+  if (!/script-src 'self'/.test(headers.get("content-security-policy") ?? "")) problems.push(`${label}: CSP lacks script-src 'self'`);
+  return problems;
+}
+
 /** Returns a list of problems (empty = healthy). */
 export async function smoke(origin, fetchImpl = fetch) {
   const base = origin.replace(/\/+$/, "");
   const problems = [];
-  const headerProblems = (label, res) => {
-    for (const h of REQUIRED_HEADERS) if (!res.headers.get(h)) problems.push(`${label}: missing ${h} header`);
-    if (res.headers.get("x-content-type-options")?.toLowerCase() !== "nosniff") problems.push(`${label}: x-content-type-options is not nosniff`);
-    if (!/script-src 'self'/.test(res.headers.get("content-security-policy") ?? "")) problems.push(`${label}: CSP lacks script-src 'self'`);
-  };
+  const headerProblems = (label, res) => problems.push(...securityHeaderProblems(label, res.headers));
   try {
     const res = await fetchImpl(`${base}/api/status`);
     if (res.status !== 200) problems.push(`/api/status returned HTTP ${res.status}`);

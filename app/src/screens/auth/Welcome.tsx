@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { explainError, wasCancelled } from '../../data/explain-error.ts';
@@ -41,6 +41,19 @@ export function Welcome() {
   const [mode, setMode] = useState<Mode>(() => (kitHandoff.get()?.reason === 'setup' ? 'code' : incomingRecovery.peek() !== null ? 'restore' : 'home'));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Does the server already hold records? null while we ask (a neutral skeleton shows, never the claim form). If the
+  // question fails (no server, offline) the claim form shows: that is the only way forward on an unclaimed instance.
+  const [claimed, setClaimed] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    vault.serverStatus().then(
+      (r) => live && setClaimed(r.claimed),
+      () => live && setClaimed(false),
+    );
+    return () => {
+      live = false;
+    };
+  }, [vault]);
   useTitle(WELCOME_TITLES[mode]);
 
   const run = async (fn: () => Promise<void>) => {
@@ -111,6 +124,12 @@ export function Welcome() {
     );
   }
 
+  if (claimed === null) return <WelcomeSkeleton />;
+  if (claimed) return <ClaimedHome onOpen={() => setMode('restore')} onDemo={() => void run(async () => {
+    await loadDemo();
+    navigate('/', { replace: true });
+  })} />;
+
   return (
     <Frame>
       <section className="relative flex flex-col items-center gap-[18px] pt-[72px] text-center">
@@ -168,6 +187,47 @@ export function Welcome() {
   );
 }
 
+const GUIDE_URL = 'https://github.com/ecuaryan/bitcoin-basis/blob/main/SELF-HOSTING.md';
+
+/** While we ask the server whether it is claimed: the same frame, nothing to type into. */
+function WelcomeSkeleton() {
+  return (
+    <Frame>
+      <div role="status" aria-label="Loading" className="relative flex flex-col items-center gap-[18px] pt-[72px]">
+        <div className="size-20 animate-pulse rounded-[20px] bg-surface-2" />
+        <div className="h-[70px] w-64 animate-pulse rounded-2xl bg-surface-2" />
+        <div className="h-14 w-72 animate-pulse rounded-2xl bg-surface" />
+      </div>
+    </Frame>
+  );
+}
+
+/** The server already holds records: there is nothing to claim, only to open. */
+function ClaimedHome({ onOpen, onDemo }: { onOpen(): void; onDemo(): void }) {
+  return (
+    <Frame>
+      <section className="relative flex flex-col items-center gap-[18px] pt-[72px] text-center">
+        <LogoMark size={80} />
+        <h1 className="m-0 font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.02em]">These records are already set up.</h1>
+        <p className="m-0 max-w-[300px] text-[15px] leading-normal text-soft">Open them with your recovery code or a passkey.</p>
+      </section>
+      <div className="min-h-10 flex-1 lg:flex-none" />
+      <div className="relative flex flex-col gap-3">
+        <BigButton onClick={onOpen}>Open my records</BigButton>
+      </div>
+      <div className="relative mt-2 flex flex-col items-center gap-0.5 text-center text-xs text-muted">
+        <span>
+          Set up a new instance?{' '}
+          <a href={GUIDE_URL} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center font-semibold">
+            See the self-hosting guide.
+          </a>
+        </span>
+        <TextButton onClick={onDemo}>Try the demo</TextButton>
+      </div>
+    </Frame>
+  );
+}
+
 function SetupForm({ busy, error, onClaim }: { busy: boolean; error: string | null; onClaim(code: string): void }) {
   const id = useId();
   const [code, setCode] = useState('');
@@ -185,7 +245,7 @@ function SetupForm({ busy, error, onClaim }: { busy: boolean; error: string | nu
     >
       <div className="flex flex-col gap-1.5">
         <label htmlFor={id} className="text-[13px] text-soft">
-          Setup code from your install script
+          Setup code
         </label>
         <input
           id={id}
@@ -197,9 +257,13 @@ function SetupForm({ busy, error, onClaim }: { busy: boolean; error: string | nu
           spellCheck={false}
           placeholder="ABCD-1234-…"
           aria-invalid={error !== null || problem !== null}
+          aria-describedby={`${id}-hint`}
           className="min-h-14 w-full rounded-[14px] border border-accent bg-surface px-4 text-center font-display text-[16px] font-semibold tracking-[0.04em] text-text placeholder:font-sans placeholder:text-[15px] placeholder:font-normal placeholder:tracking-normal placeholder:text-muted"
         />
       </div>
+      <span id={`${id}-hint`} className="-mt-1 text-xs text-muted">
+        Printed by <code className="font-mono">npm run setup</code>
+      </span>
       <ErrorLine>{problem ?? error}</ErrorLine>
       <BigButton type="submit" disabled={busy || code.trim() === ''}>
         {busy ? 'Waiting for your passkey…' : 'Claim and create my passkey'}

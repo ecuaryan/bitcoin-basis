@@ -37,7 +37,7 @@ export function AmountInput({ amount, label = 'Amount', error, needsPrice }: { a
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-err` : undefined}
         onChange={(e) => amount.setText(clean(e.target.value))}
-        className="w-full rounded-xl border-0 bg-transparent py-1 text-center font-display text-[40px] font-semibold tracking-[-0.02em] text-text placeholder:text-muted/40 sm:text-[44px]"
+        className="w-full overflow-visible rounded-xl border-0 bg-transparent py-2 text-center font-display text-[40px] leading-[1.4] font-semibold tracking-[-0.02em] text-text placeholder:text-muted/40 sm:text-[44px]"
       />
       <div role="group" aria-label="Unit for the amount" className="flex gap-1">
         {UNITS.map((u) => {

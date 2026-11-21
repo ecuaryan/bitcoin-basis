@@ -4,6 +4,7 @@ import { NotFound } from './screens/stubs.tsx';
 import { RequireVault } from './screens/auth/RequireVault.tsx';
 import { AppShell, useLogSheet } from './ui/AppShell.tsx';
 import { lazy, Suspense, useEffect } from 'react';
+import { useServiceWorkerUpdateToast } from './register-sw.ts';
 
 // Everything except Holdings loads on demand, so the first screen stays small.
 const WhatIf = lazy(() => import('./screens/whatif/WhatIf.tsx').then((m) => ({ default: m.WhatIf })));
@@ -23,6 +24,7 @@ function LogRoute() {
 }
 
 export function App() {
+  useServiceWorkerUpdateToast();
   return (
     <Suspense fallback={null}>
       <Routes>

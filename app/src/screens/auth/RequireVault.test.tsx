@@ -1,15 +1,16 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { Route, Routes } from 'react-router';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeAuthenticator } from '../../vault/test/fake-authenticator.ts';
 import { FakeServer } from '../../vault/test/fake-server.ts';
 import { makeDevice, settle } from '../../vault/test/harness.ts';
-import { deviceWithVault, renderWithVault, restoredLockedDevice } from '../../test/vault-fixture.tsx';
+import { SETUP_CODE, deviceWithVault, renderWithVault, restoredLockedDevice } from '../../test/vault-fixture.tsx';
 import type { Rendered } from '../../test/render.tsx';
+import { PasskeyError } from '../../vault/passkey.ts';
 import { currentPlatform } from '../../data/platform.ts';
 import { RequireVault } from './RequireVault.tsx';
-import { Unlock } from './Unlock.tsx';
+import { Unlock, resetAutoPrompt, shouldAutoPrompt } from './Unlock.tsx';
 
 let app: Rendered | null = null;
 afterEach(() => {
@@ -70,6 +71,7 @@ describe('route guard', () => {
 });
 
 describe('Unlock', () => {
+  beforeEach(() => resetAutoPrompt());
   const label = () => document.querySelector('button')?.textContent ?? '';
 
   it.each([
@@ -115,6 +117,72 @@ describe('Unlock', () => {
     second.vault.lock('hidden');
     app = await renderWithVault(<Unlock platform="android" />, second);
     expect(app.container.textContent).toContain('Locked while the app was in the background.');
+  });
+
+  /** A page reload: a new Vault on the same stored data, locked, with nobody having pressed Lock. */
+  async function reloaded() {
+    const server = new FakeServer(SETUP_CODE);
+    const auth = new FakeAuthenticator('test');
+    const first = await makeDevice(server, auth);
+    await first.vault.create({ setupCode: SETUP_CODE });
+    await settle();
+    const device = await makeDevice(server, auth, { db: first.db });
+    expect(device.vault.status.lockReason).toBeNull();
+    return device;
+  }
+
+  it('asks for the passkey by itself once after a fresh load, never again', async () => {
+    const device = await reloaded();
+    let asked = 0;
+    const real = device.vault.unlockWithPasskey.bind(device.vault);
+    device.vault.unlockWithPasskey = () => {
+      asked += 1;
+      return real();
+    };
+    app = await renderWithVault(<Unlock platform="android" />, device);
+    await settle();
+    expect(asked).toBe(1);
+    app.unmount();
+    const d2 = await reloaded();
+    let asked2 = 0;
+    d2.vault.unlockWithPasskey = () => {
+      asked2 += 1;
+      return Promise.reject(new PasskeyError('cancelled'));
+    };
+    app = await renderWithVault(<Unlock platform="android" />, d2);
+    await settle();
+    expect(asked2).toBe(0); // already tried in this page session
+  });
+
+  it('a refused automatic prompt falls back silently to the button', async () => {
+    const device = await reloaded();
+    device.vault.unlockWithPasskey = () => Promise.reject(new PasskeyError('cancelled'));
+    app = await renderWithVault(<Unlock platform="android" />, device);
+    await settle();
+    expect(label()).toBe('Unlock');
+    expect(app.container.querySelector('[role=alert]')).toBeNull();
+  });
+
+  it('does not prompt by itself after an explicit Lock', async () => {
+    const { device } = await deviceWithVault('locked');
+    let asked = 0;
+    device.vault.unlockWithPasskey = () => {
+      asked += 1;
+      return Promise.reject(new PasskeyError('cancelled'));
+    };
+    app = await renderWithVault(<Unlock platform="android" />, device);
+    await settle();
+    expect(asked).toBe(0);
+  });
+
+  it('never prompts by itself after Lock or an idle lock', () => {
+    const o = { passkeyOk: true, lockReason: null, used: false, showingPasskey: true } as const;
+    expect(shouldAutoPrompt(o)).toBe(true);
+    expect(shouldAutoPrompt({ ...o, lockReason: 'user' })).toBe(false);
+    expect(shouldAutoPrompt({ ...o, lockReason: 'idle' })).toBe(false);
+    expect(shouldAutoPrompt({ ...o, lockReason: 'hidden' })).toBe(false);
+    expect(shouldAutoPrompt({ ...o, used: true })).toBe(false);
+    expect(shouldAutoPrompt({ ...o, passkeyOk: false })).toBe(false);
   });
 
   it('currentPlatform reads this browser', () => {

@@ -1,9 +1,11 @@
 // Bitcoin Basis sync Worker: an append-only, encrypted mailbox in front of private R2.
 // The contract is docs/sync-protocol.md. Static assets are served by Workers static
-// assets before this code runs; only /api/* reaches it.
+// assets before this code runs; only /api/* and /assets/* reach it (see `assetOr404`).
 import { configOk } from './config.ts';
 import { fromB64u, randomBytes, sameSecret, sha256, toB64u } from './crypto.ts';
 import { errorResponse, fail, finish, guard, HttpError, json, readBytes, readJson } from './http.ts';
+import { SECURITY_HEADERS } from './headers.ts';
+import { historicalPrice, livePrice } from './price.ts';
 import {
   backup, currentEpoch, currentRecovery, deliveryKey, getJson, history, historyKey, listAll, newestDelivery, putNew, recoveryKey,
   type Claimed, type Credential, type Delivery, type Env,
@@ -68,6 +70,10 @@ async function verifyStepUp(env: Env, session: Session, input: StepUpInput, purp
 
 const routes: Record<string, (c: Ctx) => Promise<Response>> = {
   'GET /api/status': async ({ env }) => json({ claimed: await isClaimed(env) }),
+
+  // Public price, fetched here so the browser never talks to a third party (src/price.ts).
+  'GET /api/price': ({ req, env }) => livePrice(req, env),
+  'GET /api/price/history': ({ req, env, url }) => historicalPrice(req, env, url),
 
   'POST /api/register/options': async (c) => {
     await limit(c, 'register');
@@ -269,6 +275,24 @@ const routes: Record<string, (c: Ctx) => Promise<Response>> = {
 
 // ---- entry points -----------------------------------------------------------
 
+/**
+ * /assets/* holds only hashed build files. A missing one must be a real 404, never the single-page-app
+ * fallback (index.html with status 200), or the browser and the service worker would take HTML for a
+ * script. Existing files are passed through unchanged, with the security headers set explicitly
+ * (`_headers` is not guaranteed for responses that pass through Worker code).
+ */
+async function assetOr404(req: Request, env: Env): Promise<Response> {
+  const res = await env.ASSETS.fetch(req);
+  const type = res.headers.get('Content-Type') ?? '';
+  if (res.status === 200 && type.startsWith('text/html')) {
+    await res.body?.cancel();
+    return finish(errorResponse(404));
+  }
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+  return out;
+}
+
 async function handle(req: Request, env: Env): Promise<Response> {
   if (!configOk(env)) fail(500);
   const url = new URL(req.url);
@@ -281,6 +305,7 @@ async function handle(req: Request, env: Env): Promise<Response> {
 export default {
   async fetch(req, env) {
     try {
+      if (new URL(req.url).pathname.startsWith('/assets/')) return await assetOr404(req, env);
       return finish(await handle(req, env));
     } catch (e) {
       if (e instanceof HttpError) return finish(errorResponse(e.status));

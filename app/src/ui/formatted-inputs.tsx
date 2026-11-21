@@ -1,7 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { cleanDecimal, prettyBtc, prettyDollars } from '../lib/format.ts';
 import { cx } from '../lib/cx.ts';
-import { FieldFrame, INPUT_CLASSES } from './form-fields.tsx';
+import { FieldFrame, FRAME_FOCUS, INNER_INPUT, INPUT_CLASSES } from './form-fields.tsx';
 
 /**
  * Number boxes that look finished: a `$` that stays put, thousands separators and BTC groups once you leave the box.
@@ -49,7 +49,7 @@ function NumberBox({
   const describedBy = [hint ? `${id}-hint` : '', error ? `${id}-err` : ''].filter(Boolean).join(' ') || undefined;
   return (
     <FieldFrame label={label} id={id} hint={hint} error={error} className={frameClassName}>
-      <div className={cx('flex min-h-[52px] items-center gap-1.5 rounded-[14px] border bg-bg px-3.5 focus-within:border-accent', error ? 'border-loss/60' : 'border-line')}>
+      <div className={cx('flex min-h-[52px] items-center gap-1.5 rounded-[14px] border bg-bg px-3.5', FRAME_FOCUS, error ? 'border-loss/60' : 'border-line')}>
         {leading ? (
           <span aria-hidden="true" className="flex-none text-[15px] font-semibold text-muted">
             {leading}
@@ -77,7 +77,7 @@ function NumberBox({
             setFocused(false);
             onBlur?.(e);
           }}
-          className={cx(INPUT_CLASSES, 'flex-1 !min-h-0 min-w-0 border-0 bg-transparent !px-0 font-semibold focus-visible:border-0', className)}
+          className={cx(INPUT_CLASSES, 'flex-1 !min-h-0 min-w-0 !px-0 font-semibold', INNER_INPUT, className)}
           {...rest}
         />
         {trailing ? <span className="flex-none text-xs text-muted">{trailing}</span> : null}

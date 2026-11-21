@@ -1,7 +1,7 @@
 // Runs the real Worker (worker/wrangler.jsonc) in workerd with local R2 and static
 // assets, via wrangler's test harness. Only the assets folder, vars and secrets differ.
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import ts from 'typescript';
@@ -27,10 +27,14 @@ function fakeAssets(): string {
   copyFileSync(resolve(WORKER_DIR, '../app/public/_headers'), join(dir, '_headers'));
   writeFileSync(join(dir, 'index.html'), '<!doctype html><title>Bitcoin Basis</title><script type="module" src="/app.js"></script>');
   writeFileSync(join(dir, 'app.js'), 'console.log("app");');
+  mkdirSync(join(dir, 'assets'));
+  writeFileSync(join(dir, 'assets', 'index-0123abcd.js'), 'console.log("chunk");');
+  writeFileSync(join(dir, 'assets', 'index-0123abcd.css'), 'body{margin:0}');
   return dir;
 }
 
-export function startServer(): TestHarness {
+/** `vars` are added to (or override) the test vars, e.g. MEMPOOL_URL pointing at a local fake. */
+export function startServer(vars: Record<string, string> = {}): TestHarness {
   const raw = wranglerConfig();
   delete raw.$schema;
   return createTestHarness({
@@ -40,7 +44,7 @@ export function startServer(): TestHarness {
         ...raw,
         main: join(WORKER_DIR, 'src/index.ts'),
         assets: { ...raw.assets, directory: fakeAssets() },
-        vars: { ...raw.vars, ORIGIN, RP_ID, SESSION_SECRET, SETUP_CODE },
+        vars: { ...raw.vars, ORIGIN, RP_ID, SESSION_SECRET, SETUP_CODE, ...vars },
       },
     }],
   });

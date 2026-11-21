@@ -1,6 +1,8 @@
 import { useId } from 'react';
 import type { PricePoint } from '../data/price-history.ts';
 import { cx } from '../lib/cx.ts';
+import { scrubText, useChartScrub } from './chart-scrub.ts';
+import { usePrefs } from './prefs.tsx';
 
 /**
  * Price over time with the average-cost line under it. The gap between the two, where price is above
@@ -31,6 +33,8 @@ export function PriceChart({
   young?: boolean;
 }) {
   const id = useId();
+  const { masked } = usePrefs();
+  const scrub = useChartScrub(points);
   if (points.length < 2) {
     const text = status === 'loading' ? 'Loading price history…' : young ? 'Your chart fills in as time passes.' : 'Price history is not available right now';
     return (
@@ -54,22 +58,85 @@ export function PriceChart({
   const avgY = averageCostCents === null ? null : y(averageCostCents);
   const fill = avgY === null ? null : `${line} L${f(width)} ${f(avgY)} L0 ${f(avgY)} Z`;
 
+  const idx = scrub.index;
+  const shown = idx ?? points.length - 1;
+  const text = scrubText(points, shown, averageCostCents, masked);
+  const cur = points[shown] as PricePoint;
+  const pct = (x(cur.ms) / width) * 100;
+  const dotTop = (y(cur.cents) / height) * 100;
+  const flip = pct > 50;
   return (
-    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={label} className={className}>
-      <defs>
-        <linearGradient id={`${id}-gap`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#F7931A" stopOpacity="0.35" />
-          <stop offset="1" stopColor="#F7931A" stopOpacity="0.02" />
-        </linearGradient>
-        {avgY !== null && (
-          <clipPath id={`${id}-above`}>
-            <rect x="0" y="0" width={width} height={avgY} />
-          </clipPath>
+    <div className="relative">
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label={label}
+        aria-orientation="horizontal"
+        aria-valuemin={0}
+        aria-valuemax={points.length - 1}
+        aria-valuenow={shown}
+        aria-valuetext={text.spoken}
+        className="relative touch-pan-y select-none rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+        {...scrub.handlers}
+      >
+        <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true" focusable="false" className={cx('block', className)}>
+          <defs>
+            <linearGradient id={`${id}-gap`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#F7931A" stopOpacity="0.35" />
+              <stop offset="1" stopColor="#F7931A" stopOpacity="0.02" />
+            </linearGradient>
+            {avgY !== null && (
+              <clipPath id={`${id}-above`}>
+                <rect x="0" y="0" width={width} height={avgY} />
+              </clipPath>
+            )}
+          </defs>
+          {fill !== null && <path d={fill} fill={`url(#${id}-gap)`} clipPath={`url(#${id}-above)`} />}
+          <path d={line} fill="none" stroke="#F7931A" strokeWidth={strokeWidth} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          {avgY !== null && <path d={`M0 ${f(avgY)} L${f(width)} ${f(avgY)}`} stroke="#C9C4BC" strokeWidth={strokeWidth * 0.55} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />}
+        </svg>
+        {idx !== null && (
+          <div aria-hidden="true" data-testid="chart-scrub" className="pointer-events-none absolute inset-0">
+            <div className="absolute inset-y-0 w-px bg-soft/60" style={{ left: `${pct}%` }} />
+            <div className="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-bg bg-accent" style={{ left: `${pct}%`, top: `${dotTop}%` }} />
+            <div
+              data-testid="chart-scrub-label"
+              className={cx('absolute top-0 flex w-max max-w-[58%] flex-col gap-px rounded-lg border border-line bg-surface-2/95 px-2 py-1 text-[11px] leading-snug tabular-nums text-text', flip && '-translate-x-full')}
+              style={{ left: flip ? `calc(${pct}% - 10px)` : `calc(${pct}% + 10px)` }}
+            >
+              <span className="text-muted">
+                {text.date} <span className="font-semibold text-text">{text.price}</span>
+              </span>
+              {text.gap !== null && <span className={text.gap.startsWith('\u2212') ? 'text-loss' : 'text-accent'}>{text.gap}</span>}
+            </div>
+          </div>
         )}
-      </defs>
-      {fill !== null && <path d={fill} fill={`url(#${id}-gap)`} clipPath={`url(#${id}-above)`} />}
-      <path d={line} fill="none" stroke="#F7931A" strokeWidth={strokeWidth} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-      {avgY !== null && <path d={`M0 ${f(avgY)} L${f(width)} ${f(avgY)}`} stroke="#C9C4BC" strokeWidth={strokeWidth * 0.55} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />}
-    </svg>
+      </div>
+      {/* sr-only on a <table> itself still lays out its rows in Chromium; hide a wrapper instead. */}
+      <div className="sr-only">
+      <table>
+        <caption>{label}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Price</th>
+            {averageCostCents !== null && <th scope="col">Compared with your average cost</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {points.map((p, i) => {
+            const t = scrubText(points, i, averageCostCents, masked);
+            return (
+              <tr key={p.ms}>
+                <th scope="row">{t.date}</th>
+                <td>{t.price}</td>
+                {t.gap !== null && <td>{t.gap}</td>}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      </div>
+    </div>
   );
 }

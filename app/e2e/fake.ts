@@ -8,7 +8,7 @@ export const SETUP_CODE = 'ABCD-1234-ABCD-1234-ABCD-1234-ABCD-1234';
 export async function setUp(page: Page, { finish = true }: { finish?: boolean } = {}): Promise<string> {
   await page.goto(`${FAKE_URL}/`);
   await expect(page.getByRole('heading', { name: /on the record/ })).toBeVisible();
-  await page.getByLabel('Setup code from your install script').fill(SETUP_CODE);
+  await page.getByLabel('Setup code').fill(SETUP_CODE);
   await page.getByRole('button', { name: 'Claim and create my passkey' }).click();
   await expect(page.getByRole('heading', { name: 'Save your recovery code' })).toBeVisible();
   const code = await readCode(page);

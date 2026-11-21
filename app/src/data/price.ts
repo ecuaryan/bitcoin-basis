@@ -1,8 +1,9 @@
 /**
- * Bitcoin price from mempool.space (USD only). Prices are integer cents per BTC.
- * The only network calls this app makes are the two below.
+ * Bitcoin price (USD only), in integer cents per BTC. The app asks its own Worker (`/api/price`,
+ * `/api/price/history`), which fetches mempool.space server-side: the browser never contacts a third
+ * party, so mempool never sees your IP address or when you open the app. The CSP allows only 'self'.
  */
-export const MEMPOOL = 'https://mempool.space';
+export const PRICE_API = '/api/price';
 
 export interface PriceQuote {
   /** Cents per BTC. */
@@ -16,7 +17,7 @@ export interface PriceQuote {
 
 export interface PriceService {
   current(signal?: AbortSignal): Promise<PriceQuote>;
-  /** Cents per BTC at a Unix timestamp (seconds). */
+  /** Cents per BTC at a Unix timestamp (seconds). The server rounds it down to the hour. */
   historical(unixSeconds: number, signal?: AbortSignal): Promise<number>;
 }
 
@@ -26,24 +27,11 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-/** Whole dollars (or dollars with decimals) to cents, or null if not a sane positive number. */
-function dollarsToCents(v: unknown): number | null {
-  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0 || v > 100_000_000) return null;
-  return Math.round(v * 100);
-}
-
-/** `GET /api/v1/prices` returns `{ time, USD, EUR, ... }`. */
-export function parseCurrentPrice(json: unknown): number | null {
-  return isRecord(json) ? dollarsToCents(json['USD']) : null;
-}
-
-/** `GET /api/v1/historical-price` returns `{ prices: [{ time, USD }], exchangeRates }`. */
-export function parseHistoricalPrice(json: unknown): number | null {
+/** `{ usdCents }` from the Worker: a positive safe integer, or null. */
+export function parsePriceCents(json: unknown): number | null {
   if (!isRecord(json)) return null;
-  const prices = json['prices'];
-  if (!Array.isArray(prices) || prices.length === 0) return null;
-  const first: unknown = prices[0];
-  return isRecord(first) ? dollarsToCents(first['USD']) : null;
+  const v = json['usdCents'];
+  return typeof v === 'number' && Number.isSafeInteger(v) && v > 0 && v <= 10_000_000_000 ? v : null;
 }
 
 export class PriceError extends Error {
@@ -53,15 +41,16 @@ export class PriceError extends Error {
   }
 }
 
-/** The live service. `fetchFn` and `now` are injectable for tests. */
+/** The live service, through this app's own Worker. `fetchFn` and `now` are injectable for tests. */
 export function createMempoolPriceService(fetchFn: FetchLike = (url, init) => fetch(url, { ...init, credentials: 'omit', referrerPolicy: 'no-referrer' }), now: () => number = Date.now): PriceService {
   async function get(path: string, signal?: AbortSignal): Promise<unknown> {
     let res;
     try {
-      res = await fetchFn(`${MEMPOOL}${path}`, signal ? { signal } : {});
+      res = await fetchFn(path, signal ? { signal } : {});
     } catch {
       throw new PriceError('Could not reach the price service.');
     }
+    if (res.status === 404) throw new PriceError('No price for that date.');
     if (!res.ok) throw new PriceError(`The price service answered ${res.status}.`);
     try {
       return await res.json();
@@ -72,7 +61,8 @@ export function createMempoolPriceService(fetchFn: FetchLike = (url, init) => fe
 
   async function historical(unixSeconds: number, signal?: AbortSignal): Promise<number> {
     const ts = Math.floor(unixSeconds);
-    const cents = parseHistoricalPrice(await get(`/api/v1/historical-price?currency=USD&timestamp=${ts}`, signal));
+    if (!Number.isSafeInteger(ts) || ts <= 0) throw new PriceError('No price for that date.');
+    const cents = parsePriceCents(await get(`${PRICE_API}/history?ts=${ts}`, signal));
     if (cents === null) throw new PriceError('No price for that date.');
     return cents;
   }
@@ -80,7 +70,7 @@ export function createMempoolPriceService(fetchFn: FetchLike = (url, init) => fe
   return {
     historical,
     async current(signal) {
-      const cents = parseCurrentPrice(await get('/api/v1/prices', signal));
+      const cents = parsePriceCents(await get(PRICE_API, signal));
       if (cents === null) throw new PriceError('The price service sent an unexpected answer.');
       // The "today" change is a nicety: no yesterday price, no change shown.
       const prev = await historical(Math.floor(now() / 1000) - 86_400, signal).catch(() => null);

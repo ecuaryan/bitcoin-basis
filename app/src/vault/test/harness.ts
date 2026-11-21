@@ -60,7 +60,7 @@ export interface Device {
 export async function makeDevice(
   server: FakeServer,
   credentials: CredentialsLike | null,
-  opts: { prfSupport?: PrfSupport; environment?: VaultEnvironment | null; autoLockMinutes?: number; db?: MemoryDb } = {},
+  opts: { prfSupport?: PrfSupport; environment?: VaultEnvironment | null; autoLockMinutes?: number; db?: MemoryDb; pollIntervalMs?: number } = {},
 ): Promise<Device> {
   const db = opts.db ?? createMemoryDb();
   const client = server.client();
@@ -75,7 +75,7 @@ export async function makeDevice(
     isOnline: () => !client.offline,
     environment: opts.environment ?? null,
     channel: null,
-    pollIntervalMs: 0,
+    pollIntervalMs: opts.pollIntervalMs ?? 0,
     ...(opts.autoLockMinutes === undefined ? {} : { autoLockMinutes: opts.autoLockMinutes }),
   });
   return { db, client, scheduler, vault };

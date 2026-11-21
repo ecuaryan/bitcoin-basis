@@ -8,9 +8,11 @@
   "preview_urls": false,
   "assets": {
     "directory": "../app/dist",
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    // Only the API runs Worker code; everything else is a static asset (headers from app/public/_headers).
-    "run_worker_first": ["/api/*"]
+    // Worker code runs only for the API and for /assets/* (so a missing build file is a 404, not the
+    // single-page-app fallback). Everything else is a plain static asset (headers from app/public/_headers).
+    "run_worker_first": ["/api/*", "/assets/*"]
   },
   // Private buckets. Rename them here if you use different bucket names.
   "r2_buckets": [
@@ -24,13 +26,17 @@
   "vars": {
     "ORIGIN": "http://localhost:8787",
     "RP_ID": "localhost",
-    "RP_NAME": "Bitcoin Basis"
+    "RP_NAME": "Bitcoin Basis",
+    // Where the public BTC price comes from (fetched by the Worker, never by the browser).
+    // Point it at your own mempool instance if you run one, e.g. "https://mempool.example.com".
+    "MEMPOOL_URL": "https://mempool.space"
   },
   // Secrets (never committed): SESSION_SECRET, SETUP_CODE. Set with `wrangler secret put`.
-  // Workers Rate Limiting (free): sign-in, recovery sign-in and registration, per client IP.
-  // namespace_id is any number unique within the account.
+  // Workers Rate Limiting (free), per client IP: sign-in, recovery sign-in and registration; and the
+  // public price endpoints. namespace_id is any number unique within the account.
   "ratelimits": [
-    { "name": "AUTH_LIMITER", "namespace_id": "4417", "simple": { "limit": 30, "period": 60 } }
+    { "name": "AUTH_LIMITER", "namespace_id": "4417", "simple": { "limit": 30, "period": 60 } },
+    { "name": "PRICE_LIMITER", "namespace_id": "4418", "simple": { "limit": 120, "period": 60 } }
   ],
   // Daily copy of new objects from DATA to BACKUP.
   "triggers": { "crons": ["17 3 * * *"] },

@@ -123,7 +123,7 @@ export function KitCard({ today }: { today: string }) {
               </span>
             </Step>
             <Step n={2}>
-              <span>Choose “I already use Bitcoin Basis”, then type the recovery code from your kit.</span>
+              <span>Choose “Open my records”, then type the recovery code from your kit.</span>
             </Step>
             <Step n={3}>
               <span>If your records open, close that window and tap It worked.</span>

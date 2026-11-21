@@ -91,9 +91,20 @@ describe("verify-deployment", () => {
     ["assets/lazy.js", sha256Hex(enc("L"))],
     ["_headers", sha256Hex(enc("h"))],
   ]);
-  const fakeFetch = (s) => async (url) => {
+  const secure = {
+    "content-security-policy": "default-src 'self'; script-src 'self'",
+    "strict-transport-security": "max-age=1",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "permissions-policy": "camera=()",
+    "cross-origin-opener-policy": "same-origin",
+    "cross-origin-resource-policy": "same-origin",
+  };
+  const withStatus = (s) => ({ "/api/status": '{"claimed":true}', ...s });
+  const fakeFetch = (s, headers = secure) => async (url) => {
     const path = new URL(url).pathname;
-    return path in s ? new Response(s[path]) : new Response("nope", { status: 404 });
+    const all = withStatus(s);
+    return path in all ? new Response(all[path], { headers: typeof headers === "function" ? headers(path) : headers }) : new Response("nope", { status: 404 });
   };
   it("extracts only local references", () => {
     expect(extractRefs(index)).toEqual(["/assets/a.js", "/assets/s.css"]);
@@ -101,7 +112,7 @@ describe("verify-deployment", () => {
   it("passes when everything matches, and --all also checks lazy chunks", async () => {
     const r = await verify({ baseUrl: "https://x.test/", hashes, fetchImpl: fakeFetch(site) });
     expect(r.ok).toBe(true);
-    expect(r.results.map((x) => x.path)).toEqual(["index.html", "assets/a.js", "assets/s.css"]);
+    expect(r.results.map((x) => x.path)).toEqual(["index.html", "assets/a.js", "assets/s.css", "headers /", "headers /assets/a.js", "headers /api/status"]);
     const all = await verify({ baseUrl: "https://x.test", hashes, all: true, fetchImpl: fakeFetch(site) });
     expect(all.results.map((x) => x.path)).toContain("assets/lazy.js");
     expect(all.results.map((x) => x.path)).not.toContain("_headers");
@@ -116,6 +127,16 @@ describe("verify-deployment", () => {
     const h2 = new Map([["index.html", sha256Hex(enc(extra))]]);
     const un = await verify({ baseUrl: "https://x.test", hashes: h2, fetchImpl: fakeFetch({ "/": extra, "/assets/injected.js": "x" }) });
     expect(un.results.find((r) => r.path === "assets/injected.js").detail).toMatch(/not listed/);
+  });
+  it("fails when security headers are missing on the app, a build file or the API", async () => {
+    for (const where of ["/", "/assets/a.js", "/api/status"]) {
+      const r = await verify({ baseUrl: "https://x.test", hashes, fetchImpl: fakeFetch(site, (path) => (path === where ? { ...secure, "strict-transport-security": "" } : secure)) });
+      expect(r.ok, where).toBe(false);
+      expect(r.results.filter((x) => !x.ok).map((x) => x.path), where).toEqual([`headers ${where}`]);
+      expect(r.results.find((x) => x.path === `headers ${where}`).detail).toMatch(/strict-transport-security/);
+    }
+    const sniff = await verify({ baseUrl: "https://x.test", hashes, fetchImpl: fakeFetch(site, { ...secure, "x-content-type-options": "" }) });
+    expect(sniff.results.filter((x) => !x.ok)).toHaveLength(3);
   });
   it("parses arguments", () => {
     expect(parseVerifyArgs(["https://x.test", "--all", "--hashes", "h.txt", "--retries", "3"])).toMatchObject({ url: "https://x.test", all: true, hashes: "h.txt", retries: 3 });

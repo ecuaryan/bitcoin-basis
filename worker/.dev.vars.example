@@ -1,8 +1,9 @@
 # Copy to .dev.vars for `wrangler dev`. Fake values; never commit .dev.vars.
 # SESSION_SECRET: at least 32 characters (e.g. `openssl rand -base64 48`).
 SESSION_SECRET=dev-only-session-secret-not-for-production-use
-# SETUP_CODE: at least 16 characters; works only until the first passkey is registered.
-SETUP_CODE=dev-only-setup-code
+# SETUP_CODE: the code you type on the first screen. Same format as the real one (8 groups of 4 hex characters),
+# fake value; works only until the first passkey is registered.
+SETUP_CODE=ABCD-1234-ABCD-1234-ABCD-1234-ABCD-1234
 # DEV_ALLOW_HTTP: lets the API run on the http://localhost ORIGIN of `wrangler dev`. Never set it anywhere else:
 # without it the Worker refuses to serve the API unless ORIGIN is https and RP_ID is its hostname.
 DEV_ALLOW_HTTP=1

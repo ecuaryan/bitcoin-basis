@@ -11,7 +11,7 @@ import { defineConfig, type Plugin } from 'vite';
  */
 const CSP = [
   "default-src 'self'",
-  "connect-src 'self' https://mempool.space",
+  "connect-src 'self'",
   "img-src 'self' data:",
   "style-src 'self'",
   "script-src 'self'",

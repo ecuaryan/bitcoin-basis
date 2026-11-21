@@ -13,7 +13,7 @@ const opts = { animations: 'disabled', caret: 'hide', fullPage: true, maxDiffPix
 
 async function claim(page: Page): Promise<void> {
   await page.goto(`${FAKE_URL}/`);
-  await page.getByLabel('Setup code from your install script').fill(SETUP_CODE);
+  await page.getByLabel('Setup code').fill(SETUP_CODE);
   await page.getByRole('button', { name: 'Claim and create my passkey' }).click();
   await expect(page.getByRole('heading', { name: 'Save your recovery code' })).toBeVisible();
 }
@@ -24,6 +24,19 @@ test.describe('@visual first run, unlock, kit', () => {
     await expect(page.getByRole('heading', { name: /on the record/ })).toBeVisible();
     await settle(page);
     await expect(page).toHaveScreenshot('welcome.png', opts);
+  });
+
+  test('@visual Welcome, already claimed', async ({ page }) => {
+    await claim(page);
+    await page.getByRole('button', { name: "I've saved it" }).click();
+    await page.getByRole('button', { name: 'Skip this check' }).click();
+    await page.getByRole('button', { name: 'Skip anyway' }).click();
+    await page.getByRole('button', { name: 'Add my first wallet' }).click();
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__bbFake?.vault.forgetDevice());
+    await expect(page.getByRole('heading', { name: 'These records are already set up.' })).toBeVisible();
+    await settle(page);
+    await expect(page).toHaveScreenshot('welcome-claimed.png', opts);
   });
 
   test('@visual Setup: recovery code', async ({ page }) => {

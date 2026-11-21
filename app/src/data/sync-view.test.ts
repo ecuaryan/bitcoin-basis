@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SyncStatus } from '../vault/index.ts';
-import { ago, describeSync } from './sync-view.ts';
+import { ago, describeSync, syncRowText } from './sync-view.ts';
 
 const base: SyncStatus = { phase: 'idle', pending: 0, lastSyncedAt: 1_000_000, rejected: 0, conflicts: 0, missingOnServer: 0, staleEpoch: 0, error: null };
 
@@ -24,5 +24,16 @@ describe('ago', () => {
     expect(ago(0, 5 * 60_000)).toBe('5 minutes ago');
     expect(ago(0, 3 * 3_600_000)).toBe('3 hours ago');
     expect(ago(0, 24 * 3_600_000)).toBe('yesterday');
+  });
+});
+
+describe('syncRowText', () => {
+  it('uses the same words as the header, with the time', () => {
+    expect(syncRowText(base, 1_000_000 + 10_000).text).toBe('✓ Up to date · last synced just now');
+    expect(syncRowText(base, 1_000_000 + 5 * 60_000).text).toBe('✓ Up to date · last synced 5 minutes ago');
+    expect(syncRowText({ ...base, phase: 'syncing' }, 0).text).toBe('Syncing…');
+    expect(syncRowText({ ...base, phase: 'offline' }, 0).text).toBe("Offline · will sync when you're back online");
+    expect(syncRowText({ ...base, phase: 'error' }, 0).tone).toBe('attention');
+    expect(syncRowText({ ...base, pending: 2 }, 0).text).toBe('Waiting to sync · 2 changes');
   });
 });

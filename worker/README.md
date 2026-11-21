@@ -2,7 +2,8 @@
 
 One Cloudflare Worker that does two things:
 
-- **Hosts the app.** Static files from `../app/dist`, served by Workers static assets (single-page-app fallback). Worker code never runs for them.
+- **Hosts the app.** Static files from `../app/dist`, served by Workers static assets (single-page-app fallback). Worker code runs only for `/assets/*`, so a missing build file is a 404 instead of `index.html`.
+- **Relays the public BTC price** (`GET /api/price`, `GET /api/price/history?ts=`): fetched from mempool.space server-side and cached, so the browser never contacts a third party.
 - **Runs the sync API** under `/api/*`: passkey sign-in, recovery sign-in, and an append-only store of encrypted blobs in a private R2 bucket. It never sees a key or plaintext, and has no code path that deletes or overwrites anything.
 
 The contract with the app is [`docs/sync-protocol.md`](../docs/sync-protocol.md).
@@ -13,7 +14,8 @@ The contract with the app is [`docs/sync-protocol.md`](../docs/sync-protocol.md)
 |---|---|
 | `src/index.ts` | Routes and the cron entry point |
 | `src/session.ts` | Revocable session cookie, single-use challenge and step-up tokens |
-| `src/config.ts` | Refuses to serve the API unless `ORIGIN` is https and `RP_ID` is its hostname |
+| `src/config.ts` | Refuses to serve the API unless `ORIGIN` is https and `RP_ID` is its hostname; checks `MEMPOOL_URL` |
+| `src/price.ts` | Public price relay: same-origin only, rate limited, timestamps rounded down to the hour, Cache API |
 | `src/webauthn.ts` | Passkey options and verification (`@simplewebauthn/server`) |
 | `src/store.ts` | R2 access (only-if-new writes) and the backup copy |
 | `src/http.ts`, `src/validate.ts`, `src/crypto.ts` | Request guards, input checks, WebCrypto helpers |
@@ -40,6 +42,9 @@ Tests run the real Worker in `workerd` with local R2 (`npm test -w worker`, also
 | `RP_NAME` | var | Name shown in passkey prompts |
 | `SESSION_SECRET` | secret | 32+ random characters; signs sessions and challenges. Changing it signs everyone out |
 | `SETUP_CODE` | secret | 16+ characters; lets the first passkey register. Useless once the vault is claimed |
+| `MEMPOOL_URL` | var | Where the price comes from (default `https://mempool.space`). Set it to your own mempool instance if you run one; https only |
+| `ASSETS` | static assets | The built app (`../app/dist`) |
+| `PRICE_LIMITER` | rate limit | 120 price requests a minute per IP |
 | `AUTH_LIMITER` | rate limit | Workers Rate Limiting (free): 30 requests a minute per IP on sign-in, recovery sign-in and registration |
 | `DEV_ALLOW_HTTP` | `.dev.vars` only | `1` lets the API run on `wrangler dev`'s `http://localhost` origin. Never set it anywhere else |
 

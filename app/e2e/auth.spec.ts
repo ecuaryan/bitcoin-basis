@@ -10,14 +10,14 @@ async function lock(page: Page): Promise<void> {
 
 test('setup: claim, passkey, recovery code once, confirm, done', async ({ page }) => {
   await page.goto(`${FAKE_URL}/`);
-  await expect(page.getByText('Setup code from your install script')).toBeVisible();
+  await expect(page.getByText('Setup code', { exact: true })).toBeVisible();
   await expectNoViolations(page);
 
-  await page.getByLabel('Setup code from your install script').fill('1234');
+  await page.getByLabel('Setup code').fill('1234');
   await page.getByRole('button', { name: 'Claim and create my passkey' }).click();
   await expect(page.getByRole('alert')).toContainText('32 characters');
 
-  await page.getByLabel('Setup code from your install script').fill('abcd 1234 abcd 1234 abcd 1234 abcd 1234');
+  await page.getByLabel('Setup code').fill('abcd 1234 abcd 1234 abcd 1234 abcd 1234');
   await page.getByRole('button', { name: 'Claim and create my passkey' }).click();
   await expect(page.getByRole('heading', { name: 'Save your recovery code' })).toBeVisible();
   await expect(page.getByText('This is NOT a Bitcoin seed phrase.')).toBeVisible();
@@ -91,8 +91,11 @@ test('a new device: restore with the code, then add a passkey there', async ({ p
   const code = await setUp(page);
   // The fake build keeps everything in the page, so a reload would reset it: use in-app navigation instead.
   await page.evaluate(() => window.__bbFake?.vault.forgetDevice());
-  await expect(page.getByRole('heading', { name: /on the record/ })).toBeVisible();
-  await page.getByRole('button', { name: 'I already use Bitcoin Basis' }).click();
+  // The server already holds records, so Welcome offers opening them, not claiming.
+  await expect(page.getByRole('heading', { name: 'These records are already set up.' })).toBeVisible();
+  await expect(page.getByLabel('Setup code')).toHaveCount(0);
+  await expectNoViolations(page);
+  await page.getByRole('button', { name: 'Open my records' }).click();
   await expect(page.getByText('This is NOT a Bitcoin seed phrase.')).toBeVisible();
   await expectNoViolations(page);
   await page.getByLabel('Recovery code', { exact: true }).fill(code);
@@ -110,7 +113,7 @@ test('Records → Security: add a device QR, passkey, auto-lock, rotate, forget'
   await goSecurity(page);
   await page.getByText('Show the address and square code').click();
   await expect(page.getByRole('img', { name: /QR code for 127\.0\.0\.1/ })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Syncing' })).toContainText(/Synced|Connected|Last synced/);
+  await expect(page.getByRole('region', { name: 'Sync between devices' })).toContainText(/Up to date|Syncing/);
   await expectNoViolations(page);
 
   await page.getByLabel('Lock after').selectOption('15');
@@ -167,7 +170,7 @@ test('forget this device asks first, then goes back to Welcome', async ({ page }
   await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
   await page.getByRole('button', { name: 'Forget this device' }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: 'Forget this device' }).click();
-  await expect(page.getByRole('heading', { name: /on the record/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /already set up/ })).toBeVisible();
 });
 
 test('sync indicator shows offline and a Connect button when signed out', async ({ page }) => {

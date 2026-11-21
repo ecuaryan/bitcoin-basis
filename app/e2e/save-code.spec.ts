@@ -81,7 +81,7 @@ test('the new-code kit offers the buttons on screen but not on paper', async ({ 
 test('a code filled in by a password manager (with dashes, or pasted lower-case) is accepted', async ({ page }) => {
   const code = await setUp(page);
   await page.evaluate(() => window.__bbFake?.vault.forgetDevice());
-  await page.getByRole('button', { name: 'I already use Bitcoin Basis' }).click();
+  await page.getByRole('button', { name: 'Open my records' }).click();
   const field = page.getByLabel('Recovery code', { exact: true });
   await expect(field).toHaveAttribute('autocomplete', 'current-password');
   await expect(page.locator('form input[autocomplete="username"]')).toHaveValue('Bitcoin Basis recovery code');

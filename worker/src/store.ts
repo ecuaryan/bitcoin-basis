@@ -13,6 +13,12 @@ export interface Env {
   DEV_ALLOW_HTTP?: string;
   /** Workers Rate Limiting binding for the sign-in and registration endpoints. */
   AUTH_LIMITER?: RateLimit;
+  /** Workers Rate Limiting binding for the public price endpoints. */
+  PRICE_LIMITER?: RateLimit;
+  /** Base URL of the mempool instance the price comes from. Default https://mempool.space. */
+  MEMPOOL_URL?: string;
+  /** Workers static assets (the built app). */
+  ASSETS: Fetcher;
 }
 
 export const ONLY_IF_NEW: R2PutOptions = { onlyIf: { etagDoesNotMatch: '*' } };

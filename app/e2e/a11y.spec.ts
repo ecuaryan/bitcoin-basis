@@ -114,8 +114,12 @@ async function focusOutlineVisible(page: Page): Promise<boolean> {
     if (!el || el === document.body) return false;
     // The date field's inner picker button draws the browser's own focus ring.
     if (el instanceof HTMLInputElement && el.type === 'datetime-local') return true;
-    const s = getComputedStyle(el);
-    return s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0;
+    const ring = (e: Element): boolean => {
+      const s = getComputedStyle(e);
+      return s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0;
+    };
+    // Number boxes draw their one ring on the frame around the bare input.
+    return ring(el) || (el instanceof HTMLInputElement && el.parentElement !== null && ring(el.parentElement));
   });
 }
 

@@ -13,7 +13,22 @@ This guide is written so you can hand it to an AI agent. Steps that need a perso
 
 Do not put real ledger data in the repository. The app keeps your data in encrypted storage on your devices and in your R2 bucket, never in the repo.
 
+## Try it locally first
+
+Optional, five minutes, no Cloudflare account needed. It runs the real Worker and app on your machine with fake secrets:
+
+```sh
+npm ci
+npm run build
+cp worker/.dev.vars.example worker/.dev.vars
+cd worker && npx wrangler dev
+```
+
+Open <http://localhost:8787>. The setup code is the fake one in `worker/.dev.vars` (`ABCD-1234-ABCD-1234-ABCD-1234-ABCD-1234`). Never copy `.dev.vars` anywhere else.
+
 ## Steps
+
+**Names are fixed.** The Worker is always `bitcoin-basis` and the buckets `bitcoin-basis-data` and `bitcoin-basis-backup`. Setup and Deploy write to existing ones of the same name in the account you pick, so do not run this on an account that already has resources with those names unless you mean to use them.
 
 ### 1. Fork and clone
 
@@ -56,11 +71,13 @@ Safe to run again. It:
 6. generates `SESSION_SECRET` and `SETUP_CODE` and stores them as Worker secrets over stdin. Nothing secret goes on a command line or to disk,
 7. prints the GitHub settings and the final check.
 
-**The setup code** looks like `ABCD-1234-…` (eight groups of four). It is printed once. **Save it somewhere private for the next few minutes**; you type it once to claim the app. Do not put it in the repo, a chat with a shared agent, or a ticket. It does nothing after the first passkey is created.
+**The setup code** looks like `ABCD-1234-…` (eight groups of four). It is printed once. **Copy it before the terminal scrolls** (select the line, copy, paste it into a private note or password manager); you type it once to claim the app. If you lose it before claiming, run `npm run setup -- --rotate-secrets`. Do not put it in the repo, a chat with a shared agent, or a ticket. It does nothing after the first passkey is created.
 
 Note the printed `CF_ACCOUNT_ID` and `APP_ORIGIN`.
 
 ### 5. Create the Cloudflare API token (You)
+
+Do steps 5 and 6 **before the first push**. If the token or settings are missing when Deploy runs, it skips with a notice and you have to re-run it.
 
 Cloudflare dashboard, My Profile, API Tokens, **Create Token**, "Edit Cloudflare Workers" template, then trim it to exactly:
 
@@ -123,22 +140,25 @@ curl -s https://bitcoin-basis.<subdomain>.workers.dev/api/status
 
 Expect `{"claimed":false}`. If you get that, the Worker, the bucket binding and the secrets are working.
 
+First time using R2 on this account? Cloudflare may ask for a payment method to enable R2 (setup fails at the bucket step until you do). The free tier covers a personal vault; see Costs.
+
 ### 9. Set up the first device (You)
 
 1. Open the app address on your phone or computer.
-2. On the first screen, type the setup code exactly and choose "Claim and create my passkey". Approve the passkey prompt.
-3. The app shows your **recovery code** (`XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`). It is **not** a Bitcoin seed phrase. Write it down, then type group 4 back to prove you copied it.
-4. "You're all set". Add your first wallet.
+2. On the first screen, type the setup code into **Setup code** and press **"Claim and create my passkey"**. Approve the passkey prompt. (If this screen says "These records are already set up.", someone has already claimed it.)
+3. The app shows your **recovery code** (`XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`). It is **not** a Bitcoin seed phrase. Write it down or save it, then press **"I've saved it"**.
+4. Type group 4 of the code back (the fourth group) and press **"Continue"**.
+5. "You're all set". Press **"Add my first wallet"**.
 
 Check that `/api/status` now says `{"claimed":true}`.
 
 ### 10. Add a second device
 
-Records, Security, "Add another device" shows the address and a QR. On the new device open the address and choose **"I already use Bitcoin Basis"**. Sign in with a passkey that syncs to it (iCloud Keychain, Google Password Manager, a password manager), or type the recovery code. When it asks, add a passkey on this device.
+Records, Security, "Add another device" shows the address and a QR. On the new device open the address. The first screen says "These records are already set up."; press **"Open my records"**. That opens **"Open your records"**: type the recovery code into its field, or press **"Use a passkey"** if a passkey that syncs to this device exists (iCloud Keychain, Google Password Manager, a password manager). When it asks, add a passkey on this device.
 
 ### 11. Print the emergency kit
 
-Right after setup, the app offers the kit (Records, Security, "Emergency kit" while the code is on screen). Print it, write your name at the top, keep it with your estate papers. A year later, or when the app reminds you, test it: open a private window, choose "I already use Bitcoin Basis", type the code.
+Right after setup, the app offers the kit (Records, Security, "Emergency kit" while the code is on screen). Print it, write your name at the top, keep it with your estate papers. A year later, or when the app reminds you, test it: open a private window, press "Open my records", type the code.
 
 ## Updating
 

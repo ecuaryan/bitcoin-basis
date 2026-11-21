@@ -12,6 +12,7 @@ const STATUS_CODES = {
   415: 'unsupported_media_type',
   429: 'rate_limited',
   500: 'server_error',
+  502: 'bad_gateway',
 } as const;
 
 export type ErrorStatus = keyof typeof STATUS_CODES;

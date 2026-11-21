@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { cx } from '../../lib/cx.ts';
 import { appAddress, shortAddress } from '../../data/app-url.ts';
@@ -7,7 +7,7 @@ import { installPrompt, isStandalone } from '../../data/install.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { currentPlatform, isIos } from '../../data/platform.ts';
 import { kitHandoff } from '../../data/recovery-handoff.ts';
-import { describeSync } from '../../data/sync-view.ts';
+import { describeSync, syncRowText, type SyncTone } from '../../data/sync-view.ts';
 import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
 import { ExitDemoButton } from '../../ui/AppShell.tsx';
 import { Button, buttonClasses } from '../../ui/Button.tsx';
@@ -48,6 +48,8 @@ export function SecurityView() {
   return <RealSecurity />;
 }
 
+const SYNC_DOT: Record<SyncTone, string> = { ok: 'bg-accent', busy: 'animate-pulse bg-amber', quiet: 'bg-muted', attention: 'bg-loss' };
+
 function RealSecurity() {
   const vault = useVault();
   const status = useVaultStatus();
@@ -57,9 +59,14 @@ function RealSecurity() {
   const [error, setError] = useState<string | null>(null);
   const [rotateOpen, setRotateOpen] = useState(false);
   const [forgetOpen, setForgetOpen] = useState(false);
-  const [now] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
   const sync = describeSync(status.sync, now);
   const s = status.sync;
+  const row = syncRowText(s, now);
   const unsynced = s.pending > 0 || s.phase === 'syncing';
 
   const run = async (name: string, fn: () => Promise<void>) => {
@@ -91,9 +98,10 @@ function RealSecurity() {
         </p>
       )}
 
-      <Group title="Syncing">
-        <p className={P} role="status">
-          {sync.detail}
+      <Group title="Sync between devices">
+        <p className={cx(P, 'flex items-center gap-2')} role="status">
+          <span aria-hidden="true" className={cx('size-2 flex-none rounded-full', SYNC_DOT[row.tone])} />
+          {row.text}
         </p>
         {s.conflicts > 0 && (
           <p className={P}>
@@ -105,7 +113,7 @@ function RealSecurity() {
             {s.missingOnServer} {s.missingOnServer === 1 ? 'record on this device is' : 'records on this device are'} no longer on your server. Your copy here is complete. Check your server and its backups.
           </p>
         )}
-        <div className="flex flex-wrap gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           {sync.canConnect && (
             <Button
               variant="primary"
@@ -117,20 +125,24 @@ function RealSecurity() {
                 })
               }
             >
-              {busy === 'connect' ? 'Waiting for your passkey…' : 'Connect'}
+              {busy === 'connect' ? 'Waiting for your passkey…' : 'Sign in to sync'}
             </Button>
           )}
-          <Button
-            disabled={busy !== null || s.phase === 'signed-out'}
-            onClick={() =>
-              void run('sync', async () => {
-                const r = await vault.sync();
-                toast.show(r.ok ? 'Synced.' : 'Could not sync right now.');
-              })
-            }
-          >
-            Sync now
-          </Button>
+          {!sync.canConnect && (
+            <button
+              type="button"
+              disabled={busy !== null || s.phase === 'syncing' || s.phase === 'off'}
+              onClick={() =>
+                void run('sync', async () => {
+                  const r = await vault.sync();
+                  toast.show(r.ok ? 'Synced.' : 'Could not sync right now.');
+                })
+              }
+              className="flex min-h-11 items-center bg-transparent px-1 text-sm font-semibold text-amber underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              Check now
+            </button>
+          )}
         </div>
       </Group>
 
@@ -244,7 +256,7 @@ function AddDeviceGroup() {
   const address = appAddress();
   return (
     <Group title="Add another device">
-      <p className={P}>Open this address on the new device and choose “I already use Bitcoin Basis”. Then type your recovery code.</p>
+      <p className={P}>Open this address on the new device and choose “Open my records”. Then type your recovery code.</p>
       <Disclosure label="Show the address and square code">
         <div className="flex items-center gap-4">
           <QrCode text={address} size={132} label={`QR code for ${shortAddress(address)}`} className="flex-none rounded-xl" />

@@ -32,13 +32,15 @@ Create an environment named `production` (Settings -> Environments). Optionally 
 | Variable | `APP_ORIGIN` | `https://bitcoin-basis.<subdomain>.workers.dev` (printed by setup) |
 | Secret (environment `production` is best) | `CLOUDFLARE_API_TOKEN` | the token below |
 
-**Token** (Cloudflare dashboard -> My Profile -> API Tokens -> Create Token -> start from the "Edit Cloudflare Workers" template, then trim it). Minimum permissions, all scoped to your one account:
+**Token** (Cloudflare dashboard -> My Profile -> API Tokens -> Create Token -> start from the "Edit Cloudflare Workers" template, then trim it). Exactly these five permissions, scoped to your one account:
 
 - Account -> Workers Scripts -> Edit
 - Account -> Workers R2 Storage -> Edit (needed to attach the buckets)
 - Account -> Account Settings -> Read
+- User -> User Details -> Read
+- User -> Memberships -> Read
 
-No zone permissions are needed (no custom domain). If a deploy complains about "memberships" or "user details", add User -> User Details -> Read and Memberships -> Read, which the template includes. Set an expiry you can live with, and rotate it by replacing the secret.
+No zone permissions are needed (no custom domain). Set an expiry you can live with, and rotate it by replacing the secret.
 
 Without `CLOUDFLARE_API_TOKEN` the Deploy workflow succeeds with a notice and does nothing, so forks stay green.
 

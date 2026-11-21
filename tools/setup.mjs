@@ -283,8 +283,13 @@ export async function run(argv, env = process.env, io = { out: (s) => console.lo
   say(`     APP_ORIGIN    = ${shownOrigin}`);
   say("   Secrets tab (use the 'production' environment secrets if you use that environment):");
   say("     CLOUDFLARE_API_TOKEN = a token you create at dash.cloudflare.com/profile/api-tokens");
-  say("       Account > Workers Scripts: Edit, Account > Workers R2 Storage: Edit, Account > Account Settings: Read");
-  say("       Limit it to this account. See docs/deploy.md.");
+  say("       Account > Workers Scripts: Edit");
+  say("       Account > Workers R2 Storage: Edit");
+  say("       Account > Account Settings: Read");
+  say("       User > User Details: Read");
+  say("       User > Memberships: Read");
+  say("       Limit it to this account. See SELF-HOSTING.md step 5.");
+  say("   Do steps 5 and 6 (token and these settings) BEFORE the first push, or Deploy skips.");
   say("   Also create the environment: Settings -> Environments -> New environment -> 'production'.");
 
   // 8. Final check

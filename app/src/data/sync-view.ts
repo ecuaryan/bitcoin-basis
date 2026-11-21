@@ -44,3 +44,23 @@ export function describeSync(s: SyncStatus, now: number): SyncView {
       return { label: 'Synced', tone: 'ok', detail: s.lastSyncedAt === null ? 'Connected. Waiting for the first sync.' : `Last synced ${ago(s.lastSyncedAt, now)}.`, canConnect: false };
   }
 }
+
+/** The one-line status on Records › Security. Same words as the header pill, with the time. */
+export function syncRowText(s: SyncStatus, now: number): { text: string; tone: SyncTone } {
+  switch (s.phase) {
+    case 'off':
+      return { text: 'Locked. Nothing syncs until you unlock.', tone: 'quiet' };
+    case 'syncing':
+      return { text: 'Syncing…', tone: 'busy' };
+    case 'offline':
+      return { text: "Offline · will sync when you're back online", tone: 'quiet' };
+    case 'signed-out':
+      return { text: 'Not signed in, so changes are not syncing.', tone: 'attention' };
+    case 'error':
+      return { text: "Couldn't sync. It will try again on its own.", tone: 'attention' };
+    case 'idle':
+    default:
+      if (s.pending > 0) return { text: `Waiting to sync · ${s.pending} ${s.pending === 1 ? 'change' : 'changes'}`, tone: 'busy' };
+      return { text: s.lastSyncedAt === null ? '✓ Up to date' : `✓ Up to date · last synced ${ago(s.lastSyncedAt, now)}`, tone: 'ok' };
+  }
+}

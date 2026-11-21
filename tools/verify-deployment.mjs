@@ -3,11 +3,13 @@
 //   node tools/verify-deployment.mjs <url> [--hashes dist-hashes.txt] [--all] [--retries 5]
 // Default: fetch the live index.html and every local asset it references, and compare each sha256.
 // --all: fetch every file listed in the hashes file (except _headers, which Cloudflare consumes).
-// Also fails if index.html references a local file that the hashes file does not list.
+// Also fails if index.html references a local file that the hashes file does not list, or if the security
+// headers (the same set as smoke-test.mjs) are missing on /, on a build file, or on /api/status.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHashes, sha256Hex } from "./hash-build.mjs";
+import { securityHeaderProblems } from "./smoke-test.mjs";
 
 /** Local (same-origin, absolute-path) URLs referenced by src/href attributes, without query or fragment. */
 export function extractRefs(html) {
@@ -45,12 +47,25 @@ export async function verify({ baseUrl, hashes, all = false, fetchImpl = fetch }
 
   const index = await check("index.html", "/");
   results.push(index);
+  const html = index.ok ? await (await fetchImpl(base + "/", { redirect: "follow" })).text() : "";
   if (index.ok) {
-    const html = await (await fetchImpl(base + "/", { redirect: "follow" })).text();
     for (const ref of extractRefs(html)) {
       const path = ref.slice(1);
       if (path === "" || path === "index.html") continue;
       results.push(await check(path, ref));
+    }
+  }
+  // Security headers on the app, on a build file (served through Worker code) and on the API.
+  const asset = extractRefs(html).find((r) => r.startsWith("/assets/")) ?? [...hashes.keys()].filter((p) => p.startsWith("assets/")).map((p) => "/" + p)[0];
+  for (const urlPath of ["/", ...(asset ? [asset] : []), "/api/status"]) {
+    const path = `headers ${urlPath}`;
+    try {
+      const res = await fetchImpl(base + urlPath, { redirect: "follow" });
+      await res.arrayBuffer();
+      const problems = res.ok ? securityHeaderProblems(urlPath, res.headers) : [`HTTP ${res.status}`];
+      results.push({ path, ok: problems.length === 0, detail: problems.join("; ") || "security headers present" });
+    } catch (e) {
+      results.push({ path, ok: false, detail: `fetch failed: ${e.message}` });
     }
   }
   if (all) {
@@ -101,7 +116,8 @@ async function main() {
     }
   }
   for (const r of outcome.results) console.log(`${r.ok ? "OK  " : "FAIL"} ${r.path}${r.ok ? "" : `  ${r.detail}`}`);
-  console.log(outcome.ok ? `\nVerified: ${outcome.results.length} files match ${opts.hashes}.` : "\nMISMATCH: the live site does not match the hashes file.");
+  const fileCount = outcome.results.filter((r) => !r.path.startsWith("headers ")).length;
+  console.log(outcome.ok ? `\nVerified: ${fileCount} files match ${opts.hashes}, and the security headers are present.` : "\nMISMATCH: the live site does not match the hashes file, or security headers are missing.");
   process.exit(outcome.ok ? 0 : 1);
 }
 

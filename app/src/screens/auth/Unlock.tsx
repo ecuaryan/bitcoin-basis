@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { explainError, wasCancelled } from '../../data/explain-error.ts';
+import { PasskeyError } from '../../vault/passkey.ts';
 import { incomingRecovery } from '../../data/recovery-handoff.ts';
 import { currentPlatform, type Platform } from '../../data/platform.ts';
 import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
@@ -37,6 +38,20 @@ export function unlockCaption(platform: Platform): string {
   }
 }
 
+let autoPromptUsed = false;
+/** Test hook: forget that the passkey prompt was already tried in this page session. */
+export function resetAutoPrompt(): void {
+  autoPromptUsed = false;
+}
+
+/**
+ * Once per page load, on a fresh start (nobody pressed Lock, no idle lock), the passkey prompt opens by itself so unlocking
+ * is one touch. Chromium allows that without a tap; Safari refuses, and then the Unlock button is the way in.
+ */
+export function shouldAutoPrompt(o: { passkeyOk: boolean; lockReason: LockReason | null; used: boolean; showingPasskey: boolean }): boolean {
+  return o.passkeyOk && o.lockReason === null && !o.used && o.showingPasskey;
+}
+
 /** Shown in place of the app while the vault is locked. */
 export function Unlock({ platform }: { platform?: Platform } = {}) {
   const vault = useVault();
@@ -62,6 +77,19 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!shouldAutoPrompt({ passkeyOk, lockReason: status.lockReason, used: autoPromptUsed, showingPasskey: !useCode })) return;
+    autoPromptUsed = true; // set before asking: never a second automatic prompt (cancel, refusal or a remount)
+    vault
+      .unlockWithPasskey()
+      .catch((e: unknown) => {
+        // The browser refusing a prompt nobody tapped for (or the person dismissing it) is not an error: the button is right there.
+        if (wasCancelled(e) || (e instanceof PasskeyError && e.code === 'unsupported')) return;
+        setError(explainError(e));
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on arrival
+  }, []);
 
   return (
     <Frame glowTop={null} className="items-center pb-9">
