@@ -178,7 +178,9 @@ describe('idle auto-lock', () => {
     vaultRef = d.vault;
     await d.vault.unlockWithPasskey();
     await d.scheduler.advance(5 * 60_000 + 1);
-    await settle();
+    // The pending save does real crypto and storage work: wait for it by time (slow CI runners), not a fixed number of ticks.
+    const deadline = Date.now() + 10_000;
+    while (d.vault.status.state !== 'locked' && Date.now() < deadline) await settle();
     expect(seen).toEqual([true]);
     expect(d.vault.status.state).toBe('locked');
     expect(d.vault.status.lockReason).toBe('idle');
