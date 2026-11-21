@@ -14,7 +14,7 @@ import { ChevronRightIcon } from '../../ui/icons.tsx';
 
 /** Years that were closed after filing, with their history. Unlocking needs a reason. */
 export function ClosedYearsView() {
-  const { state, entries, today } = useLedger();
+  const { state, entries } = useLedger();
   const [unlocking, setUnlocking] = useState<number | null>(null);
   const history = yearLockHistory(entries);
   return (
@@ -42,7 +42,7 @@ export function ClosedYearsView() {
             <div key={h.id} className="flex flex-col border-t border-line-soft py-2 text-sm">
               <span className="font-semibold">
                 {h.kind === 'close-year' ? `Closed ${h.year}` : `Unlocked ${h.year}`}
-                <span className="font-normal text-muted"> · {shortDate(localDate(h.at, h.tz), today)}</span>
+                <span className="font-normal text-muted"> · {shortDate(localDate(h.at, h.tz))}</span>
               </span>
               {h.reason && <span className="text-xs text-muted">Why: {h.reason}</span>}
             </div>

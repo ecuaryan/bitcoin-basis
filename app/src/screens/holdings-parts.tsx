@@ -147,7 +147,7 @@ export function tiersPresent(mix: Record<Tier, number>): Tier[] {
 // ---- Coins of one year, with their origin ----------------------------------------------
 
 function CoinRow({ lot, priceCents }: { lot: Lot; priceCents: number | null }) {
-  const { entries, state, today } = useLedger();
+  const { entries, state } = useLedger();
   const [open, setOpen] = useState(false);
   const origin = entries.find((e) => e.id === lot.originEntryId);
   const wallets = new Map(state.wallets.map((w) => [w.id, w]));
@@ -163,8 +163,8 @@ function CoinRow({ lot, priceCents }: { lot: Lot; priceCents: number | null }) {
             <Amount sats={lot.sats} interactive={false} />
             {loan ? <LoanBadge tag={loan.tag} /> : null}
           </span>
-          <span className="truncate text-xs text-muted">
-            {shortDate(lot.acquiredDate, today)} · {wallet?.name ?? 'Unknown wallet'}
+          <span className="text-xs text-muted [overflow-wrap:anywhere]">
+            {shortDate(lot.acquiredDate)} · {wallet?.name ?? 'Unknown wallet'}
           </span>
           <WorthLine worth={worthNow(lot.sats, lot.costCents, priceCents)} className="truncate text-xs" />
         </span>

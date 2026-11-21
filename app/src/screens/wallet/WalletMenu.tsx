@@ -6,6 +6,7 @@ import { Amount } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { ErrorLine, Callout, SelectField, TextAreaField, TextField } from '../../ui/form-fields.tsx';
 import { ChevronRightIcon } from '../../ui/icons.tsx';
+import { PencilIcon } from '../../ui/more-icons.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { CoinPicker } from '../log/CoinPicker.tsx';
@@ -47,7 +48,7 @@ const svg = (d: string) => (
   </svg>
 );
 const ICONS = {
-  pencil: svg('M4 20h4l10-10-4-4L4 16v4zM13 7l4 4'),
+  pencil: <PencilIcon size={18} />,
   mail: svg('M4 6h16v12H4zM4 7l8 6 8-6'),
   snow: svg('M12 3v18M4 7.5l16 9M20 7.5l-16 9'),
   alert: svg('M12 4l9 16H3zM12 10v4M12 17h.01'),

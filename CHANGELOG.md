@@ -13,6 +13,8 @@
 
 ### Fixed
 
+- **Every date shows its year** (Oct 23, 2026), everywhere, and lines with a date wrap instead of cutting it off.
+- **Icons where they help**: the desktop Hide amounts and Lock buttons, Records tiles, Settings sections, the entries search, and actions with a clear symbol (add, import, download, print, passkey, edit, remove, check now, forget this device). One style and size throughout; see docs/design.md.
 - The desktop sidebar has icons, matching the phone's tabs, so Settings (the gear, at the bottom) is easy to spot.
 - Paragraphs stop at about 70 characters, so text stays easy to read on wide screens.
 - **First run, import only**: “You're all set” and the empty Holdings screen now offer “Import a spreadsheet or backup” next to adding a wallet, so you can start from a file without creating a wallet by hand. Empty-tier rows explain what to do.

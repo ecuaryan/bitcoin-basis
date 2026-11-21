@@ -5,8 +5,9 @@ import { explainError, passkeyRestoreFallback, wasCancelled } from '../../data/e
 import { incomingRecovery, kitHandoff } from '../../data/recovery-handoff.ts';
 import { useVault, usePendingKit, useVaultStatus } from '../../data/vault-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { PrinterIcon } from '../../ui/auth-icons.tsx';
-import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
+import { KeyIcon, PrinterIcon } from '../../ui/auth-icons.tsx';
+import { PlusIcon } from '../../ui/icons.tsx';
+import { ChevronLeftIcon, UploadIcon } from '../../ui/more-icons.tsx';
 import { BigButton, BigLink, CodeGroups, ErrorLine, Frame, GroupMap, LogoMark, NotSeedPhrase, TextButton } from './parts.tsx';
 import { RecoveryInput } from './RecoveryInput.tsx';
 import { SaveCode } from './SaveCode.tsx';
@@ -396,8 +397,12 @@ function DoneStep({ onFinish, onImport }: { onFinish(): void; onImport(): void }
         <p className="m-0 max-w-[300px] text-[15px] leading-normal text-soft">Your records are encrypted and synced. Start with the wallet or exchange you use most, or bring in a spreadsheet of your history.</p>
       </section>
       <div className="relative flex flex-col gap-2.5">
-        <BigButton onClick={onFinish}>Add my first wallet</BigButton>
+        <BigButton onClick={onFinish}>
+          <PlusIcon size={20} />
+          Add my first wallet
+        </BigButton>
         <BigButton variant="secondary" onClick={onImport}>
+          <UploadIcon size={20} />
           Import a spreadsheet or backup
         </BigButton>
         <div className="flex flex-col items-center">
@@ -423,6 +428,7 @@ function RestoredStep({ onAdd, onSkip, busy, error }: { onAdd(): void; onSkip():
       <div className="relative flex flex-col gap-2.5">
         <ErrorLine>{error}</ErrorLine>
         <BigButton onClick={onAdd} disabled={busy}>
+          <KeyIcon size={20} />
           {busy ? 'Waiting for your passkey…' : 'Add a passkey on this device'}
         </BigButton>
         <TextButton onClick={onSkip}>Not now</TextButton>

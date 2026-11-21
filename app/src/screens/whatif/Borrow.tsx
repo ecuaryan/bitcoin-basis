@@ -8,6 +8,7 @@ import { formatMoney } from '../../lib/format.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { PlusIcon } from '../../ui/icons.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { PriceUnavailable } from '../../ui/PriceProblem.tsx';
 import { BtcInput, MoneyInput, PercentInput } from '../../ui/formatted-inputs.tsx';
@@ -126,6 +127,7 @@ export function Borrow() {
       <Card className="flex flex-col items-start gap-3 text-[15px] text-muted">
         <p className="m-0">Nothing to borrow against yet. Log a purchase first.</p>
         <Button variant="primary" onClick={() => openLog({ kind: 'buy' })}>
+          <PlusIcon size={16} />
           Log a purchase
         </Button>
       </Card>

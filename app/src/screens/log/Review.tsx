@@ -17,7 +17,6 @@ import { resetScroll } from './hooks.ts';
 import { FormFooter } from './parts.tsx';
 
 function CoinsUsed({ coins }: { coins: NonNullable<Draft['coins']> }) {
-  const { today } = useLedger();
   const byId = new Map(coins.lots.map((l) => [l.id, l]));
   const rows = coins.picks.slice(0, 6);
   const more = coins.picks.length - rows.length;
@@ -36,7 +35,7 @@ function CoinsUsed({ coins }: { coins: NonNullable<Draft['coins']> }) {
                 <Amount sats={p.sats} interactive={false} />
               </span>
               <span className="text-xs text-muted">
-                {lot ? `${shortDate(lot.acquiredDate, today)} · ${TIER_LABEL[lot.tier]}` : 'Coin'}
+                {lot ? `${shortDate(lot.acquiredDate)} · ${TIER_LABEL[lot.tier]}` : 'Coin'}
               </span>
             </li>
           );

@@ -5,7 +5,7 @@ import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
-import { ChevronRightIcon } from '../../ui/icons.tsx';
+import { ChevronRightIcon, PlusIcon } from '../../ui/icons.tsx';
 import { PlainMoney } from '../../ui/plain-money.tsx';
 import { LoanSetupSheet } from '../loans/LoanSetup.tsx';
 
@@ -55,6 +55,7 @@ export function LoansView() {
         </Card>
       )}
       <Button variant={loans.length === 0 ? 'primary' : 'secondary'} className="self-start" onClick={() => setAdding(true)}>
+        <PlusIcon size={16} />
         Track a loan
       </Button>
       <LoanSetupSheet open={adding} onClose={() => setAdding(false)} />

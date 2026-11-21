@@ -14,6 +14,7 @@ import { entryWorth, type PartKind } from '../lib/worth-now.ts';
 import { Amount, Money } from '../ui/Amount.tsx';
 import { useLogSheet } from '../ui/AppShell.tsx';
 import { Button } from '../ui/Button.tsx';
+import { PencilIcon, TrashIcon } from '../ui/more-icons.tsx';
 import { PlainMoney } from '../ui/plain-money.tsx';
 import { Sheet } from '../ui/Sheet.tsx';
 import { GainWords } from '../ui/WorthLine.tsx';
@@ -36,7 +37,7 @@ function badgeFor(item: EntryItem): ReactNode {
 }
 
 /** One row in any list of entries (Records, a wallet). A button: it opens the entry with its history and actions. */
-export function EntryRow({ run, wallets, today, onOpen, last }: { run: EntryRun; wallets: ReadonlyMap<string, Wallet>; today: string; onOpen(): void; last: boolean }) {
+export function EntryRow({ run, wallets, onOpen, last }: { run: EntryRun; wallets: ReadonlyMap<string, Wallet>; today: string; onOpen(): void; last: boolean }) {
   const { item, count, net } = run;
   const { state } = useLedger();
   const e = item.current;
@@ -57,8 +58,8 @@ export function EntryRow({ run, wallets, today, onOpen, last }: { run: EntryRun;
             {paidWith ? <LoanBadge tag={paidWith.tag} /> : null}
             {badgeFor(item)}
           </span>
-          <span className="truncate text-xs text-muted">
-            {net ?? line.detail} · {shortDate(localDate(e.at, e.tz), today)}
+          <span className="text-xs text-muted [overflow-wrap:anywhere]">
+            {net ?? line.detail} · {shortDate(localDate(e.at, e.tz))}
           </span>
         </span>
         <span className="flex flex-none flex-col items-end gap-0.5">
@@ -150,7 +151,7 @@ const GONE_WORD: Record<PartKind, string> = { sold: 'sold', spent: 'spent', fees
 const BOUGHT_KINDS = new Set(['buy', 'receive', 'opening-lot']);
 
 /** What the coins from one buy or receive are worth now, wherever they moved to. */
-function WorthBlock({ item, state, today }: { item: EntryItem; state: LedgerState; today: string }) {
+function WorthBlock({ item, state }: { item: EntryItem; state: LedgerState; today: string }) {
   const { quote } = usePrice();
   const priceCents = quote?.usdCents ?? null;
   const w = useMemo(() => entryWorth(state, [item.id, ...item.versions.map((v) => v.id)], priceCents), [state, item, priceCents]);
@@ -175,7 +176,7 @@ function WorthBlock({ item, state, today }: { item: EntryItem; state: LedgerStat
       )}
       {w.gone.map((g, i) => (
         <p key={i} className="m-0 text-sm text-soft">
-          <Amount sats={g.sats} showUnit interactive={false} /> of it {GONE_WORD[g.kind]} on {shortDate(g.date, today)}
+          <Amount sats={g.sats} showUnit interactive={false} /> of it {GONE_WORD[g.kind]} on {shortDate(g.date)}
         </p>
       ))}
     </section>
@@ -235,11 +236,13 @@ function EntryActions({ run, state, onClose }: { run: EntryRun; state: LedgerSta
     <div className="flex flex-wrap gap-2">
       {canEdit ? (
         <Button variant="secondary" onClick={() => go({ edit: e.id })}>
+          <PencilIcon size={16} />
           Edit {noun}
         </Button>
       ) : null}
       {canRemove ? (
         <Button variant="danger" onClick={() => go({ remove: e.id })}>
+          <TrashIcon size={16} />
           Remove this {noun}
         </Button>
       ) : null}
@@ -264,7 +267,7 @@ export function EntrySheet({ run, state, today, onClose }: { run: EntryRun; stat
   const line = describeEntry(e, wallets, loans);
   const paidWith = (e.kind === 'buy' || e.kind === 'opening-lot') && !item.deleted ? loanTags(state).get(item.id) : undefined;
   const rows: [string, ReactNode][] = [
-    ['When', `${shortDate(localDate(e.at, e.tz), today)} · ${e.tz.replace('_', ' ')}`],
+    ['When', `${shortDate(localDate(e.at, e.tz))} · ${e.tz.replace('_', ' ')}`],
     ...facts(e, name, (id) => loans.get(id) ?? 'A loan'),
     ...(paidWith
       ? ([
@@ -316,7 +319,7 @@ export function EntrySheet({ run, state, today, onClose }: { run: EntryRun; stat
                       {versionLabel(v, n, history.length)}
                       {isNow && ' · now'}
                     </span>
-                    <span className="text-xs text-muted">{shortDate(localDate(v.at, v.tz), today)}</span>
+                    <span className="text-xs text-muted">{shortDate(localDate(v.at, v.tz))}</span>
                   </span>
                   {v.kind !== 'delete' && (
                     <span className="text-xs text-soft">

@@ -10,6 +10,7 @@ import { formatMoney, satsToCents } from '../../lib/format.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { PlusIcon } from '../../ui/icons.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { PriceUnavailable } from '../../ui/PriceProblem.tsx';
 import { TaxProfilePrompt } from '../tax/TaxProfilePrompt.tsx';
@@ -87,6 +88,7 @@ export function Sell() {
       <Card className="flex flex-col items-start gap-3 text-[15px] text-muted">
         <p className="m-0">Nothing to sell yet. Log a purchase and your options show up here.</p>
         <Button variant="primary" onClick={() => openLog({ kind: 'buy' })}>
+          <PlusIcon size={16} />
           Log a purchase
         </Button>
       </Card>

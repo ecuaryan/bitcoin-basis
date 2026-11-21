@@ -12,7 +12,7 @@ import { Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { downloadText } from '../../ui/download.ts';
 import { SelectBox } from '../../ui/Field.tsx';
-import { DownloadIcon } from '../../ui/more-icons.tsx';
+import { DownloadIcon, UploadIcon } from '../../ui/more-icons.tsx';
 import { newIdGenerator } from '../../ui/new-entry.ts';
 import { useToast } from '../../ui/Toast.tsx';
 import { yearsAvailable } from '../tax/tax-logic.ts';
@@ -37,7 +37,10 @@ function FilePicker({ label, accept, onText }: { label: string; accept: string; 
           e.target.value = '';
         }}
       />
-      <Button onClick={() => ref.current?.click()}>{label}</Button>
+      <Button onClick={() => ref.current?.click()}>
+        <UploadIcon size={16} />
+        {label}
+      </Button>
     </>
   );
 }

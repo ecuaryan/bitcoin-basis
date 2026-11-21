@@ -104,7 +104,7 @@ function PaymentBody({ loan, onClose }: { loan: Loan; onClose(): void }) {
     return loanSummary(after, loan.id, null, date > today ? date : today)?.principalOwedCents ?? null;
   }, [drafts.length, interestCents, principalCents, date]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const range = s === null ? '' : `${shortDate(s.fromDate, today)} to ${shortDate(s.throughDate, today)}`;
+  const range = s === null ? '' : `${shortDate(s.fromDate)} to ${shortDate(s.throughDate)}`;
   const hint =
     s === null ? undefined : s.alreadyPaidCents > 0 && s.interestCents === 0 ? (
       `Interest for ${range} is already logged. Enter any extra, or 0.`

@@ -3,6 +3,7 @@ import { useLedger } from '../../data/ledger-provider.tsx';
 import { buildItems, entryRows, entryYears, KIND_GROUPS, NO_FILTER, type EntryFilter, type KindGroup } from '../../lib/entry-list.ts';
 import { countOf } from '../../lib/format.ts';
 import { Field, SelectBox } from '../../ui/Field.tsx';
+import { SearchIcon } from '../../ui/more-icons.tsx';
 import { EmptyLine, SectionCount, SectionHeader, ShowMore } from '../../ui/SectionHeader.tsx';
 import { EntryRow, EntrySheet } from '../entry-parts.tsx';
 
@@ -30,7 +31,7 @@ export function EntriesView({ autoFocusSearch = false }: { autoFocusSearch?: boo
   const filtered = deferred.text.trim() !== '' || deferred.wallet !== '' || deferred.group !== '' || deferred.year !== '';
   return (
     <div className="flex flex-col gap-3">
-      <Field label="Search entries" type="search" className="lg:max-w-[480px]" value={filter.text} onChange={(e) => set({ text: e.target.value })} placeholder="Wallet, note, kind…" autoFocus={autoFocusSearch} />
+      <Field label="Search entries" type="search" icon={<SearchIcon size={18} />} className="lg:max-w-[480px]" value={filter.text} onChange={(e) => set({ text: e.target.value })} placeholder="Wallet, note, kind…" autoFocus={autoFocusSearch} />
       <div className="grid grid-cols-3 gap-2">
         <SelectBox label="Wallet" value={filter.wallet} onChange={(e) => set({ wallet: e.target.value })}>
           <option value="">All</option>

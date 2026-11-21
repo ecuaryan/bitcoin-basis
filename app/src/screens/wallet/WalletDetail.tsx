@@ -10,6 +10,7 @@ import { describeOrigin, TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
 import { Button, buttonClasses } from '../../ui/Button.tsx';
+import { PlusIcon } from '../../ui/icons.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { Callout, TextField } from '../../ui/form-fields.tsx';
 import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
@@ -264,7 +265,7 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
                   return (
                     <li key={e.id} className="flex justify-between gap-3 text-xs">
                       <span>
-                        {line.summary} · {shortDate(localInputFor(e.at, e.tz).slice(0, 10), today)}
+                        {line.summary} · {shortDate(localInputFor(e.at, e.tz).slice(0, 10))}
                       </span>
                       {line.sats !== null ? <Amount sats={line.sats} interactive={false} short /> : null}
                     </li>
@@ -319,7 +320,7 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
             {checks.map((c) => (
               <li key={c.date} className="flex justify-between gap-3">
                 <span>
-                  {shortDate(c.date, today)}
+                  {shortDate(c.date)}
                   {c.times > 1 ? ` · ${countOf(c.times, 'check')}` : ''}
                 </span>
                 <span className={c.matched ? 'text-muted' : 'text-amber'}>{c.matched ? 'Matched' : 'Did not match'}</span>
@@ -362,14 +363,14 @@ function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots:
                     <Amount sats={l.sats} interactive={false} />
                   </span>
                   <span className="flex items-center gap-1.5 text-xs text-muted">
-                    {shortDate(l.acquiredDate, today)} · {TIER_LABEL[l.tier]}
+                    {shortDate(l.acquiredDate)} · {TIER_LABEL[l.tier]}
                     {loan ? <LoanBadge tag={loan.tag} /> : null}
                   </span>
                   <WorthLine worth={worthNow(l.sats, l.costCents, priceCents)} className="mt-0.5 text-xs" />
                 </span>
                 <span className="flex flex-col items-end text-right">
                   <span className="text-sm font-semibold">{perBtc === null ? '—' : <Money cents={perBtc} />}</span>
-                  <span className={cx('text-xs normal-nums', long ? 'text-muted' : 'max-w-[7.5rem] font-semibold text-balance text-amber sm:max-w-none')}>{long ? 'Long-term' : `Long-term on ${shortDate(nextDay(oneYearAnniversary(l.acquiredDate)), today)}`}</span>
+                  <span className={cx('text-xs normal-nums', long ? 'text-muted' : 'max-w-[7.5rem] font-semibold text-balance text-amber sm:max-w-none')}>{long ? 'Long-term' : `Long-term on ${shortDate(nextDay(oneYearAnniversary(l.acquiredDate)))}`}</span>
                 </span>
               </button>
               {open ? (
@@ -583,7 +584,7 @@ function BalanceNote({ wallet, holding }: { wallet: Wallet; holding: RetirementH
     setError(null);
   });
   const check = holding?.snapshot ?? null;
-  const status = last === undefined ? 'No note yet' : check !== null && holding?.balanceFrom === 'purchases' ? (check.matches ? `Matched ${shortDate(last.date, today)}` : `Noted ${shortDate(last.date, today)}`) : `Noted ${shortDate(last.date, today)}`;
+  const status = last === undefined ? 'No note yet' : check !== null && holding?.balanceFrom === 'purchases' ? (check.matches ? `Matched ${shortDate(last.date)}` : `Noted ${shortDate(last.date)}`) : `Noted ${shortDate(last.date)}`;
   return (
     <Card as="section" aria-label="Balance note" className="flex flex-col gap-3">
       <SectionHeader title="Balance note" right={<SectionCount>{status}</SectionCount>} className="-my-2" />
@@ -641,7 +642,7 @@ function RetirementPurchases({ wallet, purchases, onLog }: { wallet: Wallet; pur
                   <Amount sats={p.sats} interactive={false} />
                 </span>
                 <span className="text-xs text-muted">
-                  {shortDate(p.date, today)} · {heldLabel(p.heldDays)}
+                  {shortDate(p.date)} · {heldLabel(p.heldDays)}
                 </span>
                 <WorthLine worth={p} className="mt-0.5 text-xs" />
               </span>
@@ -658,6 +659,7 @@ function RetirementPurchases({ wallet, purchases, onLog }: { wallet: Wallet; pur
       {purchases.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {countOf(purchases.length, 'purchase')}</ShowMore> : null}
       {!wallet.archived ? (
         <Button variant="primary" onClick={onLog} className="mt-3 self-start">
+          <PlusIcon size={16} />
           Log a purchase
         </Button>
       ) : null}

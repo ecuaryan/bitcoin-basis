@@ -38,8 +38,8 @@ describe('format', () => {
     expect(satsToCents(336_672_105, 9_481_240)).toBe(31_920_690);
   });
   it('writes short dates', () => {
-    expect(shortDate('2026-11-02', '2026-11-20')).toBe('Nov 2');
-    expect(shortDate('2025-10-30', '2026-11-20')).toBe('Oct 30, 2025');
+    expect(shortDate('2026-11-02')).toBe('Nov 2, 2026');
+    expect(shortDate('2025-10-30')).toBe('Oct 30, 2025');
   });
   it('puts a thousands separator in big BTC amounts', () => {
     expect(groupedBtc(123_456_789_012_345)).toBe('1,234,567.8901 2345');

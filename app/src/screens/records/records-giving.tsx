@@ -117,7 +117,7 @@ export function GivingView() {
           due.sales.map((x, i) => (
             <div key={x.entryId} className={cx('flex items-center justify-between gap-3 py-2 text-sm', i > 0 && 'border-t border-line-soft')}>
               <span className="flex flex-col">
-                <span className="text-soft">{shortDate(x.date, today)}</span>
+                <span className="text-soft">{shortDate(x.date)}</span>
                 <span className="text-xs text-muted">
                   Gain <Money cents={x.gainCents} signed />
                 </span>
@@ -137,7 +137,7 @@ export function GivingView() {
         {due.income.map((i) => (
           <div key={i.entryId} className="flex items-center justify-between border-t border-line-soft py-2 text-sm">
             <span className="text-soft">
-              {i.description ?? 'Income'} · {shortDate(i.date, today)}
+              {i.description ?? 'Income'} · {shortDate(i.date)}
             </span>
             <Money cents={i.valueCents} />
           </div>

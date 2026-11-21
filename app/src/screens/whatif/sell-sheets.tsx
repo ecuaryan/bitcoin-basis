@@ -63,7 +63,6 @@ export function PickCoinsSheet({
   sats,
   initial,
   label,
-  today,
   onUse,
 }: {
   open: boolean;
@@ -125,7 +124,7 @@ export function PickCoinsSheet({
                 <label className="flex min-h-11 flex-1 cursor-pointer items-center gap-3">
                   <input type="checkbox" checked={on} onChange={() => toggle(l.id)} className="size-5 flex-none accent-accent" />
                   <span className="flex flex-col">
-                    <span className="text-sm font-semibold">Bought {shortDate(l.acquiredDate, today)}</span>
+                    <span className="text-sm font-semibold">Bought {shortDate(l.acquiredDate)}</span>
                     <TierChip tier={l.tier} />
                   </span>
                 </label>

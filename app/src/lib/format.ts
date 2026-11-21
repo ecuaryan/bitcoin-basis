@@ -62,16 +62,17 @@ export function satsToCents(sats: number, priceCents: number): number {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** `2026-11-02` as `Nov 2`, or `Oct 30, 2025` if not in `todayDate`'s year. */
-export function shortDate(date: string, todayDate: string): string {
+/**
+ * `2026-11-02` as `Nov 2, 2026`: always with the year, so no date ever makes you wonder which year it is.
+ */
+export function shortDate(date: string): string {
   const [y = '', m = '1', d = '1'] = date.split('-');
-  const base = `${MONTHS[Number(m) - 1] ?? ''} ${Number(d)}`;
-  return y === todayDate.slice(0, 4) ? base : `${base}, ${y}`;
+  return `${MONTHS[Number(m) - 1] ?? ''} ${Number(d)}, ${y}`;
 }
 
 /** How long ago a wallet's balance last matched, the same words everywhere: `Confirmed Nov 21`, `Confirmed today`, `Not confirmed yet`. */
 export function confirmedLabel(date: string | null, today: string): string {
-  return date === null ? 'Not confirmed yet' : date === today ? 'Confirmed today' : `Confirmed ${shortDate(date, today)}`;
+  return date === null ? 'Not confirmed yet' : date === today ? 'Confirmed today' : `Confirmed ${shortDate(date)}`;
 }
 
 /** `1 lot`, `2 lots`: a count with its noun, pluralised with an "s" unless `plural` is given. */

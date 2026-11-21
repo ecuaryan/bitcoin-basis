@@ -18,7 +18,7 @@ import { KitCard } from './records-kit.tsx';
 import { buildItems, entryRows, NO_FILTER } from '../../lib/entry-list.ts';
 import { useState } from 'react';
 import { useTitle } from '../../ui/use-title.ts';
-import { ChevronRightIcon } from '../../ui/icons.tsx';
+import { BankIcon, ChevronRightIcon, HeartIcon, ImportExportIcon, ListIcon, LockIcon, WalletIcon } from '../../ui/icons.tsx';
 
 type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'loans' | 'io';
 const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'loans', 'io'];
@@ -28,7 +28,7 @@ function viewTitle(view: View, givingName: string): string {
   return titles[view];
 }
 
-function Tile({ to, title, sub, hot, active, className }: { to: string; title: string; sub: ReactNode; hot?: boolean; active?: boolean; className?: string }) {
+function Tile({ to, title, sub, icon, hot, active, className }: { to: string; title: string; sub: ReactNode; icon: ReactNode; hot?: boolean; active?: boolean; className?: string }) {
   return (
     <Link
       to={to}
@@ -40,7 +40,10 @@ function Tile({ to, title, sub, hot, active, className }: { to: string; title: s
       )}
     >
       <span className="flex items-start justify-between gap-2">
-        <span className="text-[13px] font-semibold leading-tight text-balance">{title}</span>
+        <span className="flex min-w-0 items-start gap-2">
+          <span className={cx('-my-px flex-none', active ? 'text-amber' : 'text-soft')}>{icon}</span>
+          <span className="text-[13px] font-semibold leading-tight text-balance">{title}</span>
+        </span>
         <ChevronRightIcon size={16} className="-mr-0.5 flex-none text-muted" />
       </span>
       <span className={cx('text-xs', hot ? 'font-semibold text-amber' : 'text-muted')}>{sub}</span>
@@ -69,12 +72,12 @@ export function Records() {
 
   const tiles: ReactNode = (
     <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-6' : 'grid-cols-5') : 'grid-cols-2')}>
-      {due !== null && <Tile to="/records?v=giving" title={state.settings.givingName} sub={<><PlainMoney cents={Math.max(0, due.owedCents)} /> still to give</>} hot={due.owedCents > 0} active={view === 'giving'} />}
-      <Tile to="/records?v=closed" title="Closed years" sub={state.closedYears.length === 0 ? 'Lock a year once filed' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
-      <Tile to="/records?v=wallets" title="Wallets" sub={`${active} active`} active={view === 'wallets'} />
-      <Tile to="/records?v=loans" title="Loans" sub={openLoans === 0 ? (state.loans.length === 0 ? 'Track a loan' : 'None open') : `${openLoans} open`} active={view === 'loans'} />
-      <Tile to="/records?v=io" title={'Import and\u00a0export'} sub="CSV · backup" active={view === 'io'} className={state.settings.givingEnabled ? 'col-span-2 lg:col-span-1' : ''} />
-      <Tile to="/records?v=entries" title="All entries" sub={entriesCount(rows.length)} active={view === 'entries'} className="hidden lg:order-first lg:flex" />
+      {due !== null && <Tile to="/records?v=giving" title={state.settings.givingName} icon={<HeartIcon size={18} />} sub={<><PlainMoney cents={Math.max(0, due.owedCents)} /> still to give</>} hot={due.owedCents > 0} active={view === 'giving'} />}
+      <Tile to="/records?v=closed" title="Closed years" icon={<LockIcon size={18} />} sub={state.closedYears.length === 0 ? 'Lock a year once filed' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
+      <Tile to="/records?v=wallets" title="Wallets" icon={<WalletIcon size={18} />} sub={`${active} active`} active={view === 'wallets'} />
+      <Tile to="/records?v=loans" title="Loans" icon={<BankIcon size={18} />} sub={openLoans === 0 ? (state.loans.length === 0 ? 'Track a loan' : 'None open') : `${openLoans} open`} active={view === 'loans'} />
+      <Tile to="/records?v=io" title={'Import and\u00a0export'} icon={<ImportExportIcon size={18} />} sub="CSV · backup" active={view === 'io'} className={state.settings.givingEnabled ? 'col-span-2 lg:col-span-1' : ''} />
+      <Tile to="/records?v=entries" title="All entries" icon={<ListIcon size={18} />} sub={entriesCount(rows.length)} active={view === 'entries'} className="hidden lg:order-first lg:flex" />
     </section>
   );
 

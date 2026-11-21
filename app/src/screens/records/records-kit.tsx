@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Button, buttonClasses } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
+import { PrinterIcon } from '../../ui/auth-icons.tsx';
 import { ShieldIcon } from '../../ui/more-icons.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 
@@ -103,6 +104,7 @@ export function KitCard({ today, always = false }: { today: string; always?: boo
           <p className="m-0 text-[13px] leading-[1.45] text-soft">The page you print and keep in a safe. {tested === null ? 'Not tested yet.' : 'Tested.'}</p>
           <div className="flex flex-wrap gap-2.5">
             <Link to="/kit" className={buttonClasses('secondary', 'text-text no-underline')}>
+              <PrinterIcon size={16} />
               Print the kit
             </Link>
             <Button onClick={() => setOpen(true)}>Test the kit</Button>

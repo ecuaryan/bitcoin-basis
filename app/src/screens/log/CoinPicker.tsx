@@ -21,7 +21,6 @@ export function CoinPicker({
   onChosen,
   picks,
   onDate,
-  today,
   walletName,
 }: {
   /** The wallet's coins at that time, oldest first. */
@@ -103,7 +102,7 @@ export function CoinPicker({
           {shown.map((lot) => {
             const take = used.get(lot.id);
             const long = termFor(lot, onDate) === 'long';
-            const term = long ? 'Long-term' : `Long-term on ${shortDate(nextDay(oneYearAnniversary(lot.acquiredDate)), today)}`;
+            const term = long ? 'Long-term' : `Long-term on ${shortDate(nextDay(oneYearAnniversary(lot.acquiredDate)))}`;
             const rowId = `${id}-${lot.id}`;
             const body = (
               <>
@@ -119,7 +118,7 @@ export function CoinPicker({
                     ) : null}
                   </span>
                   <span className="flex items-center gap-1.5 text-xs text-muted">
-                    {shortDate(lot.acquiredDate, today)} · {TIER_LABEL[lot.tier]}
+                    {shortDate(lot.acquiredDate)} · {TIER_LABEL[lot.tier]}
                     {loanTagFor(state, lot.id) ? <LoanBadge tag={loanTagFor(state, lot.id)?.tag ?? ''} /> : null}
                   </span>
                   <span className={cx('text-xs normal-nums', long ? 'text-muted' : 'font-semibold text-amber')}>{term}</span>

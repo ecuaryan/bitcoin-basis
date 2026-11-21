@@ -262,7 +262,7 @@ export function Tax() {
             {summary.income.map((i) => (
               <li key={i.entryId} className="flex items-center justify-between gap-3 border-t border-line-soft py-2 text-sm">
                 <span className="text-soft">
-                  {i.description ?? 'Income'} · {shortDate(i.date, today)}
+                  {i.description ?? 'Income'} · {shortDate(i.date)}
                 </span>
                 <Money cents={i.valueCents} />
               </li>

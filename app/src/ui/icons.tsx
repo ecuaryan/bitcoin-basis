@@ -74,3 +74,44 @@ export const GearIcon = (p: IconProps) => (
     <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
   </Icon>
 );
+/* Section and entry-point icons (Records tiles, Settings sections): same weight as the nav icons. */
+export const ListIcon = (p: IconProps) => (
+  <Icon strokeWidth={1.9} {...p}>
+    <path d="M9 6h11M9 12h11M9 18h11M4 6h1M4 12h1M4 18h1" />
+  </Icon>
+);
+export const WalletIcon = (p: IconProps) => (
+  <Icon strokeWidth={1.9} {...p}>
+    <path d="M17 7V5a1 1 0 0 0-1-1H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H6a2 2 0 0 1-2-2" />
+    <path d="M15.5 13.5h1" />
+  </Icon>
+);
+export const BankIcon = (p: IconProps) => (
+  <Icon strokeWidth={1.9} {...p}>
+    <path d="M3 9.5h18L12 4z" />
+    <path d="M6 12.5v5M10 12.5v5M14 12.5v5M18 12.5v5M3 20.5h18" />
+  </Icon>
+);
+export const ImportExportIcon = (p: IconProps) => (
+  <Icon strokeWidth={1.9} {...p}>
+    <path d="M8 20V5M4 9l4-4 4 4M16 4v15M12 15l4 4 4-4" />
+  </Icon>
+);
+export const HeartIcon = (p: IconProps) => (
+  <Icon strokeWidth={1.9} {...p}>
+    <path d="M12 20c-4.5-3-8-6.2-8-10a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 3.8-3.5 7-8 10z" />
+  </Icon>
+);
+export const LifebuoyIcon = (p: IconProps) => (
+  <Icon strokeWidth={1.9} {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="3.5" />
+    <path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9" />
+  </Icon>
+);
+export const DeviceIcon = (p: IconProps) => (
+  <Icon strokeWidth={1.9} {...p}>
+    <rect x="7" y="3" width="10" height="18" rx="2" />
+    <path d="M11 18h2" />
+  </Icon>
+);

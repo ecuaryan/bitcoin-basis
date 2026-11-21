@@ -212,7 +212,7 @@ export function LoanNudge() {
           <ChevronRightIcon size={14} className="flex-none text-muted" />
         </span>
         <span className="text-xs text-muted">
-          Statement closed {shortDate(nudge.cycleEnd, today)} · about <PlainMoney cents={nudge.interestCents} /> interest
+          Statement closed {shortDate(nudge.cycleEnd)} · about <PlainMoney cents={nudge.interestCents} /> interest
         </span>
       </Link>
       <button

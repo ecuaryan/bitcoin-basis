@@ -39,6 +39,8 @@ export function useLogSheet(): { open(preset?: LogPreset): void } {
 // ---- Header buttons --------------------------------------------------------------------
 
 const ICON_BUTTON = 'press flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-soft hover:text-text';
+/** The desktop page-header buttons: icon then label, like the other buttons. */
+const TEXT_BUTTON = 'press inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-text hover:bg-surface-2';
 const HOLD_MS = 350;
 
 /** Toggles hide-amounts. Holding it down shows everything for as long as it is held. */
@@ -70,7 +72,8 @@ export function HideButton({ variant = 'icon' }: { variant?: 'icon' | 'text' }) 
   const common = { type: 'button' as const, onPointerDown: down, onPointerUp: up, onPointerLeave: up, onPointerCancel: up, onClick: click };
   if (variant === 'text') {
     return (
-      <button {...common} className="press min-h-11 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-text hover:bg-surface-2">
+      <button {...common} className={TEXT_BUTTON}>
+        {hidden ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
         {label}
       </button>
     );
@@ -92,7 +95,8 @@ export function LockButton({ variant = 'icon' }: { variant?: 'icon' | 'text' }) 
   };
   if (variant === 'text') {
     return (
-      <button type="button" onClick={lock} className="press min-h-11 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-text hover:bg-surface-2">
+      <button type="button" onClick={lock} className={TEXT_BUTTON}>
+        <LockIcon size={16} />
         Lock
       </button>
     );

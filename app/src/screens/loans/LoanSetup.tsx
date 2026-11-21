@@ -100,8 +100,8 @@ export function PurchasePicker({ options, loanId, chosen, onChange }: { options:
                   <span className="text-sm font-semibold">
                     <Amount sats={o.sats} short showUnit interactive={false} /> · <PlainMoney cents={o.costCents} />
                   </span>
-                  <span className="truncate text-xs text-muted">
-                    {shortDate(o.date, today)} · {wallets.get(o.walletId) ?? 'Unknown wallet'}
+                  <span className="text-xs text-muted [overflow-wrap:anywhere]">
+                    {shortDate(o.date)} · {wallets.get(o.walletId) ?? 'Unknown wallet'}
                     {other ? ` · Paid with ${loanNames.get(o.loanId ?? '') ?? 'another loan'}` : ''}
                   </span>
                 </span>
@@ -111,8 +111,8 @@ export function PurchasePicker({ options, loanId, chosen, onChange }: { options:
                   <TextField label="Money drawn on" type="date" value={draw ?? o.date} max={today} onChange={(e) => setDraw(o, e.target.value)} frameClassName="mb-2 ml-8" className="!min-h-11" />
                 ) : (
                   <span className="-mt-1 mb-1 ml-8 flex items-center gap-1 text-xs text-muted">
-                    Drawn {shortDate(draw ?? o.date, today)}
-                    <button type="button" onClick={() => setEditing(o.lotId)} aria-label={`Change the draw date for the ${shortDate(o.date, today)} purchase`} className="min-h-11 bg-transparent px-1.5 text-xs font-semibold text-amber">
+                    Drawn {shortDate(draw ?? o.date)}
+                    <button type="button" onClick={() => setEditing(o.lotId)} aria-label={`Change the draw date for the ${shortDate(o.date)} purchase`} className="min-h-11 bg-transparent px-1.5 text-xs font-semibold text-amber">
                       Change
                     </button>
                   </span>

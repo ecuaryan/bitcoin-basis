@@ -9,11 +9,12 @@ export const INPUT_CLASSES =
 export function Field({
   label,
   suffix,
+  icon,
   hint,
   className,
   inputClassName,
   ...rest
-}: { label: string; suffix?: string; hint?: ReactNode; className?: string; inputClassName?: string } & InputHTMLAttributes<HTMLInputElement>) {
+}: { label: string; suffix?: string; /** A decorative icon at the start of the input (an aria-hidden icon, e.g. search). */ icon?: ReactNode; hint?: ReactNode; className?: string; inputClassName?: string } & InputHTMLAttributes<HTMLInputElement>) {
   const id = useId();
   const hintId = `${id}-hint`;
   return (
@@ -22,7 +23,8 @@ export function Field({
         {label}
       </label>
       <div className="relative">
-        <input id={id} aria-describedby={hint ? hintId : undefined} className={cx(INPUT_CLASSES, suffix && 'pr-14', inputClassName)} {...rest} />
+        {icon !== undefined && <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">{icon}</span>}
+        <input id={id} aria-describedby={hint ? hintId : undefined} className={cx(INPUT_CLASSES, suffix && 'pr-14', icon !== undefined && 'pl-10', inputClassName)} {...rest} />
         {suffix && <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-muted">{suffix}</span>}
       </div>
       {hint && (

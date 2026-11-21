@@ -14,8 +14,8 @@ import { Card } from '../../ui/Card.tsx';
 import { Callout, TextField } from '../../ui/form-fields.tsx';
 import { MoneyInput } from '../../ui/formatted-inputs.tsx';
 import { useHelp } from '../../ui/Help.tsx';
-import { ChevronRightIcon } from '../../ui/icons.tsx';
-import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
+import { ChevronRightIcon, PlusIcon } from '../../ui/icons.tsx';
+import { ChevronLeftIcon, PencilIcon } from '../../ui/more-icons.tsx';
 import { PlainMoney } from '../../ui/plain-money.tsx';
 import { EmptyLine, SectionCount, SectionHeader, ShowMore } from '../../ui/SectionHeader.tsx';
 import { useToast } from '../../ui/Toast.tsx';
@@ -80,7 +80,7 @@ function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
             ),
             sub: (
               <>
-                Includes about <Money cents={s.accruedInterestCents} /> interest since {shortDate(s.accruedFrom ?? today, today)}, not billed yet
+                Includes about <Money cents={s.accruedInterestCents} /> interest since {shortDate(s.accruedFrom ?? today)}, not billed yet
               </>
             ),
           },
@@ -98,7 +98,7 @@ function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
         ? {
             sub: (
               <>
-                {s.interestPaidThrough ? `Through ${shortDate(s.interestPaidThrough, today)}` : ''}
+                {s.interestPaidThrough ? `Through ${shortDate(s.interestPaidThrough)}` : ''}
                 {s.unallocatedInterestCents > 0 ? (
                   <>
                     {s.interestPaidThrough ? '. ' : ''}
@@ -169,7 +169,7 @@ function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
 // ---- Purchases --------------------------------------------------------------------------------
 
 function PurchaseRow({ p, onOpen, last }: { p: LoanPurchase; onOpen(): void; last: boolean }) {
-  const { entries, state, today } = useLedger();
+  const { entries, state } = useLedger();
   const wallet = useMemo(() => {
     const e = entries.find((x) => x.id === p.lotId);
     return e && 'wallet' in e ? (state.wallets.find((w) => w.id === e.wallet)?.name ?? '') : '';
@@ -185,8 +185,8 @@ function PurchaseRow({ p, onOpen, last }: { p: LoanPurchase; onOpen(): void; las
               cost <PlainMoney cents={p.costCents} />
             </span>
           </span>
-          <span className="truncate text-xs text-muted">
-            {shortDate(p.drawDate, today)}
+          <span className="text-xs text-muted [overflow-wrap:anywhere]">
+            {shortDate(p.drawDate)}
             {wallet !== '' ? ` · ${wallet}` : ''}
             {gone > 0 ? (
               <>
@@ -245,7 +245,7 @@ function Purchases({ loan, purchases, onManage, onOpen }: { loan: Loan; purchase
 // ---- Payments ---------------------------------------------------------------------------------
 
 function Payments({ loan, onPay, onOpen }: { loan: Loan; onPay(): void; onOpen(item: EntryItem): void }) {
-  const { entries, today } = useLedger();
+  const { entries } = useLedger();
   const [all, setAll] = useState(false);
   const items = useMemo(() => new Map(buildItems(entries).map((i) => [i.current.id, i])), [entries]);
   const list = useMemo(() => [...loan.payments].sort((a, b) => (a.date === b.date ? (a.entryId < b.entryId ? 1 : -1) : a.date < b.date ? 1 : -1)), [loan.payments]);
@@ -255,6 +255,7 @@ function Payments({ loan, onPay, onOpen }: { loan: Loan; onPay(): void; onOpen(i
       <SectionHeader title="Payments" right={<SectionCount>{countOf(list.length, 'payment')}</SectionCount>} className="-mt-2" />
       {!loan.closed ? (
         <Button variant="primary" onClick={onPay} className="mb-1 mt-1 w-full sm:w-auto sm:self-start">
+          <PlusIcon size={16} />
           Log a payment
         </Button>
       ) : null}
@@ -273,7 +274,7 @@ function Payments({ loan, onPay, onOpen }: { loan: Loan; onPay(): void; onOpen(i
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="flex items-baseline justify-between gap-3 text-sm font-semibold">
-                  <span>{shortDate(p.date, today)}</span>
+                  <span>{shortDate(p.date)}</span>
                   <PlainMoney cents={p.interestCents + p.principalCents} />
                 </span>
                 <span className="text-xs text-muted">
@@ -284,7 +285,7 @@ function Payments({ loan, onPay, onOpen }: { loan: Loan; onPay(): void; onOpen(i
                       · paid down <PlainMoney cents={p.principalCents} />
                     </>
                   ) : null}
-                  {p.principalCents === 0 && p.interestCents > 0 ? ` · through ${shortDate(p.interestThrough, today)}` : ''}
+                  {p.principalCents === 0 && p.interestCents > 0 ? ` · through ${shortDate(p.interestThrough)}` : ''}
                 </span>
               </span>
               <ChevronRightIcon size={16} className="flex-none text-muted" />
@@ -300,7 +301,6 @@ function Payments({ loan, onPay, onOpen }: { loan: Loan; onPay(): void; onOpen(i
 // ---- Rate --------------------------------------------------------------------------------------
 
 function Rate({ loan, rate, onChange }: { loan: Loan; rate: number; onChange(): void }) {
-  const { today } = useLedger();
   const history = [...loan.rates].reverse();
   return (
     <Card as="section" aria-label="Rate" className="flex flex-col gap-2">
@@ -308,7 +308,7 @@ function Rate({ loan, rate, onChange }: { loan: Loan; rate: number; onChange(): 
       <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-muted">
         {history.map((r, i) => (
           <li key={r.from} className="flex justify-between gap-3">
-            <span>{i === history.length - 1 ? `From the start, ${shortDate(r.from, today)}` : `From ${shortDate(r.from, today)}`}</span>
+            <span>{i === history.length - 1 ? `From the start, ${shortDate(r.from)}` : `From ${shortDate(r.from)}`}</span>
             <span className={i === 0 ? 'font-semibold text-soft' : ''}>{formatAprPercent(r.aprMillionths)}</span>
           </li>
         ))}
@@ -383,9 +383,9 @@ function StatementCheck({ loan, s, onPay }: { loan: Loan; s: LoanSummary; onPay(
 
   return (
     <Card as="section" aria-label="Statement check" className="flex flex-col gap-3">
-      <SectionHeader title="Does it match your statement?" right={<SectionCount>{lastMatch ? `Matched ${shortDate(lastMatch.date, today)}` : 'Not checked yet'}</SectionCount>} className="-my-2" />
+      <SectionHeader title="Does it match your statement?" right={<SectionCount>{lastMatch ? `Matched ${shortDate(lastMatch.date)}` : 'Not checked yet'}</SectionCount>} className="-my-2" />
       <p className="m-0 text-[15px] leading-snug">
-        Does your {shortDate(ask.date, today)} statement show{' '}
+        Does your {shortDate(ask.date)} statement show{' '}
         <strong className="font-semibold">
           <Money cents={ask.owedCents} />
         </strong>{' '}
@@ -455,6 +455,7 @@ function StatementCheck({ loan, s, onPay }: { loan: Loan; s: LoanSummary; onPay(
               </Button>
             ) : (
               <Button variant="secondary" onClick={onPay}>
+                <PlusIcon size={16} />
                 Log a payment
               </Button>
             )}
@@ -472,7 +473,6 @@ function StatementCheck({ loan, s, onPay }: { loan: Loan; s: LoanSummary; onPay(
 // ---- Settings ----------------------------------------------------------------------------------
 
 function Settings({ loan, onEdit, onClose }: { loan: Loan; onEdit(): void; onClose(): void }) {
-  const { today } = useLedger();
   const reopen = useReopen(loan);
   return (
     <Card as="section" aria-label="Loan settings" className="flex flex-col gap-3">
@@ -486,7 +486,7 @@ function Settings({ loan, onEdit, onClose }: { loan: Loan; onEdit(): void; onClo
             k: 'Statement closing day',
             v: statementDayText(loan.statementDay),
             ...(loan.statementDays.length > 1
-              ? { sub: `From ${shortDate((loan.statementDays.at(-1) as { from: string }).from, today)}. Before that: ${statementDayText((loan.statementDays.at(-2) as { day: number }).day).toLowerCase()}` }
+              ? { sub: `From ${shortDate((loan.statementDays.at(-1) as { from: string }).from)}. Before that: ${statementDayText((loan.statementDays.at(-2) as { day: number }).day).toLowerCase()}` }
               : {}),
           },
           { k: 'Interest counted on', v: loan.dayCount === 'actual/360' ? '360-day year' : '365-day year' },
@@ -494,6 +494,7 @@ function Settings({ loan, onEdit, onClose }: { loan: Loan; onEdit(): void; onClo
       />
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={onEdit}>
+          <PencilIcon size={16} />
           Change settings
         </Button>
         {loan.closed ? (

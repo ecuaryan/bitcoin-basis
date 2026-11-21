@@ -12,7 +12,9 @@ import { describeSync, syncRowText, type SyncTone } from '../../data/sync-view.t
 import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
 import { ExitDemoButton } from '../../ui/AppShell.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { KeyIcon } from '../../ui/auth-icons.tsx';
 import { Card } from '../../ui/Card.tsx';
+import { LogOutIcon, RefreshIcon } from '../../ui/more-icons.tsx';
 import { SelectBox } from '../../ui/Field.tsx';
 import { QrCode } from '../../ui/QrCode.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
@@ -197,6 +199,7 @@ function RealSecurity() {
                 })
               }
             >
+              <KeyIcon size={16} />
               {busy === 'connect' ? 'Waiting for your passkey…' : 'Sign in to sync'}
             </Button>
           )}
@@ -210,8 +213,9 @@ function RealSecurity() {
                   toast.show(r.ok ? 'Synced.' : 'Could not sync right now.', { success: r.ok });
                 })
               }
-              className="flex min-h-11 items-center bg-transparent px-1 text-sm font-semibold text-amber underline-offset-2 hover:underline disabled:opacity-50"
+              className="flex min-h-11 items-center gap-1.5 bg-transparent px-1 text-sm font-semibold text-amber underline-offset-2 hover:underline disabled:opacity-50"
             >
+              <RefreshIcon size={16} />
               Check now
             </button>
           )}
@@ -234,6 +238,7 @@ function RealSecurity() {
                   })
                 }
               >
+                <KeyIcon size={16} />
                 {busy === 'passkey' ? 'Waiting for your passkey…' : 'Add a passkey on this device'}
               </Button>
             </div>
@@ -256,7 +261,10 @@ function RealSecurity() {
       <Group title="Forget this device">
         <p className={P}>Removes this device&apos;s copy. Your server keeps the encrypted one.</p>
         <div>
-          <Button onClick={() => setForgetOpen(true)}>Forget this device</Button>
+          <Button onClick={() => setForgetOpen(true)}>
+            <LogOutIcon size={16} />
+            Forget this device
+          </Button>
         </div>
       </Group>
 
@@ -363,6 +371,7 @@ function RotateSheet({ open, onClose }: { open: boolean; onClose(): void }) {
                 })
               }
             >
+              <KeyIcon size={16} />
               {busy === 'passkey' ? 'Waiting for your passkey…' : 'Add a passkey on this device'}
             </Button>
           )}

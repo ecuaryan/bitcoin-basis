@@ -14,6 +14,8 @@ import { AddWalletButton, AddWalletSheet } from './wallet/AddWallet.tsx';
 import { Amount, Money } from '../ui/Amount.tsx';
 import { DesktopCenter, HideButton, LockButton, useIsWide, useLogSheet } from '../ui/AppShell.tsx';
 import { Button, buttonClasses } from '../ui/Button.tsx';
+import { PlusIcon } from '../ui/icons.tsx';
+import { UploadIcon } from '../ui/more-icons.tsx';
 import { Card } from '../ui/Card.tsx';
 import { SyncIndicator } from '../ui/SyncIndicator.tsx';
 import { PageHeader } from '../ui/PageHeader.tsx';
@@ -134,9 +136,11 @@ function FirstRun() {
         <p className="m-0 text-[15px] leading-relaxed text-muted">Start with the wallet or exchange you use most, or bring in a spreadsheet of your history.</p>
         <div className="flex w-full flex-col gap-2.5 sm:flex-row">
           <Button variant="primary" onClick={() => setOpen(true)}>
+            <PlusIcon size={16} />
             Add a wallet
           </Button>
           <Link to="/records?v=io" className={buttonClasses('secondary', 'text-text no-underline hover:text-text')}>
+            <UploadIcon size={16} />
             Import a spreadsheet or backup
           </Link>
         </div>
@@ -160,9 +164,11 @@ function WalletReady({ view }: { view: HoldingsView }) {
         <p className="m-0 text-[15px] leading-relaxed text-muted">Log what you bought, or bring in your history.</p>
         <div className="flex w-full flex-col gap-2.5 sm:flex-row">
           <Button variant="primary" onClick={() => log.open(ira ? { kind: 'retirement-buy', wallet: ira.id } : { kind: 'buy', ...(first ? { wallet: first.id } : {}) })}>
+            <PlusIcon size={16} />
             Log a purchase
           </Button>
           <Link to="/records?v=io" className={buttonClasses('secondary', 'text-text no-underline hover:text-text')}>
+            <UploadIcon size={16} />
             Import history
           </Link>
         </div>
