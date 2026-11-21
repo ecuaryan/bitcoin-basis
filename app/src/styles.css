@@ -88,8 +88,9 @@
 
 @layer base {
   /* No lone last words: balance short headings, keep paragraphs from ending on one word. */
-  h1, h2, h3, h4, label, button { text-wrap: balance; }
-  p, li, dd, figcaption { text-wrap: pretty; }
+  body { text-wrap: pretty; } /* inherited by every element */
+  /* Short and centered text reads best with even lines. */
+  h1, h2, h3, h4, label, button, .text-center { text-wrap: balance; }
   html {
     line-height: normal;
     background: var(--color-bg);
