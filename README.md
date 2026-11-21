@@ -86,7 +86,7 @@ Details: [sync protocol](docs/sync-protocol.md), [engine spec](docs/engine-spec.
   <img src="docs/screenshots/log-phone.png" alt="Log sheet" width="220">
 </p>
 
-<a href="docs/screenshots/kit.png"><img src="docs/screenshots/kit.png" alt="The printable emergency kit (the recovery code and QR are masked in this test picture)" width="360"></a>
+<a href="docs/screenshots/kit.png"><img src="docs/screenshots/kit.png" alt="The printable emergency kit, with sample data (this recovery code opens nothing)" width="360"></a>
 
 Desktop: [Holdings](docs/screenshots/holdings-desktop.png), [Sell](docs/screenshots/sell-desktop.png), [Tax season](docs/screenshots/tax-season-desktop.png).
 
