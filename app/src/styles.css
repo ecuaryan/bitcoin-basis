@@ -140,6 +140,8 @@
   body { text-wrap: pretty; } /* inherited by every element */
   /* Short and centered text reads best with even lines. */
   h1, h2, h3, h4, label, button, .text-center { text-wrap: balance; }
+  /* Long lines are hard to read on wide screens: paragraphs stop at about 70 characters. */
+  p { max-width: 70ch; }
   html {
     /* Chrome's pull-to-refresh reloads the page and drops the keys; the app has its own pull to sync. */
     overscroll-behavior-y: contain;

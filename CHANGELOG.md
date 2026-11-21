@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Paragraphs stop at about 70 characters, so text stays easy to read on wide screens.
 - **First run, import only**: “You're all set” and the empty Holdings screen now offer “Import a spreadsheet or backup” next to adding a wallet, so you can start from a file without creating a wallet by hand. Empty-tier rows explain what to do.
 - **Recovery code groups are numbered** on the printed kit, and the check step shows which block is group 4 (the fourth of six) and says to look where you saved it: your password manager or the kit.
 - **Recovery code from your password manager**: where the browser supports it (Chrome, Edge, Android), “Fill in from my password manager” puts in the saved recovery code, so you don't type 30 characters. The field still works with ordinary autofill elsewhere.
