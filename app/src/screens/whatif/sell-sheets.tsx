@@ -1,4 +1,5 @@
 import { formatCents, oldestFirstOrder, parseDollars, planPrepareSale, type LotPick, type LedgerState, type SalePlan, type SellEntry, type MoveEntry, type WalletHolding } from '@bitcoin-basis/engine';
+import { useSubmit } from '../../ui/use-submit.ts';
 import { useMemo, useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
@@ -304,14 +305,14 @@ export function PrepareSaleSheet({
     return draft.ok ? { draft: draft.value, plan } : null;
   }, [state, walletId, dest, sats, feeSats, priceCents, today, year, strategy, handPicks]);
 
-  async function save() {
+  const submit = useSubmit(async () => {
     if (result === null) return;
     const entry: MoveEntry = { ...result.draft, id: newIdGenerator(entries)(), at: entryInstant(isDemo, today), tz: state.settings.timeZone, note: 'Prepared a sale from What if', proof: wallet?.defaultProof ?? '' };
     await append([entry]);
     toast.show(`Move logged. Sell on ${destName}, then log the sale here.`, { success: true });
     onSaved(dest);
     onClose();
-  }
+  });
 
   return (
     <Sheet open={open} onClose={onClose} title="Prepare this sale">
@@ -349,8 +350,8 @@ export function PrepareSaleSheet({
           <Button className="flex-1" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" className="flex-[1.6]" disabled={result === null} onClick={() => void save()}>
-            Save this move
+          <Button variant="primary" className="flex-[1.6]" disabled={result === null || submit.busy} onClick={() => void submit.run()}>
+            {submit.busy ? 'Saving…' : 'Save this move'}
           </Button>
         </div>
       </div>

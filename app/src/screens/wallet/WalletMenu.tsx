@@ -1,4 +1,5 @@
 import { localDate, uuidv7, type Entry, type LostCause, type LostEntry, type Wallet, type WalletEntry, type WalletFreezeEntry, type WalletUpdateEntry } from '@bitcoin-basis/engine';
+import { useSubmit } from '../../ui/use-submit.ts';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { Amount } from '../../ui/Amount.tsx';
@@ -13,6 +14,8 @@ import { useAmount, useFormEnv } from '../log/hooks.ts';
 import { choosePicks, localInputFor, longDate, lotsAvailable, noonOn, nowInstant, whenLabel, zonedInstant, type PickMode } from '../log/model.ts';
 import { AmountInput, FormFooter, MoreDetails, WhenField } from '../log/parts.tsx';
 import { Review } from '../log/Review.tsx';
+
+export type WalletMenuStart = { view: 'lost'; sats: number };
 
 type View = 'menu' | 'rename' | 'proof' | 'freeze' | 'lost' | 'archive';
 
@@ -63,11 +66,12 @@ function BackLink({ onClick }: { onClick(): void }) {
 function useWalletSave(onDone: () => void) {
   const { append } = useLedger();
   const toast = useToast();
-  return async (entry: Entry, message: string) => {
+  const submit = useSubmit(async (entry: Entry, message: string) => {
     await append([entry]);
     toast.show(message, { success: true });
     onDone();
-  };
+  });
+  return { save: submit.run, busy: submit.busy };
 }
 
 /** A sub-view of the menu: focus goes to its first field, and Esc steps back to the options (a second Esc closes the sheet). */
@@ -93,20 +97,20 @@ function Pane({ onBack, children }: { onBack(): void; children: ReactNode }) {
 }
 
 /** ⋯ menu of a wallet: everyday options, and the rare "something went wrong" ones. */
-export function WalletMenu({ open, onClose, wallet, onCloseOut, holdingSats }: { open: boolean; onClose(): void; wallet: Wallet; onCloseOut(): void; holdingSats: number }) {
-  const [view, setView] = useState<View>('menu');
+export function WalletMenu({ open, onClose, wallet, onCloseOut, holdingSats, start }: { open: boolean; onClose(): void; wallet: Wallet; onCloseOut(): void; holdingSats: number; start?: WalletMenuStart | null }) {
+  const [view, setView] = useState<View>(start?.view ?? 'menu');
   const close = () => {
     setView('menu');
     onClose();
   };
   return (
     <Sheet open={open} onClose={close} title={view === 'freeze' ? `Mark ${wallet.name} as frozen` : wallet.name}>
-      <MenuBody wallet={wallet} view={view} setView={setView} onClose={close} onCloseOut={onCloseOut} holdingSats={holdingSats} />
+      <MenuBody wallet={wallet} startSats={start?.sats ?? null} view={view} setView={setView} onClose={close} onCloseOut={onCloseOut} holdingSats={holdingSats} />
     </Sheet>
   );
 }
 
-function MenuBody({ wallet, view, setView, onClose, onCloseOut, holdingSats }: { wallet: Wallet; view: View; setView(v: View): void; onClose(): void; onCloseOut(): void; holdingSats: number }) {
+function MenuBody({ wallet, startSats, view, setView, onClose, onCloseOut, holdingSats }: { wallet: Wallet; startSats: number | null; view: View; setView(v: View): void; onClose(): void; onCloseOut(): void; holdingSats: number }) {
   const back = () => setView('menu');
   const retirement = wallet.type === 'retirement';
   const menuRef = useRef<HTMLDivElement>(null);
@@ -119,7 +123,7 @@ function MenuBody({ wallet, view, setView, onClose, onCloseOut, holdingSats }: {
   if (view === 'rename') return <Pane onBack={back}><RenameView wallet={wallet} onBack={back} onClose={onClose} /></Pane>;
   if (view === 'proof') return <Pane onBack={back}><ProofView wallet={wallet} onBack={back} onClose={onClose} /></Pane>;
   if (view === 'freeze') return <Pane onBack={back}><FreezeView wallet={wallet} onBack={back} onClose={onClose} /></Pane>;
-  if (view === 'lost') return <Pane onBack={back}><LostView wallet={wallet} onBack={back} onClose={onClose} /></Pane>;
+  if (view === 'lost') return <Pane onBack={back}><LostView wallet={wallet} startSats={startSats} onBack={back} onClose={onClose} /></Pane>;
   if (view === 'archive') return <Pane onBack={back}><ArchiveView wallet={wallet} holdingSats={holdingSats} onBack={back} onClose={onClose} /></Pane>;
   return (
     <div ref={menuRef} className="flex flex-col gap-4 pb-2">
@@ -159,7 +163,7 @@ function MenuBody({ wallet, view, setView, onClose, onCloseOut, holdingSats }: {
 
 function RenameView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void; onClose(): void }) {
   const { state } = useLedger();
-  const save = useWalletSave(onClose);
+  const { save, busy } = useWalletSave(onClose);
   const [name, setName] = useState(wallet.name);
   const [tried, setTried] = useState(false);
   const trimmed = name.trim();
@@ -172,14 +176,18 @@ function RenameView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): voi
         e.preventDefault();
         setTried(true);
         if (trimmed === '' || dup) return;
+        if (trimmed === wallet.name) {
+          onClose();
+          return;
+        }
         const entry: WalletUpdateEntry = { id: uuidv7(), kind: 'wallet-update', wallet: wallet.id, name: trimmed, at: nowInstant(Date.now()), tz: state.settings.timeZone };
         void save(entry, 'Renamed.');
       }}
     >
       <BackLink onClick={onBack} />
       <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" error={error} />
-      <Button type="submit" variant="primary" className="min-h-14 rounded-[18px] text-[17px]">
-        Save name
+      <Button type="submit" variant="primary" disabled={busy} className="min-h-14 rounded-[18px] text-[17px]">
+        {busy ? 'Saving…' : 'Save name'}
       </Button>
     </form>
   );
@@ -187,7 +195,7 @@ function RenameView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): voi
 
 function ProofView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void; onClose(): void }) {
   const { entries, state } = useLedger();
-  const save = useWalletSave(onClose);
+  const { save, busy } = useWalletSave(onClose);
   const [proof, setProof] = useState(wallet.defaultProof);
   const head = useMemo(() => entries.find((e): e is WalletEntry => e.kind === 'wallet' && e.wallet === wallet.id && state.applied.includes(e.id)), [entries, state.applied, wallet.id]);
   return (
@@ -196,14 +204,18 @@ function ProofView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void
       onSubmit={(e) => {
         e.preventDefault();
         if (head === undefined) return;
+        if (proof.trim() === wallet.defaultProof) {
+          onClose();
+          return;
+        }
         const entry: WalletEntry = { ...head, id: uuidv7(), defaultProof: proof.trim(), replaces: head.id, reason: 'Changed where receipts usually are' };
         void save(entry, 'Saved.');
       }}
     >
       <BackLink onClick={onBack} />
       <TextField label="Where receipts usually are" value={proof} onChange={(e) => setProof(e.target.value)} hint="New purchases and receives in this wallet start with this. Coins already logged keep theirs." autoComplete="off" />
-      <Button type="submit" variant="primary" disabled={head === undefined} className="min-h-14 rounded-[18px] text-[17px]">
-        Save
+      <Button type="submit" variant="primary" disabled={head === undefined || busy} className="min-h-14 rounded-[18px] text-[17px]">
+        {busy ? 'Saving…' : 'Save'}
       </Button>
     </form>
   );
@@ -211,7 +223,7 @@ function ProofView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void
 
 function ArchiveView({ wallet, holdingSats, onBack, onClose }: { wallet: Wallet; holdingSats: number; onBack(): void; onClose(): void }) {
   const { state } = useLedger();
-  const save = useWalletSave(onClose);
+  const { save, busy } = useWalletSave(onClose);
   const restoring = wallet.archived;
   const blocked = !restoring && holdingSats > 0;
   return (
@@ -226,14 +238,14 @@ function ArchiveView({ wallet, holdingSats, onBack, onClose }: { wallet: Wallet;
       )}
       <Button
         variant="primary"
-        disabled={blocked}
+        disabled={blocked || busy}
         className="min-h-14 rounded-[18px] text-[17px]"
         onClick={() => {
           const entry: WalletUpdateEntry = { id: uuidv7(), kind: 'wallet-update', wallet: wallet.id, archived: !restoring, at: nowInstant(Date.now()), tz: state.settings.timeZone };
           void save(entry, restoring ? 'Brought back.' : 'Archived.');
         }}
       >
-        {restoring ? 'Bring it back' : 'Archive wallet'}
+        {busy ? 'Saving…' : restoring ? 'Bring it back' : 'Archive wallet'}
       </Button>
     </div>
   );
@@ -279,12 +291,12 @@ function FreezeView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): voi
   );
 }
 
-function LostView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void; onClose(): void }) {
+function LostView({ wallet, startSats, onBack, onClose }: { wallet: Wallet; startSats: number | null; onBack(): void; onClose(): void }) {
   const { entries, state, nowMs, tz, today } = useFormEnv();
   const [id] = useState(() => uuidv7());
   const [when, setWhen] = useState(() => localInputFor(nowInstant(nowMs), tz));
   const at = zonedInstant(when, tz);
-  const amount = useAmount(null, null);
+  const amount = useAmount(startSats, null);
   const sats = amount.sats !== null && amount.sats > 0 ? amount.sats : null;
   const [cause, setCause] = useState<LostCause>('lost-keys');
   const [note, setNote] = useState('');

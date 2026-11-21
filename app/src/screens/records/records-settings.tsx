@@ -1,5 +1,6 @@
 import { FILING_STATUSES, STATE_RATES, yearOf } from '@bitcoin-basis/engine';
 import { useMemo, useState, type ReactNode } from 'react';
+import { useDelayedSave } from '../../ui/use-delayed-save.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { useHelp } from '../../ui/Help.tsx';
@@ -10,6 +11,9 @@ import { Field, SelectBox, Toggle } from '../../ui/Field.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { useWriter } from '../../ui/use-writer.ts';
 import { draftFrom, FILING_LABELS, patchFrom, timeZoneChoices, type SettingsDraft } from './settings-logic.ts';
+
+/** How long after the last change the settings are saved. */
+export const SAVE_DELAY_MS = 1500;
 
 const STATES = Object.values(STATE_RATES).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -36,7 +40,7 @@ export function SettingsView() {
   const [errors, setErrors] = useState<Partial<Record<keyof SettingsDraft, string>>>({});
   const err = (k: keyof SettingsDraft) => errors[k];
 
-  /** Changes save as you go: choices at once, typed fields when you leave them. Nothing to forget to press. */
+  /** Changes save as you go, a moment after the last one, as a single entry with only what differs from now. Nothing to forget to press. */
   async function save(d: SettingsDraft, relabelYear = false) {
     const r = patchFrom(s, d, thisYear);
     if (!r.ok) {
@@ -49,20 +53,21 @@ export function SettingsView() {
     await write({ kind: 'settings', patch });
     toast.show('Saved.', { success: true });
   }
-  /** A choice (select or switch): set it and save it. */
+  const later = useDelayedSave((d: SettingsDraft) => save(d), SAVE_DELAY_MS);
+  /** A choice (select or switch): set it and save it soon. */
   const pick = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
-    void save(next);
+    later(next);
   };
   /** A typed field: update while typing, save on leaving the field. */
   const type = <K extends keyof SettingsDraft>(key: K) => ({
     onChange: (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [key]: e.target.value })),
-    onBlur: () => void save(draft),
+    onBlur: () => later(draft),
   });
   const num = <K extends keyof SettingsDraft>(key: K) => ({
     onChange: (v: string) => setDraft((d) => ({ ...d, [key]: v })),
-    onBlur: () => void save(draft),
+    onBlur: () => later(draft),
   });
   const zones = useMemo(() => timeZoneChoices(draft.timeZone), [draft.timeZone]);
 

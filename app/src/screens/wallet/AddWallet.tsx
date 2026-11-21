@@ -1,4 +1,5 @@
 import { uuidv7, type WalletEntry, type WalletType } from '@bitcoin-basis/engine';
+import { useSubmit } from '../../ui/use-submit.ts';
 import { useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { Button } from '../../ui/Button.tsx';
@@ -47,7 +48,6 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
   const [type, setType] = useState<WalletType>('exchange');
   const [chip, setChip] = useState<string | null>(null);
   const [other, setOther] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
   const trimmed = name.trim();
   const fallback = DEFAULT_PROOF[type];
@@ -57,16 +57,19 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
   const duplicate = state.wallets.some((w) => w.name.trim().toLowerCase() === trimmed.toLowerCase());
   const error = !tried ? null : trimmed === '' ? 'Give the wallet a name.' : duplicate ? 'You already have a wallet with that name.' : null;
 
-  async function save() {
-    setTried(true);
-    if (trimmed === '' || duplicate) return;
-    setBusy(true);
+  const submit = useSubmit(async () => {
     const id = `${slug(trimmed) || 'wallet'}-${uuidv7().slice(-6)}`;
     const entry: WalletEntry = { id: uuidv7(), kind: 'wallet', wallet: id, name: trimmed, type, defaultProof: proof, at: nowInstant(Date.now()), tz: state.settings.timeZone };
     await append([entry]);
     toast.show(`${trimmed} added.`, { success: true });
     onAdded?.(id);
     onClose();
+  });
+  const busy = submit.busy;
+  function save() {
+    setTried(true);
+    if (trimmed === '' || duplicate) return;
+    void submit.run();
   }
 
   return (
@@ -103,7 +106,7 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
         {picked === 'Other' ? <TextField label="Where" value={otherText} onChange={(e) => setOther(e.target.value)} autoComplete="off" hint="New purchases here will start with this." /> : null}
       </div>
       <Button type="submit" variant="primary" disabled={busy} className="min-h-14 rounded-[18px] text-[17px]">
-        Add wallet
+        {busy ? 'Saving…' : 'Add wallet'}
       </Button>
     </form>
   );

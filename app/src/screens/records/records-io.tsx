@@ -1,4 +1,5 @@
 import { exportEntriesJson, exportOpeningLotsCsv, form8949Csv, TIERS, yearOf, type WalletType } from '@bitcoin-basis/engine';
+import { useSubmit } from '../../ui/use-submit.ts';
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { TIER_LABEL } from '../../lib/origin.ts';
@@ -71,7 +72,7 @@ function ImportLots() {
     setFailed(false);
     setFile({ name, text });
   };
-  async function add(p: ImportPreview) {
+  const adder = useSubmit(async (p: ImportPreview) => {
     const batches = [...chunk(walletEntries(p.newWallets, types, nowInstant(Date.now()), tz), BATCH), ...chunk(p.entries, BATCH)];
     const total = batches.reduce((s, b) => s + b.length, 0);
     let done = 0;
@@ -93,7 +94,8 @@ function ImportLots() {
     setFile(null);
     setProgress(null);
     navigate('/');
-  }
+  });
+  const add = adder.run;
   return (
     <Card as="section" aria-label="Bring in your coins" className="flex flex-col gap-3 !rounded-[18px] !p-4">
       <h2 className="m-0 text-[15px] font-semibold">Bring in your coins from a spreadsheet</h2>
@@ -205,6 +207,12 @@ function ImportJson() {
   const [name, setName] = useState('');
   const [preview, setPreview] = useState<JsonPreview | null>(null);
   const have = useMemo(() => new Set(entries.map((e) => e.id)), [entries]);
+  const addFresh = useSubmit(async () => {
+    if (preview === null || preview.fresh.length === 0) return;
+    await append(preview.fresh);
+    toast.show(`Added ${preview.fresh.length} entries.`, { success: true });
+    setPreview(null);
+  });
   return (
     <Card as="section" aria-label="Restore from a backup" className="flex flex-col gap-3 !rounded-[18px] !p-4">
       <h2 className="m-0 text-[15px] font-semibold">Restore from a backup file</h2>
@@ -239,15 +247,10 @@ function ImportJson() {
               <Button
                 variant="primary"
                 className="self-start"
-                disabled={preview.fresh.length === 0}
-                onClick={() => {
-                  void append(preview.fresh).then(() => {
-                    toast.show(`Added ${preview.fresh.length} entries.`, { success: true });
-                    setPreview(null);
-                  });
-                }}
+                disabled={preview.fresh.length === 0 || addFresh.busy}
+                onClick={() => void addFresh.run()}
               >
-                Add {preview.fresh.length} new {preview.fresh.length === 1 ? 'entry' : 'entries'}
+                {addFresh.busy ? 'Saving…' : `Add ${preview.fresh.length} new ${preview.fresh.length === 1 ? 'entry' : 'entries'}`}
               </Button>
             </>
           )}

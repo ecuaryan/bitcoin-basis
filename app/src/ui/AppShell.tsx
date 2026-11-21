@@ -1,3 +1,4 @@
+import { flushPendingSaves } from '../lib/pending-saves.ts';
 import { createContext, lazy, useEffect, Suspense, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import { PullToSync } from './PullToSync.tsx';
@@ -85,7 +86,7 @@ export function LockButton({ variant = 'icon' }: { variant?: 'icon' | 'text' }) 
   const vault = useVaultOptional();
   const { isDemo } = useLedger();
   const lock = () => {
-    if (vault !== null && !isDemo) vault.lock();
+    if (vault !== null && !isDemo) void flushPendingSaves().then(() => vault.lock());
     else toast.show('This is the demo, so there is nothing to lock.');
   };
   if (variant === 'text') {

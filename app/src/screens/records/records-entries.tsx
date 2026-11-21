@@ -10,12 +10,12 @@ import { Field, SelectBox } from '../../ui/Field.tsx';
 import { PlainMoney } from '../../ui/plain-money.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 import { describeEntry } from '../../lib/describe-entry.ts';
-import { buildItems, entryYears, KIND_GROUPS, matches, type EntryFilter, type EntryItem, type KindGroup } from './records-logic.ts';
+import { buildItems, collapseRuns, entryYears, KIND_GROUPS, matches, type EntryFilter, type EntryItem, type KindGroup } from './records-logic.ts';
 
 const PAGE = 40;
 
 /** One row in an entries list. A button: it opens the entry with its history. */
-export function EntryRow({ item, wallets, today, onOpen, last }: { item: EntryItem; wallets: ReadonlyMap<string, Wallet>; today: string; onOpen(): void; last: boolean }) {
+export function EntryRow({ item, wallets, today, onOpen, last, count = 1, net = null }: { item: EntryItem; wallets: ReadonlyMap<string, Wallet>; today: string; onOpen(): void; last: boolean; count?: number; net?: string | null }) {
   const e = item.current;
   const line = describeEntry(e, wallets);
   const edited = item.versions.length > 1;
@@ -28,10 +28,11 @@ export function EntryRow({ item, wallets, today, onOpen, last }: { item: EntryIt
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className={cx('text-sm font-semibold', item.deleted && 'text-muted line-through')}>
             {line.title}
+            {count > 1 ? ` ×${count}` : ''}
             {item.deleted && <span className="sr-only"> (deleted)</span>}
           </span>
           <span className="truncate text-xs text-muted">
-            {line.detail} · {shortDate(localDate(e.at, e.tz), today)}
+            {net ?? line.detail} · {shortDate(localDate(e.at, e.tz), today)}
           </span>
         </span>
         <span className="flex flex-none flex-col items-end gap-0.5">
@@ -161,6 +162,8 @@ export function EntriesView({ autoFocusSearch = false }: { autoFocusSearch?: boo
   const deferred = useDeferredValue(filter);
   const years = useMemo(() => entryYears(items), [items]);
   const list = useMemo(() => items.filter((i) => matches(i, deferred, wallets)), [items, deferred, wallets]);
+  const base = useMemo(() => items.filter((i) => matches(i, { text: '', wallet: '', group: '', year: '' }, wallets)).length, [items, wallets]);
+  const rows = useMemo(() => collapseRuns(list, items), [list, items]);
   const open = items.find((i) => i.id === openId) ?? null;
   const set = (patch: Partial<EntryFilter>) => {
     setFilter((f) => ({ ...f, ...patch }));
@@ -196,14 +199,14 @@ export function EntriesView({ autoFocusSearch = false }: { autoFocusSearch?: boo
         </SelectBox>
       </div>
       <p role="status" className="m-0 text-xs text-muted">
-        {list.length === items.length ? `All ${items.length} entries` : `${list.length} of ${items.length} entries`}
+        {list.length === base ? `All ${base} entries` : `${list.length} of ${base} entries`}
       </p>
       {list.length === 0 ? (
         <p className="m-0 rounded-[18px] border border-line bg-surface p-4 text-sm text-muted">Nothing matches. Clear a filter or try other words.</p>
       ) : (
         <ul className="m-0 list-none rounded-[18px] border border-line bg-surface px-3.5 py-0.5">
-          {list.slice(0, shown).map((item, i, arr) => (
-            <EntryRow key={item.id} item={item} wallets={wallets} today={today} onOpen={() => setOpenId(item.id)} last={i === arr.length - 1} />
+          {rows.slice(0, shown).map(({ item, count, net }, i, arr) => (
+            <EntryRow key={item.id} item={item} count={count} net={net} wallets={wallets} today={today} onOpen={() => setOpenId(item.id)} last={i === arr.length - 1} />
           ))}
         </ul>
       )}

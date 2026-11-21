@@ -1,4 +1,5 @@
 import { type Entry } from '@bitcoin-basis/engine';
+import { useSubmit } from '../../ui/use-submit.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
@@ -92,7 +93,6 @@ export function Review({ draft, onBack, onSaved, showTitle = true }: { draft: Dr
   const { entries, state, append } = useLedger();
   const toast = useToast();
   const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
   const needsReason = draft.replacing !== undefined;
   const reasonText = reason.trim();
@@ -105,14 +105,17 @@ export function Review({ draft, onBack, onSaved, showTitle = true }: { draft: Dr
   const reasonError = tried && needsReason && reasonText === '' ? 'Say why you are changing this. It is kept with the entry.' : null;
   const blocked = trial.problems.length > 0;
 
-  async function save() {
-    setTried(true);
-    if (blocked || (needsReason && reasonText === '')) return;
-    setBusy(true);
+  const submit = useSubmit(async () => {
     const final = draft.build(reasonText);
     await append(final);
     toast.show(draft.savedMessage, { success: true });
     onSaved(final);
+  });
+  const busy = submit.busy;
+  function save() {
+    setTried(true);
+    if (blocked || (needsReason && reasonText === '')) return;
+    void submit.run();
   }
 
   return (
@@ -123,7 +126,7 @@ export function Review({ draft, onBack, onSaved, showTitle = true }: { draft: Dr
       className="flex flex-col gap-4 outline-none"
       onSubmit={(e) => {
         e.preventDefault();
-        void save();
+        save();
       }}
     >
       {showTitle ? <h3 className="m-0 font-display text-lg font-semibold tracking-tight">{draft.title}</h3> : null}
@@ -163,7 +166,7 @@ export function Review({ draft, onBack, onSaved, showTitle = true }: { draft: Dr
           Back
         </Button>
         <Button type="submit" variant="primary" disabled={busy || blocked} className="min-h-14 flex-1 rounded-[18px] text-[17px] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
-          {draft.saveLabel}
+          {busy ? 'Saving…' : draft.saveLabel}
         </Button>
       </FormFooter>
     </form>

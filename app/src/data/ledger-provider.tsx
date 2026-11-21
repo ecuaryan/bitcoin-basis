@@ -1,5 +1,5 @@
 import { holdings as computeHoldings, localDate, replay, type Entry, type Holdings, type LedgerState } from '@bitcoin-basis/engine';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { buildDemoBook, DEMO_TODAY } from '../demo/demo-data.ts';
 import type { LedgerStore } from './ledger-store.ts';
 
@@ -73,7 +73,21 @@ export function LedgerProvider({
   const state = useMemo(() => replay(entries), [entries]);
   const holdings = useMemo(() => computeHoldings(state), [state]);
 
-  const append = useCallback((add: readonly Entry[]) => store.append(add), [store]);
+  // Safety net under every save button: the same entry cannot be on its way in twice.
+  const inFlight = useRef(new Map<string, Promise<void>>());
+  const append = useCallback(
+    (add: readonly Entry[]) => {
+      const ids = add.map((e) => e.id);
+      const running = ids.map((id) => inFlight.current.get(id)).find((p) => p !== undefined);
+      if (running !== undefined) return running;
+      const p = store.append(add).finally(() => {
+        for (const id of ids) inFlight.current.delete(id);
+      });
+      for (const id of ids) inFlight.current.set(id, p);
+      return p;
+    },
+    [store],
+  );
   // Demo only ever touches the demo store: the vault's store is append-only and is never cleared.
   const loadDemo = useCallback(async () => {
     await demoStore.clear();

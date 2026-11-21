@@ -28,7 +28,7 @@ export function ReceiveForm({ initial, preset, onReview, onSwitch }: FormProps) 
   const [when, setWhen] = useState(() => localInputFor(edit?.at ?? nowInstant(nowMs), tz));
   const at = zonedInstant(when, tz);
   const price = usePriceAt(at, nowMs);
-  const amount = useAmount(edit?.sats ?? null, price.cents);
+  const amount = useAmount(edit?.sats ?? preset.sats ?? null, price.cents);
   const sats = amount.sats !== null && amount.sats > 0 ? amount.sats : null;
   const [wallet, setWallet] = useState(edit?.wallet ?? preset.wallet ?? usualWallet(entries, state, ['buy', 'receive']));
   const wallets = usableWallets(state, edit?.wallet);

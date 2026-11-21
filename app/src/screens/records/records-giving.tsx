@@ -1,4 +1,5 @@
 import { formatCents, givingDue, parseDollars, yearOf } from '@bitcoin-basis/engine';
+import { useSubmit } from '../../ui/use-submit.ts';
 import { useMemo, useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
@@ -26,6 +27,17 @@ export function GivingView() {
   const amountText = amount ?? formatCents(owed);
   const cents = parseDollars(amountText);
 
+  const turnOn = useSubmit(async () => {
+    await write({ kind: 'settings', patch: { givingEnabled: true } });
+    toast.show(`${s.givingName} is on.`, { success: true });
+  });
+  const paid = useSubmit(async () => {
+    if (cents === null || cents <= 0) return;
+    await write({ kind: 'giving-paid', year, cents });
+    setAmount(null);
+    toast.show(`Marked as paid for ${year}.`, { success: true });
+  });
+
   if (!s.givingEnabled) {
     return (
       <Card className="flex flex-col items-start gap-3">
@@ -35,22 +47,15 @@ export function GivingView() {
         </p>
         <Button
           variant="primary"
-          onClick={() => {
-            void write({ kind: 'settings', patch: { givingEnabled: true } }).then(() => toast.show(`${s.givingName} is on.`, { success: true }));
-          }}
+          disabled={turnOn.busy}
+          onClick={() => void turnOn.run()}
         >
-          Turn it on
+          {turnOn.busy ? 'Saving…' : 'Turn it on'}
         </Button>
       </Card>
     );
   }
 
-  async function markPaid() {
-    if (cents === null || cents <= 0) return;
-    await write({ kind: 'giving-paid', year, cents });
-    setAmount(null);
-    toast.show(`Marked as paid for ${year}.`, { success: true });
-  }
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-end justify-between gap-3">
@@ -89,8 +94,8 @@ export function GivingView() {
       <Card as="section" aria-label="Record a payment" className="flex flex-col gap-3 !rounded-[18px] !p-4">
         <h2 className="m-0 text-[15px] font-semibold">Record a payment</h2>
         <MoneyInput label="Amount paid" value={amountText} onChange={setAmount} error={cents === null ? 'Use a dollar amount.' : null} />
-        <Button variant="primary" className="self-start" disabled={cents === null || cents <= 0} onClick={() => void markPaid()}>
-          Mark as paid
+        <Button variant="primary" className="self-start" disabled={cents === null || cents <= 0 || paid.busy} onClick={() => void paid.run()}>
+          {paid.busy ? 'Saving…' : 'Mark as paid'}
         </Button>
         {due.paidEntries.length > 0 && (
           <ul className="m-0 flex list-none flex-col p-0" aria-label="Payments">

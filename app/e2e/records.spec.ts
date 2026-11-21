@@ -127,3 +127,28 @@ test('Records: test the emergency kit sheet, then the reminder hides', async ({ 
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('region', { name: 'Needs attention' })).toHaveCount(0);
 });
+
+test('Records: settings toggles save once, and the entries list keeps settings out of the way', async ({ page }) => {
+  await openDemo(page);
+  await go(page, '/records?v=settings');
+  const giving = page.getByRole('group', { name: 'Giving' }).or(page.getByRole('region', { name: 'Giving' }));
+  const toggle = giving.getByRole('switch').first();
+  await expect(toggle).toBeVisible();
+  const start = await toggle.isChecked();
+  const flip = () => giving.getByText('Set aside a share of gains').click();
+  // Flip it three times quickly (ends flipped once), then a pair that cancels out.
+  for (let i = 0; i < 3; i++) await flip();
+  await expect(page.getByText('Saved.')).toBeVisible({ timeout: 8000 });
+  expect(await toggle.isChecked()).toBe(!start);
+  for (let i = 0; i < 2; i++) await flip();
+  await page.waitForTimeout(2500);
+  await go(page, '/records?v=entries');
+  await expect(page.getByText('Settings changed')).toHaveCount(0);
+  await page.getByLabel('Kind').selectOption({ label: 'Settings' });
+  const rows = page.getByRole('list').getByRole('button', { name: /Settings changed/ });
+  await expect(rows.first()).toBeVisible();
+  const text = (await rows.allInnerTexts()).join(' ');
+  // One entry for the first save and none for the cancelled pair: at most one more than the demo's own.
+  expect(text).not.toMatch(/×[4-9]/);
+  await expectNoViolations(page);
+});

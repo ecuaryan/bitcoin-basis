@@ -125,8 +125,76 @@ test('confirm a balance: yes, then no with a different number', async ({ page })
   await box.fill('0.6253214');
   await card.getByRole('button', { name: 'Check', exact: true }).click();
   await expect(page.getByText(/Strike shows .* more\./)).toBeVisible();
-  await expect(page.getByText('0.0065 0000 BTC')).toBeVisible();
-  await expect(card.getByRole('button', { name: 'Log it' })).toBeVisible();
+  await expect(card.getByRole('button', { name: /^Log the missing 0\.0065 0000 BTC/ })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Save anyway' })).toHaveCount(0);
+  await axeClean(page);
+});
+
+test('mismatch: wallet shows more, so ask Bought or Received with the amount filled in; Not now saves nothing', async ({ page }) => {
+  await demo(page);
+  await go(page, '/wallet/wallet-strike');
+  const card = page.getByRole('region', { name: 'Does it match?' });
+  const entries = page.getByRole('region', { name: 'Entries' });
+  await expect(entries.getByRole('listitem').first()).toBeVisible();
+  const before = await entries.getByRole('listitem').count();
+  await card.getByRole('button', { name: "No, it's different" }).click();
+  await card.getByLabel('What Strike shows').fill('0.6253214');
+  await card.getByRole('button', { name: 'Check', exact: true }).click();
+  await card.getByRole('button', { name: /^Log the missing/ }).click();
+  await expect(card.getByRole('button', { name: 'Bought' })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Sold or spent' })).toHaveCount(0);
+  await axeClean(page);
+  await card.getByRole('button', { name: 'Received' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('tab', { name: 'Received', selected: true })).toBeVisible();
+  await expect(dialog.getByLabel('Amount', { exact: true })).toHaveValue('0.0065 0000');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Not now' }).click();
+  await expect(card.getByRole('button', { name: /^Log the missing/ })).toHaveCount(0);
+  await expect(entries.getByRole('listitem')).toHaveCount(before);
+});
+
+test('mismatch: wallet shows less, so ask what happened; each answer opens with the amount', async ({ page }) => {
+  await demo(page);
+  await go(page, '/wallet/wallet-strike');
+  const card = page.getByRole('region', { name: 'Does it match?' });
+  await card.getByRole('button', { name: "No, it's different" }).click();
+  await card.getByLabel('What Strike shows').fill('0.6088214');
+  await card.getByRole('button', { name: 'Check', exact: true }).click();
+  await card.getByRole('button', { name: /^Log the missing 0\.0100 0000 BTC/ }).click();
+  await expect(card.getByRole('button', { name: 'Bought' })).toHaveCount(0);
+  await card.getByRole('button', { name: 'Moved to another wallet' }).click();
+  let dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('tab', { name: 'Moved', selected: true })).toBeVisible();
+  await expect(dialog.getByLabel('Amount that arrives')).toHaveValue('0.0100 0000');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Sold or spent' }).click();
+  dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('tab', { name: 'Sold or spent', selected: true })).toBeVisible();
+  await expect(dialog.getByLabel('Amount', { exact: true })).toHaveValue('0.0100 0000');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Lost or stolen' }).click();
+  dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('How much was lost or stolen')).toHaveValue('0.0100 0000');
+  await axeClean(page);
+});
+
+test('confirming the same balance again does not add another entry', async ({ page }) => {
+  await demo(page);
+  await go(page, '/wallet/wallet-strike');
+  const card = page.getByRole('region', { name: 'Does it match?' });
+  const checks = page.getByRole('region', { name: 'Entries' }).getByText('Checked the balance');
+  await card.getByRole('button', { name: 'Yes' }).click();
+  await expect(page.getByText('Confirmed. Strike matches.')).toBeVisible();
+  const after1 = await checks.count();
+  expect(after1).toBeGreaterThan(0);
+  await card.getByRole('button', { name: 'Yes' }).click();
+  await card.getByRole('button', { name: 'Yes' }).click();
+  await expect(card.getByText('Confirmed today', { exact: true })).toBeVisible();
+  await expect(checks).toHaveCount(after1);
   await axeClean(page);
 });
 
@@ -217,4 +285,21 @@ test('add a wallet from the log form', async ({ page }) => {
   await axeClean(page);
   await add.getByRole('button', { name: 'Add wallet' }).click();
   await expect(page.getByRole('dialog', { name: 'Log' }).getByLabel('Wallet', { exact: true })).toHaveValue(/kraken/);
+});
+
+test('double-clicking Save on a purchase logs it once', async ({ page }) => {
+  await demo(page);
+  await openLog(page, 'Bought');
+  const d = dialog(page);
+  await d.getByLabel('Amount', { exact: true }).fill('0.01');
+  await d.getByLabel('Total paid, including fees').fill('750');
+  // Two clicks on the same button in the same instant, as a double tap on a slow connection would.
+  await d.getByRole('button', { name: 'Save purchase' }).evaluate((b: HTMLButtonElement) => {
+    b.click();
+    b.click();
+  });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // 3.3667 2105 + 0.01 once, not twice.
+  await expect(page.getByText('3.3767 2105 BTC')).toBeVisible();
+  await expect(page.getByText('3.3867 2105 BTC')).toHaveCount(0);
 });

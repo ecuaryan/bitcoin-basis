@@ -1,4 +1,6 @@
 import { uuidv7, type Entry } from '@bitcoin-basis/engine';
+import { useSubmit } from '../../ui/use-submit.ts';
+import { SavingContext } from './saving.ts';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
@@ -137,10 +139,19 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
     wasReviewing.current = reviewing;
   }, [reviewing]);
 
-  const saving = useRef(false);
 
   /** Take back what was just saved: the same kind of entry a removal makes. */
+  const undoing = useRef(false);
   async function undo(made: readonly Entry[]) {
+    if (undoing.current) return;
+    undoing.current = true;
+    try {
+      await undoNow(made);
+    } finally {
+      undoing.current = false;
+    }
+  }
+  async function undoNow(made: readonly Entry[]) {
     const gone: Entry[] = made.map((e) => ({ id: uuidv7(), kind: 'delete', at: new Date(nowMs).toISOString().slice(0, 19) + 'Z', tz: state.settings.timeZone, replaces: e.id, reason: 'Undone right after saving' }));
     const t = trialReplay(entries, state, [...made, ...gone]);
     if (t.problems.length > 0) {
@@ -163,15 +174,16 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
       setDraft(wrapped);
       return;
     }
-    if (saving.current) return;
-    saving.current = true;
+    await direct.run(d, made);
+  }
+
+  const direct = useSubmit(async (d: Draft, made: Entry[]) => {
     await append(made);
-    saving.current = false;
     const next = d.afterSave?.(made) ?? null;
     if (next !== null && 'next' in next) toast.show(d.savedMessage, { success: true });
     else toast.show(d.savedMessage, { success: true, action: { label: 'Undo', onClick: () => void undo(made) } });
     saved(d, made);
-  }
+  });
 
   function saved(d: Draft, entriesSaved: Entry[]) {
     const after = d.afterSave?.(entriesSaved) ?? null;
@@ -214,7 +226,9 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
       <div ref={tabsRef} hidden={reviewing} className="flex flex-col gap-4">
         {editing ? <h3 className="m-0 font-display text-lg font-semibold tracking-tight">Change this entry</h3> : <KindTabs kind={kind} onPick={(k) => switchTo(k)} panelId={panelId} />}
         <div role={editing ? undefined : 'tabpanel'} id={panelId} aria-labelledby={editing ? undefined : `${panelId}-tab-${kind}`} className="flex flex-col gap-4">
-          <Form key={`${kind}-${formKey}`} initial={editing ? head : null} preset={preset} onReview={(d) => void onReview(d)} onSwitch={switchTo} />
+          <SavingContext.Provider value={direct.busy}>
+            <Form key={`${kind}-${formKey}`} initial={editing ? head : null} preset={preset} onReview={(d) => void onReview(d)} onSwitch={switchTo} />
+          </SavingContext.Provider>
         </div>
       </div>
       {draft ? <Review draft={draft} showTitle={false} onBack={() => setDraft(null)} onSaved={(s) => saved(draft, s)} /> : null}

@@ -1,5 +1,5 @@
-import { taxYear, type Entry, type EntryKind, type Wallet } from '@bitcoin-basis/engine';
-import { describeEntry } from '../../lib/describe-entry.ts';
+import { DEFAULT_SETTINGS, taxYear, type Entry, type EntryKind, type Wallet } from '@bitcoin-basis/engine';
+import { describeEntry, describeSettingChange } from '../../lib/describe-entry.ts';
 
 export interface EntryItem {
   /** Id of the first version. */
@@ -113,6 +113,8 @@ export function walletsOf(e: Entry): string[] {
 
 export function matches(item: EntryItem, f: EntryFilter, wallets: ReadonlyMap<string, Wallet>): boolean {
   const e = item.current;
+  // Settings changes are noise in the everyday list: they show under Kind = Settings.
+  if (f.group === '' && kindGroup(e.kind) === 'settings') return false;
   if (f.group !== '' && kindGroup(e.kind) !== f.group) return false;
   if (f.wallet !== '' && !item.versions.some((v) => walletsOf(v).includes(f.wallet))) return false;
   if (f.year !== '' && String(taxYear(e.at, e.tz)) !== f.year) return false;
@@ -126,4 +128,43 @@ export function matches(item: EntryItem, f: EntryFilter, wallets: ReadonlyMap<st
 /** Years that have entries, newest first. */
 export function entryYears(items: readonly EntryItem[]): number[] {
   return [...new Set(items.map((i) => taxYear(i.current.at, i.current.tz)))].sort((a, b) => b - a);
+}
+
+/** One row of the entries list: a run of look-alike entries shown as one. */
+export interface EntryRun {
+  item: EntryItem;
+  count: number;
+  /** What the run changed in all, when it is a run of settings changes. */
+  net: string | null;
+}
+
+/** Back-to-back balance checks that agree, and back-to-back settings changes, become one row each. `all` is every item, newest first. */
+export function collapseRuns(list: readonly EntryItem[], all: readonly EntryItem[]): EntryRun[] {
+  const keyOf = (i: EntryItem): string | null => {
+    const e = i.current;
+    if (i.deleted || i.conflict) return null;
+    if (e.kind === 'settings') return 'settings';
+    if (e.kind === 'balance-confirm') return `check:${e.wallet}:${e.sats}`;
+    return null;
+  };
+  const runs: { items: EntryItem[]; key: string | null }[] = [];
+  for (const item of list) {
+    const key = keyOf(item);
+    const last = runs.at(-1);
+    if (key !== null && last !== undefined && last.key === key) last.items.push(item);
+    else runs.push({ items: [item], key });
+  }
+  return runs.map(({ items, key }) => ({ item: items[0] as EntryItem, count: items.length, net: key === 'settings' && items.length > 1 ? netSettings(items, all) : null }));
+}
+
+function netSettings(run: readonly EntryItem[], all: readonly EntryItem[]): string {
+  const patchOf = (i: EntryItem): Record<string, unknown> => (i.current.kind === 'settings' && !i.deleted ? (i.current.patch as Record<string, unknown>) : {});
+  const oldest = run[run.length - 1] as EntryItem;
+  const older = all.slice(all.findIndex((i) => i.id === oldest.id) + 1).reverse();
+  const before: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+  for (const i of older) Object.assign(before, patchOf(i));
+  const after = { ...before };
+  for (const i of [...run].reverse()) Object.assign(after, patchOf(i));
+  const changed = Object.keys(after).filter((k) => JSON.stringify(after[k]) !== JSON.stringify(before[k]));
+  return changed.length === 0 ? 'No net change' : changed.map((k) => describeSettingChange(k, after[k])).join(' · ');
 }

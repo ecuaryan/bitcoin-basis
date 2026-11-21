@@ -1,4 +1,5 @@
 import { mulDivRoundHalfUp, parseDollars, SATS_PER_BTC, uuidv7, type BuyEntry, type Tier } from '@bitcoin-basis/engine';
+import { useSaving } from './saving.ts';
 import { useState } from 'react';
 import { formatMoney } from '../../lib/format.ts';
 import { TIER_HELP, TIER_LABEL } from '../../lib/origin.ts';
@@ -14,13 +15,14 @@ import { AmountInput, FormFooter, WalletSelect, WhenField } from './parts.tsx';
 const TIERS: Tier[] = ['documented', 'reconstructed', 'estimated', 'unknown'];
 
 export function BuyForm({ initial, preset, onReview }: FormProps) {
+  const saving = useSaving();
   const { entries, state, nowMs, tz } = useFormEnv();
   const edit = initial?.kind === 'buy' ? initial : null;
   const [id] = useState(() => uuidv7());
   const [when, setWhen] = useState(() => localInputFor(edit?.at ?? nowInstant(nowMs), tz));
   const at = zonedInstant(when, tz);
   const price = usePriceAt(at, nowMs);
-  const amount = useAmount(edit?.sats ?? null, price.cents);
+  const amount = useAmount(edit?.sats ?? preset.sats ?? null, price.cents);
   const [wallet, setWallet] = useState(edit?.wallet ?? preset.wallet ?? usualWallet(entries, state, ['buy']));
   const [paid, setPaid] = useState(edit ? centsText(edit.costCents) : '');
   const [proof, setProof] = useState<string | null>(edit?.proof ?? null);
@@ -110,8 +112,8 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
         </div>
       </details>
       <FormFooter>
-        <Button type="submit" variant="primary" className="min-h-14 flex-1 rounded-[18px] text-[17px] tracking-[0.01em] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
-          {edit === null ? 'Save purchase' : 'Review change'}
+        <Button type="submit" variant="primary" disabled={saving} className="min-h-14 flex-1 rounded-[18px] text-[17px] tracking-[0.01em] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
+          {saving ? 'Saving…' : edit === null ? 'Save purchase' : 'Review change'}
         </Button>
       </FormFooter>
     </form>

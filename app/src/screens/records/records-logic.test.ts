@@ -2,7 +2,7 @@ import { replay, type Entry } from '@bitcoin-basis/engine';
 import { describe as suite, expect, it } from 'vitest';
 import { buildDemoBook } from '../../demo/demo-data.ts';
 import { describeEntry as describe } from '../../lib/describe-entry.ts';
-import { buildItems, entryYears, kindGroup, matches, type EntryFilter } from './records-logic.ts';
+import { buildItems, collapseRuns, entryYears, kindGroup, matches, type EntryFilter } from './records-logic.ts';
 
 const tz = 'America/Boise';
 const entry = <T extends Entry['kind']>(e: Extract<Entry, { kind: T }>): Entry => e;
@@ -74,5 +74,33 @@ suite('filters', () => {
     expect(entryYears(items)).toEqual([2026, 2025]); // the wallet entry is Dec 31 in Boise
     expect(kindGroup('opening-lot')).toBe('imported');
     expect(kindGroup('wallet-freeze')).toBe('wallets');
+  });
+});
+
+suite('settings noise', () => {
+  const set = (id: string, at: string, patch: object): Entry => entry({ id, kind: 'settings', at, tz, patch });
+  const conf = (id: string, at: string, sats = 100): Entry => entry({ id, kind: 'balance-confirm', at, tz, wallet: 'strike', sats });
+  const none: EntryFilter = { text: '', wallet: '', group: '', year: '' };
+  const book = [wallet, set('s1', '2026-05-01T10:00:00Z', { givingEnabled: true }), set('s2', '2026-05-01T10:01:00Z', { givingEnabled: false }), set('s3', '2026-05-01T10:02:00Z', { givingEnabled: true, givingMode: 'after-tax' }), conf('c1', '2026-05-02T10:00:00Z'), conf('c2', '2026-05-03T10:00:00Z')];
+  const items = buildItems(book);
+  it('hides settings entries unless Kind is Settings', () => {
+    expect(items.filter((i) => matches(i, none, names)).map((i) => i.id)).toEqual(['c2', 'c1', 'w1']);
+    expect(items.filter((i) => matches(i, { ...none, group: 'settings' }, names))).toHaveLength(3);
+  });
+  it('folds a run of settings changes into one row with the net change', () => {
+    const rows = collapseRuns(items.filter((i) => matches(i, { ...none, group: 'settings' }, names)), items);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.count).toBe(3);
+    expect(rows[0]?.net).toBe('Giving turned on · after tax');
+  });
+  it('says so when toggles cancel out', () => {
+    const b = buildItems([wallet, set('s1', '2026-05-01T10:00:00Z', { givingEnabled: true }), set('s2', '2026-05-01T10:01:00Z', { givingEnabled: false })]);
+    expect(collapseRuns(b.filter((i) => i.id !== 'w1'), b)[0]?.net).toBe('No net change');
+  });
+  it('folds identical back-to-back balance checks, not different ones', () => {
+    const rows = collapseRuns(items.filter((i) => matches(i, none, names)), items);
+    expect(rows.map((r) => r.count)).toEqual([2, 1]);
+    const diff = buildItems([wallet, conf('c1', '2026-05-02T10:00:00Z'), conf('c2', '2026-05-03T10:00:00Z', 5)]);
+    expect(collapseRuns(diff, diff).map((r) => r.count)).toEqual([1, 1, 1]);
   });
 });

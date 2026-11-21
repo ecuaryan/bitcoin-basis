@@ -1,4 +1,5 @@
 import { mulDivRoundHalfUp, oneYearAnniversary, SATS_PER_BTC, termFor, uuidv7, type BalanceConfirmEntry, type Entry, type Lot, type RetirementSnapshotEntry, type Wallet } from '@bitcoin-basis/engine';
+import { useSubmit } from '../../ui/use-submit.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -19,8 +20,8 @@ import { useAmount } from '../log/hooks.ts';
 import { describeEntry } from '../../lib/describe-entry.ts';
 import { DELETABLE_KINDS, EDITABLE_KINDS, localInputFor, lockedYear, longDate, nextDay, nowInstant, trialReplay } from '../log/model.ts';
 import { CloseOutSheet } from './CloseOut.tsx';
-import { lastConfirmed, walletEntries, walletLots } from './model.ts';
-import { WalletMenu } from './WalletMenu.tsx';
+import { collapseChecks, lastConfirmed, walletEntries, walletLots } from './model.ts';
+import { WalletMenu, type WalletMenuStart } from './WalletMenu.tsx';
 import { useTitle } from '../../ui/use-title.ts';
 import { TERM_HELP } from '../../lib/terms.ts';
 import { useHelp } from '../../ui/Help.tsx';
@@ -93,7 +94,7 @@ function Balance({ wallet, sats, costCents, avg, priceCents }: { wallet: Wallet;
 
 type Unit2 = 'btc' | 'sats';
 
-function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: number; inputRef: React.RefObject<HTMLInputElement | null> }) {
+function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sats: number; inputRef: React.RefObject<HTMLInputElement | null>; onLost(sats: number): void }) {
   const { entries, state, append, today } = useLedger();
   const toast = useToast();
   const { open } = useLogSheet();
@@ -102,6 +103,7 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
   const [different, setDifferent] = useState(false);
   const [pending, setPending] = useState<{ entry: BalanceConfirmEntry; diff: number; since: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [choosing, setChoosing] = useState(false);
   const confirmed = lastConfirmed(state, wallet.id);
   const lastCheck = state.balanceChecks.filter((c) => c.wallet === wallet.id).at(-1);
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
@@ -114,20 +116,37 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
   function reset() {
     setDifferent(false);
     setPending(null);
+    setChoosing(false);
     setError(null);
     amount.setText('');
   }
 
-  /** Yes: the app's own balance is what the wallet shows. */
-  async function yes() {
-    await append([entryFor(sats)]);
+  /** Record a match. A repeat of the last check (same balance, nothing logged since) adds no new entry. */
+  async function confirmMatch(entry: BalanceConfirmEntry) {
+    const last = walletEntries(entries, state, wallet.id)[0];
+    if (last !== undefined && last.kind === 'balance-confirm' && last.sats === entry.sats) {
+      if (confirmed !== today) {
+        // Same check, new day: the old confirmation is replaced, so the history stays one line.
+        const again: BalanceConfirmEntry = { ...entry, replaces: last.id, reason: 'Re-checked' };
+        if (trialReplay(entries, state, [again], last.id).problems.length === 0) await append([again]);
+        else await append([entry]);
+      }
+    } else {
+      await append([entry]);
+    }
     toast.show(`Confirmed. ${wallet.name} matches.`, { success: true });
     reset();
   }
 
-  async function check() {
+  /** Yes: the app's own balance is what the wallet shows. */
+  async function yesNow() {
+    await confirmMatch(entryFor(sats));
+  }
+
+  async function checkNow() {
     setError(null);
     setPending(null);
+    setChoosing(false);
     const reported = amount.unit === 'usd' ? null : amount.sats;
     if (reported === null || amount.text.trim() === '') {
       setError('Enter the balance you see.');
@@ -141,14 +160,19 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
       return;
     }
     if (result.matches) {
-      await append([entry]);
-      toast.show(`Confirmed. ${wallet.name} matches.`, { success: true });
-      reset();
+      await confirmMatch(entry);
     } else {
       setPending({ entry, diff: result.differenceSats, since: result.entriesSinceLastMatch });
     }
   }
 
+  const missing = pending === null ? 0 : Math.abs(pending.diff);
+  function dismiss() {
+    setPending(null);
+    setChoosing(false);
+  }
+  const submit = useSubmit((what: 'yes' | 'check') => (what === 'yes' ? yesNow() : checkNow()));
+  const saving = submit.busy;
   const sinceEntries = pending === null ? [] : pending.since.map((id) => entries.find((e) => e.id === id)).filter((e): e is Entry => e !== undefined);
   return (
     <Card as="section" aria-label="Does it match?" className="flex flex-col gap-3">
@@ -168,8 +192,8 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
       </p>
       {!different ? (
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => void yes()}>
-            Yes
+          <Button variant="primary" disabled={saving} onClick={() => void submit.run('yes')}>
+            {saving ? 'Saving…' : 'Yes'}
           </Button>
           <Button variant="ghost" onClick={() => setDifferent(true)}>
             No, it&apos;s different
@@ -180,7 +204,7 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
           className="flex flex-col gap-2.5"
           onSubmit={(e) => {
             e.preventDefault();
-            void check();
+            void submit.run('check');
           }}
         >
           <div className="flex items-end gap-2">
@@ -208,8 +232,8 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
               };
               return unit === 'btc' ? <BtcInput {...common} value={amount.text} onChange={changed} /> : <TextField {...common} inputMode="numeric" autoComplete="off" placeholder="0" value={amount.text} onChange={(e) => changed(e.target.value.replace(/\D/g, ''))} />;
             })()}
-            <Button type="submit" variant="secondary" className="mb-0 h-[52px]">
-              Check
+            <Button type="submit" variant="secondary" disabled={saving} className="mb-0 h-[52px]">
+              {saving ? 'Saving…' : 'Check'}
             </Button>
           </div>
           <Button variant="ghost" onClick={reset} className="-ml-4 self-start">
@@ -245,22 +269,42 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
               {sinceEntries.length > 6 ? <span className="text-xs text-muted">and {sinceEntries.length - 6} more</span> : null}
             </div>
           ) : null}
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => open({ wallet: wallet.id })}>
-              Log it
+          {choosing ? (
+            <div role="group" aria-label="What happened?" className="flex flex-col gap-2">
+              <span className="text-xs text-muted">What happened?</span>
+              <div className="flex flex-wrap gap-2">
+                {pending.diff < 0 ? (
+                  <>
+                    <Button variant="secondary" onClick={() => open({ kind: 'sell', wallet: wallet.id, sats: missing })}>
+                      Sold or spent
+                    </Button>
+                    <Button variant="secondary" onClick={() => open({ kind: 'move', wallet: wallet.id, sats: missing })}>
+                      Moved to another wallet
+                    </Button>
+                    <Button variant="secondary" onClick={() => onLost(missing)}>
+                      Lost or stolen
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="secondary" onClick={() => open({ kind: 'buy', wallet: wallet.id, sats: missing })}>
+                      Bought
+                    </Button>
+                    <Button variant="secondary" onClick={() => open({ kind: 'receive', wallet: wallet.id, sats: missing })}>
+                      Received
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <Button variant="primary" onClick={() => setChoosing(true)} className="self-start">
+              Log the missing <Amount sats={missing} interactive={false} showUnit />
             </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                void append([pending.entry]).then(() => {
-                  toast.show('Saved. This wallet is marked as needing a check.', { success: true });
-                  setPending(null);
-                });
-              }}
-            >
-              Save anyway
-            </Button>
-          </div>
+          )}
+          <Button variant="ghost" onClick={dismiss} className="-ml-4 self-start">
+            Not now
+          </Button>
         </div>
       ) : null}
     </Card>
@@ -342,12 +386,13 @@ function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
   const [count, setCount] = useState(5);
   const [openId, setOpenId] = useState<string | null>(null);
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
+  const groups = useMemo(() => collapseChecks(rows), [rows]);
   return (
     <Card as="section" aria-label="Entries" className="flex flex-col gap-1">
       <h2 className="m-0 text-[15px] font-semibold">Entries</h2>
       <p className="m-0 mb-1 text-xs text-muted">Changes are saved as new entries. The original is kept.</p>
       <ul className="m-0 flex list-none flex-col p-0">
-        {rows.slice(0, count).map((e) => {
+        {groups.slice(0, count).map(({ entry: e, same }) => {
           const line = describeEntry(e, wallets);
           const locked = lockedYear(e, state);
           const isOpen = openId === e.id;
@@ -358,11 +403,14 @@ function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
             <li key={e.id} className="border-b border-line last:border-b-0">
               <button type="button" aria-expanded={isOpen} onClick={() => setOpenId(isOpen ? null : e.id)} className="flex min-h-14 w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-semibold">{line.summary}</span>
+                  <span className="text-sm font-semibold">
+                    {line.summary}
+                    {same.length > 1 ? ` ×${same.length}` : ''}
+                  </span>
                   <span className="text-xs text-muted">
                     {shortDate(date, today)}
                     {locked !== null ? ` · locked, ${locked} is closed` : ''}
-                    {e.replaces !== undefined ? ' · edited' : ''}
+                    {e.replaces !== undefined && e.reason !== 'Re-checked' ? ' · edited' : ''}
                   </span>
                 </span>
                 <span className="flex flex-col items-end text-sm font-semibold">
@@ -377,7 +425,8 @@ function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
               </button>
               {isOpen ? (
                 <div className="mb-2 flex flex-col gap-2 rounded-xl bg-bg px-3 py-2.5 text-xs">
-                  {e.reason ? <span className="text-muted">Why it was changed: {e.reason}</span> : null}
+                  {same.length > 1 ? <span className="text-muted">Checked on {same.map((x) => shortDate(localInputFor(x.at, x.tz).slice(0, 10), today)).join(', ')}.</span> : null}
+                  {e.reason && e.reason !== 'Re-checked' ? <span className="text-muted">Why it was changed: {e.reason}</span> : null}
                   {e.note ? <span className="whitespace-pre-line text-muted">{e.note}</span> : null}
                   {e.kind === 'give' && e.to === 'person' ? (
                     <Link to={`/gift-note/${e.id}`} className="w-fit text-sm font-semibold">
@@ -409,9 +458,9 @@ function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
         })}
       </ul>
       {rows.length === 0 ? <p className="m-0 py-2 text-sm text-muted">Nothing logged for {wallet.name} yet.</p> : null}
-      {rows.length > count ? (
-        <Button variant="ghost" onClick={() => setCount(rows.length)} className="-ml-4 self-start">
-          Show all {rows.length} entries
+      {groups.length > count ? (
+        <Button variant="ghost" onClick={() => setCount(groups.length)} className="-ml-4 self-start">
+          Show all {groups.length} entries
         </Button>
       ) : null}
     </Card>
@@ -510,6 +559,21 @@ function RetirementDetail({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): 
   const last = snaps.at(-1);
   const amount = useAmount(null, null);
   const [error, setError] = useState<string | null>(null);
+  const note = useSubmit(async () => {
+    const sats = amount.sats;
+    if (sats === null || amount.unit === 'usd') {
+      setError('Enter the balance in BTC or sats.');
+      return;
+    }
+    // The same balance noted again on the same day adds nothing.
+    if (!(last !== undefined && last.sats === sats && last.date === today)) {
+      const entry: RetirementSnapshotEntry = { id: uuidv7(), kind: 'retirement-snapshot', wallet: wallet.id, sats, at: nowInstant(Date.now()), tz: state.settings.timeZone };
+      await append([entry]);
+    }
+    toast.show('Balance noted.', { success: true });
+    amount.setText('');
+    setError(null);
+  });
   return (
     <div className="flex flex-col gap-5">
       <Header wallet={wallet} onMenu={onMenu} wide={wide} />
@@ -523,22 +587,12 @@ function RetirementDetail({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): 
           className="flex items-end gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            const sats = amount.sats;
-            if (sats === null || amount.unit === 'usd') {
-              setError('Enter the balance in BTC or sats.');
-              return;
-            }
-            const entry: RetirementSnapshotEntry = { id: uuidv7(), kind: 'retirement-snapshot', wallet: wallet.id, sats, at: nowInstant(Date.now()), tz: state.settings.timeZone };
-            void append([entry]).then(() => {
-              toast.show('Balance noted.', { success: true });
-              amount.setText('');
-              setError(null);
-            });
+            void note.run();
           }}
         >
           <TextField label={`What ${wallet.name} shows today (BTC)`} inputMode="decimal" autoComplete="off" value={amount.text} onChange={(e) => amount.setText(e.target.value)} frameClassName="flex-1" error={error} />
-          <Button type="submit" variant="secondary" className="h-[52px]">
-            Save
+          <Button type="submit" variant="secondary" disabled={note.busy} className="h-[52px]">
+            {note.busy ? 'Saving…' : 'Save'}
           </Button>
         </form>
         <span className="text-xs text-muted">Today is {longDate(today)}.</span>
@@ -555,6 +609,7 @@ export function WalletDetail() {
   const { quote } = usePrice();
   const wide = useIsWide();
   const [menu, setMenu] = useState(false);
+  const [menuStart, setMenuStart] = useState<WalletMenuStart | null>(null);
   const [closeOut, setCloseOut] = useState(false);
   const confirmRef = useRef<HTMLInputElement>(null);
   const wallet = state.wallets.find((w) => w.id === id);
@@ -577,10 +632,19 @@ export function WalletDetail() {
     );
   }
   const holdingSats = holding?.sats ?? 0;
-  const openMenu = () => setMenu(true);
+  const openMenu = () => {
+    setMenuStart(null);
+    setMenu(true);
+  };
+  const openLost = (sats: number) => {
+    setMenuStart({ view: 'lost', sats });
+    setMenu(true);
+  };
   const menuNode = (
     <>
       <WalletMenu
+        key={menuStart === null ? 'menu' : 'lost'}
+        start={menuStart}
         open={menu}
         onClose={() => setMenu(false)}
         wallet={wallet}
@@ -610,7 +674,7 @@ export function WalletDetail() {
       ) : (
         <Balance wallet={wallet} sats={holdingSats} costCents={costCents} avg={holding?.averageCostCentsPerBtc ?? null} priceCents={priceCents} />
       )}
-      {!frozenView ? <ConfirmBalance wallet={wallet} sats={holdingSats} inputRef={confirmRef} /> : null}
+      {!frozenView ? <ConfirmBalance wallet={wallet} sats={holdingSats} inputRef={confirmRef} onLost={openLost} /> : null}
     </>
   );
   const right = (

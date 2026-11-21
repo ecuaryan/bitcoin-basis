@@ -1,4 +1,5 @@
 import { localDate, picksAfterMove, uuidv7, type Entry, type MoveEntry } from '@bitcoin-basis/engine';
+import { useSaving } from './saving.ts';
 import { useMemo, useState } from 'react';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
@@ -10,6 +11,7 @@ import { choosePicks, cleanNumber, localInputFor, lotsAvailable, nowInstant, usa
 import { AmountInput, FormFooter, MoreDetails, ValueField, WalletSelect, WhenField } from './parts.tsx';
 
 export function MoveForm({ initial, preset, onReview }: FormProps) {
+  const saving = useSaving();
   const { entries, state: ledgerState, today, nowMs, tz } = useFormEnv();
   const edit = initial?.kind === 'move' ? initial : null;
   const state = useBaseState(edit);
@@ -18,7 +20,7 @@ export function MoveForm({ initial, preset, onReview }: FormProps) {
   const [when, setWhen] = useState(() => localInputFor(edit?.at ?? nowInstant(nowMs), tz));
   const at = zonedInstant(when, tz);
   const price = usePriceAt(at, nowMs);
-  const amount = useAmount(edit?.sats ?? preset.move?.sats ?? null, price.cents);
+  const amount = useAmount(edit?.sats ?? preset.move?.sats ?? preset.sats ?? null, price.cents);
   const sats = amount.sats !== null && amount.sats > 0 ? amount.sats : null;
   const [from, setFrom] = useState(edit?.from ?? preset.move?.from ?? preset.wallet ?? usualWallet(entries, ledgerState, ['move', 'sell', 'buy']));
   const destinations = usableWallets(state, edit?.to).filter((x) => x.id !== from && (!thenSell || x.type === 'exchange'));
@@ -131,8 +133,8 @@ export function MoveForm({ initial, preset, onReview }: FormProps) {
         <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
       </MoreDetails>
       <FormFooter>
-        <Button type="submit" variant="primary" className="min-h-14 flex-1 rounded-[18px] text-[17px] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
-          {edit === null ? (thenSell ? 'Save move, then sell' : 'Save move') : 'Review change'}
+        <Button type="submit" variant="primary" disabled={saving} className="min-h-14 flex-1 rounded-[18px] text-[17px] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
+          {saving ? 'Saving…' : edit === null ? (thenSell ? 'Save move, then sell' : 'Save move') : 'Review change'}
         </Button>
       </FormFooter>
     </form>

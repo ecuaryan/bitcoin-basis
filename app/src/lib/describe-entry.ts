@@ -33,6 +33,25 @@ const SETTING_LABELS: Record<string, string> = {
   earlierMoneyInCents: 'earlier money in',
   timeZone: 'time zone',
 };
+/** One changed setting in words, e.g. `Giving turned on`. */
+export function describeSettingChange(key: string, value: unknown): string {
+  switch (key) {
+    case 'givingEnabled':
+      return value === true ? 'Giving turned on' : 'Giving turned off';
+    case 'givingMode':
+      return value === 'before-tax' ? 'before tax' : 'after tax';
+    case 'givingName':
+      return `Giving called ${String(value)}`;
+    case 'givingPercentBp':
+      return `Giving ${Number(value) / 100}%`;
+    case 'timeZone':
+      return `Time zone ${String(value).replaceAll('_', ' ')}`;
+    default: {
+      const label = settingLabel(key);
+      return `${label.charAt(0).toUpperCase()}${label.slice(1)} changed`;
+    }
+  }
+}
 export const settingLabel = (key: string): string => SETTING_LABELS[key] ?? key;
 
 /** The one place that turns an entry into words. */

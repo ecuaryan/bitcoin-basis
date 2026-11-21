@@ -21,7 +21,7 @@ export function SellForm({ initial, preset, onReview, onSwitch }: FormProps) {
   const [when, setWhen] = useState(() => localInputFor(edit?.at ?? nowInstant(nowMs), tz));
   const at = zonedInstant(when, tz);
   const price = usePriceAt(at, nowMs);
-  const amount = useAmount(edit?.sats ?? preset.sell?.sats ?? null, price.cents);
+  const amount = useAmount(edit?.sats ?? preset.sell?.sats ?? preset.sats ?? null, price.cents);
   const sats = amount.sats !== null && amount.sats > 0 ? amount.sats : null;
   const [wallet, setWallet] = useState(edit?.wallet ?? preset.sell?.wallet ?? preset.wallet ?? usualWallet(entries, ledgerState, ['sell', 'buy']));
   const [description, setDescription] = useState(edit?.description ?? '');

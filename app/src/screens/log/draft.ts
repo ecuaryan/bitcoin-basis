@@ -7,6 +7,8 @@ export type LogKind = 'buy' | 'receive' | 'move' | 'sell' | 'give';
 export interface LogPreset {
   kind?: LogKind;
   wallet?: string;
+  /** Start with this amount (for example the part of a balance that is not logged yet). */
+  sats?: number;
   /** Edit this entry (a new entry replaces it, with a reason). */
   edit?: string;
   /** Remove this entry (a new entry replaces it, with a reason). */

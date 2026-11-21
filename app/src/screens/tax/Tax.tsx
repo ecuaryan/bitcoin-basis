@@ -1,4 +1,5 @@
 import { form8949Csv, incomeCsv, yearOf, yearSummary } from '@bitcoin-basis/engine';
+import { useSubmit } from '../../ui/use-submit.ts';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -61,19 +62,19 @@ function CloseYearSheet({ year, onClose }: { year: number; onClose(): void }) {
   const [closedNow, setClosedNow] = useState(false);
   // Worked out when the sheet opens, so closing the year does not change what is offered.
   const [carry] = useState(() => nextYearLosses(state, state.settings, year, today));
-  async function close() {
-    await append([{ id: newIdGenerator(entries)(), kind: 'close-year', at: entryInstant(isDemo, today), tz: state.settings.timeZone, year }]);
+  const closer = useSubmit(async () => {
+    if (!state.closedYears.includes(year)) await append([{ id: newIdGenerator(entries)(), kind: 'close-year', at: entryInstant(isDemo, today), tz: state.settings.timeZone, year }]);
     if (carry === null) {
       toast.show(`${year} is closed.`, { success: true });
       onClose();
     } else setClosedNow(true);
-  }
-  async function saveThese() {
+  });
+  const saver = useSubmit(async () => {
     if (carry === null) return;
     await write({ kind: 'settings', patch: { carryforwardStCents: carry.st, carryforwardLtCents: carry.lt, carryforwardYear: year + 1 } });
     toast.show(`Saved for ${year + 1}.`, { success: true });
     onClose();
-  }
+  });
   if (closedNow && carry !== null) {
     return (
       <Sheet open onClose={onClose} title={`${year} is closed`}>
@@ -100,8 +101,8 @@ function CloseYearSheet({ year, onClose }: { year: number; onClose(): void }) {
             <Button className="flex-1" onClick={onClose}>
               Not now
             </Button>
-            <Button variant="primary" className="flex-[1.6]" onClick={() => void saveThese()}>
-              Use these for {year + 1}
+            <Button variant="primary" className="flex-[1.6]" disabled={saver.busy} onClick={() => void saver.run()}>
+              {saver.busy ? 'Saving…' : `Use these for ${year + 1}`}
             </Button>
           </div>
         </div>
@@ -118,8 +119,8 @@ function CloseYearSheet({ year, onClose }: { year: number; onClose(): void }) {
           <Button className="flex-1" onClick={onClose}>
             Not yet
           </Button>
-          <Button variant="primary" className="flex-[1.6]" onClick={() => void close()}>
-            Close {year}
+          <Button variant="primary" className="flex-[1.6]" disabled={closer.busy} onClick={() => void closer.run()}>
+            {closer.busy ? 'Saving…' : `Close ${year}`}
           </Button>
         </div>
       </div>
@@ -131,11 +132,11 @@ export function UnlockYearSheet({ year, onClose }: { year: number; onClose(): vo
   const { entries, state, isDemo, today, append } = useLedger();
   const toast = useToast();
   const [reason, setReason] = useState('');
-  async function unlock() {
-    await append([{ id: newIdGenerator(entries)(), kind: 'unlock-year', at: entryInstant(isDemo, today), tz: state.settings.timeZone, year, reason: reason.trim() }]);
+  const unlocker = useSubmit(async () => {
+    if (state.closedYears.includes(year)) await append([{ id: newIdGenerator(entries)(), kind: 'unlock-year', at: entryInstant(isDemo, today), tz: state.settings.timeZone, year, reason: reason.trim() }]);
     toast.show(`${year} is unlocked.`, { success: true });
     onClose();
-  }
+  });
   return (
     <Sheet open onClose={onClose} title={`Unlock ${year}?`}>
       <div className="flex flex-col gap-4 pb-3">
@@ -145,8 +146,8 @@ export function UnlockYearSheet({ year, onClose }: { year: number; onClose(): vo
           <Button className="flex-1" onClick={onClose}>
             Keep it closed
           </Button>
-          <Button variant="primary" className="flex-[1.6]" disabled={reason.trim() === ''} onClick={() => void unlock()}>
-            Unlock {year}
+          <Button variant="primary" className="flex-[1.6]" disabled={reason.trim() === '' || unlocker.busy} onClick={() => void unlocker.run()}>
+            {unlocker.busy ? 'Saving…' : `Unlock ${year}`}
           </Button>
         </div>
       </div>

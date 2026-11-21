@@ -41,3 +41,14 @@ export function lastConfirmed(state: LedgerState, walletId: string): string | nu
 export function findWallet(state: LedgerState, id: string | undefined): Wallet | undefined {
   return state.wallets.find((w) => w.id === id);
 }
+
+/** Newest first. Back-to-back identical balance checks become one row ("Checked the balance ×3"). */
+export function collapseChecks(rows: readonly Entry[]): { entry: Entry; same: Entry[] }[] {
+  const out: { entry: Entry; same: Entry[] }[] = [];
+  for (const e of rows) {
+    const prev = out.at(-1);
+    if (prev !== undefined && e.kind === 'balance-confirm' && prev.entry.kind === 'balance-confirm' && prev.entry.sats === e.sats) prev.same.push(e);
+    else out.push({ entry: e, same: [e] });
+  }
+  return out;
+}
