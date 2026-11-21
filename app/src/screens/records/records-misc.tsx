@@ -1,4 +1,6 @@
+import { localDate } from '@bitcoin-basis/engine';
 import { Link } from 'react-router';
+import { walletKindLabel } from '../../lib/wallet-label.ts';
 import { useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { shortDate } from '../../lib/format.ts';
@@ -20,14 +22,12 @@ export function ClosedYearsView() {
       <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Closed years</h2>
       <Card className="flex flex-col gap-2 !rounded-[18px] !p-4">
         {state.closedYears.length === 0 ? (
-          <p className="m-0 text-[15px] text-muted">No year is closed. Close a year in Tax season once it is filed, so its numbers cannot drift.</p>
+          <p className="m-0 text-sm text-muted">No year is closed. Close a year in Tax season once it is filed, so its numbers cannot drift.</p>
         ) : (
           state.closedYears.map((y) => (
             <div key={y} className="flex min-h-12 items-center justify-between gap-3 border-b border-line-soft last:border-0">
               <span className="text-[15px] font-semibold">{y}</span>
-              <Button onClick={() => setUnlocking(y)} aria-label={`Unlock ${y}`}>
-                Unlock…
-              </Button>
+              <Button onClick={() => setUnlocking(y)}>Unlock {y}…</Button>
             </div>
           ))
         )}
@@ -42,7 +42,7 @@ export function ClosedYearsView() {
             <div key={h.id} className="flex flex-col border-t border-line-soft py-2 text-sm">
               <span className="font-semibold">
                 {h.kind === 'close-year' ? `Closed ${h.year}` : `Unlocked ${h.year}`}
-                <span className="font-normal text-muted"> · {shortDate(h.at.slice(0, 10), today)}</span>
+                <span className="font-normal text-muted"> · {shortDate(localDate(h.at, h.tz), today)}</span>
               </span>
               {h.reason && <span className="text-xs text-muted">Why: {h.reason}</span>}
             </div>
@@ -56,7 +56,7 @@ export function ClosedYearsView() {
 
 export function WalletsView() {
   const { state, holdings } = useLedger();
-  const sats = new Map(holdings.wallets.map((w) => [w.wallet, w.sats]));
+  const sats = new Map([...holdings.wallets.map((w) => [w.wallet, w.sats] as const), ...holdings.retirement.map((r) => [r.wallet, r.sats] as const)]);
   const live = state.wallets.filter((w) => !w.frozen && !w.archived);
   const apart = state.wallets.filter((w) => w.frozen || w.archived);
   const row = (w: (typeof state.wallets)[number]) => {
@@ -65,13 +65,10 @@ export function WalletsView() {
       <Link key={w.id} to={`/wallet/${w.id}`} className="press-soft flex min-h-14 items-center justify-between gap-3 rounded-xl pl-3 pr-2 text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2">
         <span className="flex flex-col">
           <span className="text-[15px] font-semibold">{w.name}</span>
-          <span className="text-xs normal-nums text-muted">
-            {w.type === 'self-custody' ? 'Self-custody' : w.type === 'retirement' ? 'Retirement' : 'Exchange'}
-            {w.frozen ? ' · frozen' : w.archived ? ' · archived' : ''}
-          </span>
+          <span className="text-xs text-muted">{walletKindLabel(w)}</span>
         </span>
         <span className="flex items-center gap-1.5 text-sm font-semibold">
-          {w.type === 'retirement' && n === 0 ? <span className="font-normal text-muted">View only</span> : <Amount sats={n} short interactive={false} />}
+          <Amount sats={n} interactive={false} />
           <ChevronRightIcon size={16} className="flex-none text-muted" />
         </span>
       </Link>
@@ -85,7 +82,7 @@ export function WalletsView() {
           {live.map(row)}
         </Card>
       ) : apart.length === 0 ? (
-        <p className="m-0 text-[15px] text-muted">No wallets yet.</p>
+        <p className="m-0 text-sm text-muted">No wallets yet.</p>
       ) : null}
       {apart.length > 0 && (
         <Card as="section" aria-label="Frozen and archived" className="flex flex-col !rounded-[18px] !p-2">

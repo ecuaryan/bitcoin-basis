@@ -1,5 +1,15 @@
 import { DEFAULT_SETTINGS, taxYear, type Entry, type EntryKind, type Wallet } from '@bitcoin-basis/engine';
-import { describeEntry, describeSettingChange } from '../../lib/describe-entry.ts';
+import { describeEntry, describeSettingChange } from './describe-entry.ts';
+
+/**
+ * The one source for every list of entries (Records' recent and all entries, a wallet's entries): versions folded into
+ * one item, settings changes hidden unless asked for, settings changes in a row collapsed (`×3`), balance confirmations never listed. Counts shown anywhere are the
+ * number of rows the list shows.
+ */
+
+/** The reason saved when the same balance is confirmed again on a later day (an edit of the last check, not a user edit). */
+export const RECHECK_REASON = 'Re-checked';
+export const isRecheck = (e: Entry): boolean => e.kind === 'balance-confirm' && e.reason === RECHECK_REASON;
 
 export interface EntryItem {
   /** Id of the first version. */
@@ -60,7 +70,7 @@ export const KIND_GROUPS: readonly { value: KindGroup; label: string }[] = [
   { value: 'lost', label: 'Lost' },
   { value: 'imported', label: 'Imported' },
   { value: 'wallets', label: 'Wallet changes' },
-  { value: 'checks', label: 'Balance checks' },
+  { value: 'checks', label: 'Retirement balances' },
   { value: 'settings', label: 'Settings' },
   { value: 'years', label: 'Year closings' },
   { value: 'giving', label: 'Giving paid' },
@@ -104,15 +114,33 @@ export interface EntryFilter {
   year: string;
 }
 
-/** Wallet ids an entry touches. */
+/** Wallet ids an entry touches (a payout from a frozen wallet touches both). */
 export function walletsOf(e: Entry): string[] {
   if (e.kind === 'move') return [e.from, e.to];
+  if (e.kind === 'receive' && e.source.type === 'frozen-payout') return [e.wallet, e.source.fromWallet];
   if ('wallet' in e) return [e.wallet];
   return [];
 }
 
+/** Changed by the person after it was first saved (a re-checked balance is not an edit). */
+export function userEdited(item: EntryItem): boolean {
+  return !item.deleted && !item.conflict && item.versions.slice(1).some((v) => v.kind !== 'delete' && !isRecheck(v));
+}
+
+export const NO_FILTER: EntryFilter = { text: '', wallet: '', group: '', year: '' };
+
+/** The rows a list shows: `items` (all of them, newest first) filtered, then look-alike runs collapsed. */
+export function entryRows(items: readonly EntryItem[], filter: EntryFilter, wallets: ReadonlyMap<string, Wallet>): EntryRun[] {
+  return collapseRuns(
+    items.filter((i) => matches(i, filter, wallets)),
+    items,
+  );
+}
+
 export function matches(item: EntryItem, f: EntryFilter, wallets: ReadonlyMap<string, Wallet>): boolean {
   const e = item.current;
+  // Balance confirmations are never listed: they show only as "Confirmed Nov 21" on the wallet.
+  if (e.kind === 'balance-confirm') return false;
   // Settings changes are noise in the everyday list: they show under Kind = Settings.
   if (f.group === '' && kindGroup(e.kind) === 'settings') return false;
   if (f.group !== '' && kindGroup(e.kind) !== f.group) return false;
@@ -134,17 +162,18 @@ export function entryYears(items: readonly EntryItem[]): number[] {
 export interface EntryRun {
   item: EntryItem;
   count: number;
+  /** Every item in the run, newest first. */
+  items: EntryItem[];
   /** What the run changed in all, when it is a run of settings changes. */
   net: string | null;
 }
 
-/** Back-to-back balance checks that agree, and back-to-back settings changes, become one row each. `all` is every item, newest first. */
+/** Back-to-back settings changes become one row. `all` is every item, newest first. */
 export function collapseRuns(list: readonly EntryItem[], all: readonly EntryItem[]): EntryRun[] {
   const keyOf = (i: EntryItem): string | null => {
     const e = i.current;
     if (i.deleted || i.conflict) return null;
     if (e.kind === 'settings') return 'settings';
-    if (e.kind === 'balance-confirm') return `check:${e.wallet}:${e.sats}`;
     return null;
   };
   const runs: { items: EntryItem[]; key: string | null }[] = [];
@@ -154,7 +183,7 @@ export function collapseRuns(list: readonly EntryItem[], all: readonly EntryItem
     if (key !== null && last !== undefined && last.key === key) last.items.push(item);
     else runs.push({ items: [item], key });
   }
-  return runs.map(({ items, key }) => ({ item: items[0] as EntryItem, count: items.length, net: key === 'settings' && items.length > 1 ? netSettings(items, all) : null }));
+  return runs.map(({ items, key }) => ({ item: items[0] as EntryItem, count: items.length, items, net: key === 'settings' && items.length > 1 ? netSettings(items, all) : null }));
 }
 
 function netSettings(run: readonly EntryItem[], all: readonly EntryItem[]): string {
@@ -168,3 +197,4 @@ function netSettings(run: readonly EntryItem[], all: readonly EntryItem[]): stri
   const changed = Object.keys(after).filter((k) => JSON.stringify(after[k]) !== JSON.stringify(before[k]));
   return changed.length === 0 ? 'No net change' : changed.map((k) => describeSettingChange(k, after[k])).join(' · ');
 }
+

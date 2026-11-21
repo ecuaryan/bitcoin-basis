@@ -131,7 +131,7 @@ export function PickCoinsSheet({
                 </label>
                 <span className="flex flex-col items-end text-right">
                   <span className="text-sm font-semibold">
-                    <Amount sats={taken ?? l.sats} short interactive={false} />
+                    <Amount sats={taken ?? l.sats} interactive={false} />
                   </span>
                   <span className="text-xs text-muted">
                     {taken !== undefined && taken < l.sats ? 'part of ' : ''}
@@ -334,7 +334,7 @@ export function PrepareSaleSheet({
           <dl className="m-0 flex flex-col rounded-2xl border border-line bg-bg px-4 py-1 text-sm">
             {[
               ['Coins arriving', <Amount key="a" sats={result.draft.sats} showUnit interactive={false} />],
-              ['Coins used', `${rangeLabel(result.plan.coinsFrom, result.plan.coinsTo)} · ${result.plan.picks.length} ${result.plan.picks.length === 1 ? 'coin' : 'coins'}`],
+              ['Coins used', `${rangeLabel(result.plan.coinsFrom, result.plan.coinsTo)} · ${countOf(result.plan.picks.length, 'coin')}`],
               ['Fee', <Amount key="f" sats={result.draft.feeSats} showUnit interactive={false} />],
               ['Tax from this move', 'None except the fee'],
             ].map(([k, v], i, all) => (

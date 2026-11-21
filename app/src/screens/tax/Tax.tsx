@@ -5,7 +5,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { formatMoney, shortDate } from '../../lib/format.ts';
+import { countOf, formatMoney, shortDate } from '../../lib/format.ts';
 import { Money } from '../../ui/Amount.tsx';
 import { useIsWide } from '../../ui/AppShell.tsx';
 import { buttonClasses, Button } from '../../ui/Button.tsx';
@@ -207,7 +207,7 @@ export function Tax() {
     .filter(([, t]) => t.count > 0)
     .map(([label, t]) => [label, <Count key={label} n={t.count}><Money cents={t.gainCents} signed /></Count>]);
   const summaryRows: [string, ReactNode][] = [
-    ...(kindRows.length > 0 ? kindRows : ([['Sales and spending', 'None this year']] as [string, ReactNode][])),
+    ...(kindRows.length > 0 ? kindRows : ([['Sales and spending', 'None this year.']] as [string, ReactNode][])),
     ['Short-term total', <Money key="st" cents={view.stCents} signed />],
     ['Long-term total', <Money key="lt" cents={view.ltCents} signed />],
   ];
@@ -228,7 +228,7 @@ export function Tax() {
         </span>
       </div>
       {summary.income.length === 0 ? (
-        <p className="m-0 text-[13px] text-muted">No promo, reward or mining sats this year.</p>
+        <p className="m-0 text-sm text-muted">No promo, reward or mining sats this year.</p>
       ) : (
         <>
           <p className="m-0 text-xs text-muted">Counts as ordinary income, listed on Schedule 1 (Other income), at the value the day you got it.</p>
@@ -265,14 +265,14 @@ export function Tax() {
                 'No sales, so no form expected'
               ) : (
                 <>
-                  Should show {f.sales === 1 ? '1 sale' : `${f.sales} sales`} · <Money cents={f.proceedsCents} /> received
+                  Should show {countOf(f.sales, 'sale')} · <Money cents={f.proceedsCents} /> received
                 </>
               )}
             </span>
             {f.gifts > 0 && (
               <details className="text-xs leading-[1.4] text-muted">
                 <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-amber">
-                  You also gave {f.gifts === 1 ? 'one gift' : `${f.gifts} gifts`} from here
+                  You also gave {countOf(f.gifts, 'gift')} from here
                 </summary>
                 <span>
                   <Money cents={f.giftValueCents} /> worth, your cost <Money cents={f.giftCostCents} />. Some exchanges report gifts to other users as sales. If yours did, match each one to the gift you logged and use its cost: a gift is not a sale.
@@ -356,11 +356,11 @@ export function Tax() {
       {wide ? (
         <PageHeader title="Tax season">{picker}</PageHeader>
       ) : (
-        <header className="flex items-center justify-between">
+        <header className="flex items-center gap-3">
           <Link to="/records" aria-label="Back to Records" className="flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-soft hover:text-text">
             <ChevronLeftIcon size={18} />
           </Link>
-          <h1 className="m-0 font-display text-xl font-semibold">Tax season</h1>
+          <h1 className="m-0 min-w-0 flex-1 truncate font-display text-[28px] font-semibold tracking-tight">Tax season</h1>
           {picker}
         </header>
       )}

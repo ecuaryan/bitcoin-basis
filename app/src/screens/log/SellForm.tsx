@@ -1,7 +1,7 @@
 import { canSellFrom, localDate, uuidv7, type SellEntry } from '@bitcoin-basis/engine';
 import { useMemo, useState } from 'react';
 import { Button } from '../../ui/Button.tsx';
-import { Callout, TextField } from '../../ui/form-fields.tsx';
+import { ErrorLine, Callout, TextField } from '../../ui/form-fields.tsx';
 import { Segmented } from '../../ui/Segmented.tsx';
 import { CoinPicker } from './CoinPicker.tsx';
 import type { FormProps } from './draft.ts';
@@ -108,11 +108,7 @@ export function SellForm({ initial, preset, onReview, onSwitch }: FormProps) {
         </Callout>
       ) : null}
       <CoinPicker lots={available} needed={sats} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} walletName={w?.name ?? 'this wallet'} />
-      {tried && errors.picks ? (
-        <p role="alert" className="m-0 text-xs text-loss">
-          {errors.picks}
-        </p>
-      ) : null}
+      <ErrorLine error={tried && errors.picks} className="block" />
       <MoreDetails open={more} onOpenChange={setMore}>
         <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
       </MoreDetails>

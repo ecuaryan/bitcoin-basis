@@ -195,7 +195,7 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
   const young = isYoung(view, today);
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
-  const tierHelp = useHelp('What do the colours mean?', TIER_COLORS_HELP);
+  const tierHelp = useHelp('What do the colors mean?', TIER_COLORS_HELP);
   return (
     <div className="flex flex-col gap-4">
       <section aria-label="What your Bitcoin is worth" className="flex flex-col gap-1.5">
@@ -203,11 +203,14 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
         <span className="font-display text-[46px] font-semibold leading-none tracking-[-0.03em] text-accent">
           {view.worthCents === null ? <WorthPlaceholder loading={status === 'loading'} /> : <Money cents={view.worthCents} precision="dollars" countUp />}
         </span>
-        <div className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+        {/* Two lines, always: inline, a longer amount (sats, dollars, or hidden) would wrap the price line and move the page. */}
+        <div className="mt-1 flex flex-col items-start gap-0.5">
           <span className="text-[17px] font-semibold">
             <Amount sats={view.totalSats} showUnit countUp className="-my-2.5 inline-flex min-h-11 items-center" />
           </span>
-          <PriceLine quote={quote} status={status} error={error} className="text-[13px]" />
+          <span className="flex flex-wrap items-baseline gap-x-2.5">
+            <PriceLine quote={quote} status={status} error={error} className="text-[13px]" />
+          </span>
         </div>
       </section>
 
@@ -266,7 +269,7 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
   const avg = view.averageCostCentsPerBtc;
-  const tierHelp = useHelp('What do the colours mean?', TIER_COLORS_HELP);
+  const tierHelp = useHelp('What do the colors mean?', TIER_COLORS_HELP);
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -314,7 +317,7 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
           <PriceChart points={series} averageCostCents={avg} width={640} height={220} strokeWidth={2.5} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} />
           <div className="flex justify-between text-xs text-muted">
             <span>{series[0] ? new Date(series[0].ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : ''}</span>
-            <span>Dashed: your average cost, {avg === null ? '—' : <Money cents={avg} precision="dollars" />}</span>
+            <span>Dashed: your average cost, {avg === null ? '—' : <Money cents={avg} />}</span>
             <span>Today</span>
           </div>
         </Card>

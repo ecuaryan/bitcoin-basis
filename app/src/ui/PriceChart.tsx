@@ -104,8 +104,9 @@ export function PriceChart({
               className={cx('absolute top-0 flex w-max max-w-[58%] flex-col gap-px rounded-lg border border-line bg-surface-2/95 px-2 py-1 text-[11px] leading-snug tabular-nums text-text', flip && '-translate-x-full')}
               style={{ left: flip ? `calc(${pct}% - 10px)` : `calc(${pct}% + 10px)` }}
             >
-              <span className="text-muted">
-                {text.date} <span className="font-semibold text-text">{text.price}</span>
+              <span className="text-muted">{text.date}</span>
+              <span className="text-soft">
+                BTC price <span className="font-semibold text-text">{text.price}</span>
               </span>
               {text.gap !== null && <span className={text.gap.startsWith('\u2212') ? 'text-loss' : 'text-accent'}>{text.gap}</span>}
             </div>

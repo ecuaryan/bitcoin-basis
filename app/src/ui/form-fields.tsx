@@ -1,4 +1,4 @@
-import { useId, type InputHTMLAttributes, type Ref, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { useId, useState, type InputHTMLAttributes, type Ref, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cx } from '../lib/cx.ts';
 
 /** The look of every text box: a dark well with a 14px radius (matches the Log design). */
@@ -19,7 +19,10 @@ interface FieldFrameProps {
   children: ReactNode;
 }
 
-/** A label above a control, with an optional hint and error under it. */
+/**
+ * A label above a control, with an optional hint and error under it. Once an error has shown, its line stays reserved
+ * (blank) after it is fixed, so typing the fix does not make the form below jump up.
+ */
 export function FieldFrame({ label, id, hint, error, className, children }: FieldFrameProps) {
   return (
     <div className={cx('flex flex-col gap-1.5', className)}>
@@ -32,13 +35,30 @@ export function FieldFrame({ label, id, hint, error, className, children }: Fiel
           {hint}
         </span>
       ) : null}
-      {error ? (
-        <span id={`${id}-err`} role="alert" className="text-xs leading-snug text-loss">
-          {error}
-        </span>
-      ) : null}
+      <ErrorLine id={`${id}-err`} error={error} />
     </div>
   );
+}
+
+/**
+ * An error under a field. Once it has shown, its line stays reserved (blank) after the error is fixed, so typing the
+ * fix does not make everything below jump up.
+ */
+export function ErrorLine({ id, error, className }: { id?: string; error: string | null | undefined | false; className?: string }) {
+  const [shown, setShown] = useState(Boolean(error));
+  if (error && !shown) setShown(true);
+  if (error) {
+    return (
+      <span id={id} role="alert" className={cx('text-xs leading-snug text-loss', className)}>
+        {error}
+      </span>
+    );
+  }
+  return shown ? (
+    <span aria-hidden="true" className={cx('text-xs leading-snug', className)}>
+      {'\u00a0'}
+    </span>
+  ) : null;
 }
 
 function describedBy(id: string, hint: ReactNode, error: string | null | undefined): string | undefined {

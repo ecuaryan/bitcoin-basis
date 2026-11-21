@@ -2,7 +2,7 @@ import { localDate, uuidv7, type GiveEntry } from '@bitcoin-basis/engine';
 import { useMemo, useState } from 'react';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
-import { TextField } from '../../ui/form-fields.tsx';
+import { ErrorLine, TextField } from '../../ui/form-fields.tsx';
 import { Segmented } from '../../ui/Segmented.tsx';
 import { CoinPicker } from './CoinPicker.tsx';
 import type { FormProps } from './draft.ts';
@@ -91,11 +91,7 @@ export function GiveForm({ initial, preset, onReview }: FormProps) {
       <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
       <TextField label={to === 'person' ? 'Who is it for?' : 'Charity or church'} value={recipient} onChange={(e) => setRecipient(e.target.value)} autoComplete="off" error={tried ? errors.recipient : null} />
       <CoinPicker lots={available} needed={sats} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} walletName={w?.name ?? 'this wallet'} />
-      {tried && errors.picks ? (
-        <p role="alert" className="m-0 text-xs text-loss">
-          {errors.picks}
-        </p>
-      ) : null}
+      <ErrorLine error={tried && errors.picks} className="block" />
       <MoreDetails open={more} onOpenChange={setMore}>
         <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
       </MoreDetails>

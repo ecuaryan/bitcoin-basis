@@ -182,19 +182,27 @@ test('mismatch: wallet shows less, so ask what happened; each answer opens with 
   await axeClean(page);
 });
 
-test('confirming the same balance again does not add another entry', async ({ page }) => {
+test('confirming the same balance again does not add another entry, and checks never show as entries', async ({ page }) => {
   await demo(page);
   await go(page, '/wallet/wallet-strike');
   const card = page.getByRole('region', { name: 'Does it match?' });
-  const checks = page.getByRole('region', { name: 'Entries' }).getByText('Checked the balance');
+  const entries = page.getByRole('region', { name: 'Entries' });
+  await expect(entries.getByRole('listitem').first()).toBeVisible();
+  await expect(entries.getByText('Balance confirmed')).toHaveCount(0);
+  const before = await entries.getByRole('listitem').count();
   await card.getByRole('button', { name: 'Yes' }).click();
   await expect(page.getByText('Confirmed. Strike matches.')).toBeVisible();
-  const after1 = await checks.count();
+  await card.getByText('History').click();
+  const days = card.getByRole('listitem');
+  const after1 = await days.count();
   expect(after1).toBeGreaterThan(0);
+  await expect(days.first()).toContainText('Matched');
   await card.getByRole('button', { name: 'Yes' }).click();
   await card.getByRole('button', { name: 'Yes' }).click();
   await expect(card.getByText('Confirmed today', { exact: true })).toBeVisible();
-  await expect(checks).toHaveCount(after1);
+  await expect(days).toHaveCount(after1);
+  await expect(entries.getByRole('listitem')).toHaveCount(before);
+  await expect(entries.getByText('Balance confirmed')).toHaveCount(0);
   await axeClean(page);
 });
 
@@ -252,10 +260,11 @@ test('edit an entry needs a reason; closed years are locked', async ({ page }) =
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await go(page, '/wallet/wallet-strike');
-  const first = page.getByRole('region', { name: 'Entries' }).getByRole('button', { expanded: false }).first();
-  await first.click();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const entries = page.getByRole('region', { name: 'Entries' });
+  await entries.getByRole('button', { name: /^Bought/ }).first().click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Edit purchase', exact: true }).click();
   d = dialog(page);
+  await expect(d.getByRole('heading', { name: 'Edit this purchase' })).toBeVisible();
   await d.getByLabel('Amount', { exact: true }).fill('0.003');
   await d.getByRole('button', { name: 'Review change' }).click();
   await d.getByRole('button', { name: 'Save purchase' }).click();
@@ -263,16 +272,20 @@ test('edit an entry needs a reason; closed years are locked', async ({ page }) =
   await d.getByLabel('Why are you changing it?').fill('Typo in the amount');
   await d.getByRole('button', { name: 'Save purchase' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Entries' }).getByText('edited').first()).toBeVisible();
+  await expect(entries.getByText('Edited', { exact: true }).first()).toBeVisible();
 
-  // Close 2025, then a 2025 entry shows as locked.
+  // Close 2025, then a 2025 entry says it is locked and offers no Edit or Remove.
   await go(page, '/tax?year=2025');
   await page.getByRole('button', { name: /Close 2025 once/ }).click();
   await page.getByRole('dialog', { name: 'Close 2025?' }).getByRole('button', { name: 'Close 2025' }).click();
   await expect(page.getByText('2025 is closed', { exact: true })).toBeVisible();
   await go(page, '/wallet/wallet-strike');
-  await page.getByRole('button', { name: /^Show all \d+ entries/ }).click({ clickCount: 1 }).catch(() => undefined);
-  await expect(page.getByRole('region', { name: 'Entries' }).getByText(/locked, 2025 is closed/).first()).toBeVisible();
+  const more = page.getByRole('button', { name: /^Show all \d+ entries/ });
+  if ((await more.count()) > 0) await more.click();
+  await entries.getByRole('button', { name: /^Bought.*, 2025/ }).first().click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByText(/Locked: 2025 is closed/)).toBeVisible();
+  await expect(sheet.getByRole('button', { name: /^(Edit|Remove)/ })).toHaveCount(0);
 });
 
 test('add a wallet from the log form', async ({ page }) => {

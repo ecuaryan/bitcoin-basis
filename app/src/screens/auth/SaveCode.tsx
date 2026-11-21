@@ -18,14 +18,14 @@ export function SaveCode({ code, className }: { code: string; className?: string
 
   const save = async () => {
     const r = await saveToPasswordManager(code, formRef.current);
-    toast.show(r === 'failed' ? 'Couldn’t reach your password manager. Try Copy.' : 'Saved, if your password manager asked.');
+    toast.show(r === 'failed' ? 'Could not reach your password manager. Try Copy.' : 'Saved, if your password manager asked.');
   };
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(code);
       toast.show('Copied. Paste it somewhere safe.', { success: true });
     } catch {
-      toast.show('Couldn’t copy. Select the code and copy it by hand.');
+      toast.show('Could not copy. Select the code and copy it by hand.');
     }
   };
   const share = async () => {

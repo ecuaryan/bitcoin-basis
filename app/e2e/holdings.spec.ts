@@ -34,9 +34,9 @@ test('hidden amounts and the year sheet are accessible too', async ({ page }) =>
   await page.getByRole('button', { name: 'Try the demo' }).click();
   await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
   // Amounts show by default; hiding is the user's choice.
-  await expect(page.getByText('$•••,•••', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('$•••••', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Hide amounts' }).first().click();
-  await expect(page.getByText('$•••,•••', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('$•••••', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: /Show where the .*2023 coins came from/ }).click();
   await expect(page.getByRole('dialog', { name: '2023 coins' })).toBeVisible();
   const results = await new AxeBuilder({ page }).analyze();

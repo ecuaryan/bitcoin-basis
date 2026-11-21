@@ -164,9 +164,9 @@ export function flagsForYear(state: LedgerState, year: number): LedgerState['cpa
 }
 
 /** Entries that closed or unlocked years, newest first, for the history under "closed years". */
-export function yearLockHistory(entries: readonly Entry[]): { id: string; year: number; kind: 'close-year' | 'unlock-year'; at: string; reason: string | undefined }[] {
+export function yearLockHistory(entries: readonly Entry[]): { id: string; year: number; kind: 'close-year' | 'unlock-year'; at: string; tz: string; reason: string | undefined }[] {
   return entries
-    .flatMap((e) => (e.kind === 'close-year' || e.kind === 'unlock-year' ? [{ id: e.id, year: e.year, kind: e.kind, at: e.at, reason: e.reason }] : []))
+    .flatMap((e) => (e.kind === 'close-year' || e.kind === 'unlock-year' ? [{ id: e.id, year: e.year, kind: e.kind, at: e.at, tz: e.tz, reason: e.reason }] : []))
     .sort((a, b) => (a.id < b.id ? 1 : -1));
 }
 

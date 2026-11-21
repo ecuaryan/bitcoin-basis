@@ -24,6 +24,7 @@ describe('scrubText', () => {
     expect(t.price).toBe('$130,000');
     expect(t.gap).toBe('+$80,000 above your cost');
     expect(t.spoken).toContain('$80,000 above your cost');
+    expect(t.spoken).toContain('BTC price $130,000');
   });
   it('words a point below the cost with a real minus', () => {
     expect(scrubText(monthly, 0, 10_310_000, false).gap).toBe('−$3,100 below your cost');
@@ -32,8 +33,8 @@ describe('scrubText', () => {
     const t = scrubText(monthly, 3, 5_000_000, true);
     expect(t.date).toBe('Apr 2025');
     expect(t.price).toBe('$130,000');
-    expect(t.gap).toBe('+$••,••• above your cost');
-    expect(t.cost).toBe('$••,•••');
+    expect(t.gap).toBe('+$••••• above your cost');
+    expect(t.cost).toBe('$•••••');
     expect(t.spoken).not.toMatch(/80,000|50,000/);
   });
   it('has no gap without a cost, and shows full dates for daily points', () => {

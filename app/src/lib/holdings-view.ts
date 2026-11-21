@@ -1,5 +1,6 @@
 import { TIERS, yearOf, type Holdings, type LedgerState, type Lot, type Tier, type WalletType } from '@bitcoin-basis/engine';
-import { satsToCents, shortDate } from './format.ts';
+import { confirmedLabel, satsToCents } from './format.ts';
+import { WALLET_TYPE_LABEL } from './wallet-label.ts';
 
 export interface StackYear {
   year: number;
@@ -17,7 +18,7 @@ export interface WalletCard {
   sats: number;
   costCents: number;
   averageCostCentsPerBtc: number | null;
-  /** `confirmed today`, `confirmed Nov 2`, or `not confirmed yet`. */
+  /** `Confirmed today`, `Confirmed Nov 2`, or `Not confirmed yet` (`confirmedLabel` in lib/format). */
   confirmedLabel: string;
   /** The last balance check did not match what the wallet's own app showed. */
   needsAttention: boolean;
@@ -47,7 +48,6 @@ export interface HoldingsView {
   isEmpty: boolean;
 }
 
-const TYPE_LABEL: Record<WalletType, string> = { exchange: 'Exchange', 'self-custody': 'Self-custody', retirement: 'Retirement' };
 
 export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: number | null, today: string): HoldingsView {
   const live = new Set(h.wallets.filter((w) => !w.frozen).map((w) => w.wallet));
@@ -76,11 +76,11 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
       id: w.wallet,
       name: w.name,
       type: w.type,
-      typeLabel: TYPE_LABEL[w.type],
+      typeLabel: WALLET_TYPE_LABEL[w.type],
       sats: w.sats,
       costCents: w.costCents,
       averageCostCentsPerBtc: w.averageCostCentsPerBtc,
-      confirmedLabel: lastMatch === null ? 'not confirmed yet' : lastMatch === today ? 'confirmed today' : `confirmed ${shortDate(lastMatch, today)}`,
+      confirmedLabel: confirmedLabel(lastMatch, today),
       needsAttention: last !== null && !last.matches,
       frozen: w.frozen,
     };

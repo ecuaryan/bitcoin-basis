@@ -59,7 +59,7 @@ export function GiftNoteCard({ gift, heading: Heading = 'h4' }: { gift: GiftGive
           <li key={p.lotId} className="flex justify-between gap-3">
             <span>Bought {longDate(p.acquiredDate)}</span>
             <span>
-              <Amount sats={p.sats} interactive={false} short /> · cost <Money cents={p.costCents} />
+              <Amount sats={p.sats} interactive={false} /> · cost <Money cents={p.costCents} />
             </span>
           </li>
         ))}

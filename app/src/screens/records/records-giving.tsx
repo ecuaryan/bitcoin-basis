@@ -112,7 +112,7 @@ export function GivingView() {
       <Card as="section" aria-label="Sales behind it" className="flex flex-col gap-1 !rounded-[18px] !p-4">
         <h2 className="m-0 mb-1 text-[15px] font-semibold">From sales and spending</h2>
         {due.sales.length === 0 ? (
-          <p className="m-0 text-[13px] text-muted">No sales or spending logged in {year}.</p>
+          <p className="m-0 text-sm text-muted">No sales or spending logged in {year}.</p>
         ) : (
           due.sales.map((x, i) => (
             <div key={x.entryId} className={cx('flex items-center justify-between gap-3 py-2 text-sm', i > 0 && 'border-t border-line-soft')}>

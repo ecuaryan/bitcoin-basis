@@ -143,6 +143,8 @@
   html {
     /* Chrome's pull-to-refresh reloads the page and drops the keys; the app has its own pull to sync. */
     overscroll-behavior-y: contain;
+    /* Desktop scrollbars that come and go (short page, sheet open) must not slide the page sideways. */
+    scrollbar-gutter: stable;
     line-height: normal;
     background: var(--color-bg);
     color: var(--color-text);

@@ -21,6 +21,7 @@ export function LinkHistoryPrompt() {
       <div className="flex flex-col gap-3 p-1">
         <p className="m-0 text-[13px] leading-[1.45] text-soft">You opened this from your kit&apos;s QR code. Browsers can keep that link in history. Make a new recovery code?</p>
         <div className="flex flex-wrap gap-2.5">
+          <Button onClick={recoveryLinkNotice.dismiss}>Not now</Button>
           <Button
             variant="primary"
             onClick={() => {
@@ -30,7 +31,6 @@ export function LinkHistoryPrompt() {
           >
             Make a new code
           </Button>
-          <Button onClick={recoveryLinkNotice.dismiss}>Not now</Button>
         </div>
       </div>
     </Sheet>

@@ -1,7 +1,7 @@
 import { oneYearAnniversary, termFor, type Lot, type LotPick } from '@bitcoin-basis/engine';
 import { useId } from 'react';
 import { cx } from '../../lib/cx.ts';
-import { shortDate } from '../../lib/format.ts';
+import { countOf, shortDate } from '../../lib/format.ts';
 import { TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Segmented } from '../../ui/Segmented.tsx';
@@ -74,7 +74,7 @@ export function CoinPicker({
           </p>
         ) : (
           <p className="m-0 text-xs text-muted">
-            Uses {picks.length} {picks.length === 1 ? 'coin' : 'coins'}, oldest first. Saved with the entry.
+            Uses {countOf(picks.length, 'coin')}, oldest first. Saved with the entry.
           </p>
         )
       ) : (
@@ -106,7 +106,7 @@ export function CoinPicker({
                 <span className={cx('h-11 w-1.5 flex-none rounded-full', TIER_BG[lot.tier])} aria-hidden="true" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="text-sm font-semibold">
-                    <Amount sats={lot.sats} interactive={false} short />
+                    <Amount sats={lot.sats} interactive={false} />
                     {take !== undefined && take !== lot.sats ? (
                       <span className="font-normal text-muted">
                         {' '}

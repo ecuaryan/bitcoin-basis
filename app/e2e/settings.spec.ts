@@ -58,3 +58,16 @@ test('a year with its own table shows no notice, and Settings names the state ra
   const last = await page.getByLabel('State income tax').locator('option').last().textContent();
   expect(last).toBe('Other state or custom rate…');
 });
+
+test('Settings › App shows the version and build, linked to the commit', async ({ page }) => {
+  await openDemo(page);
+  await go(page, '/settings#app');
+  const line = page.getByTestId('app-version');
+  await expect(line).toHaveText(/^Version 1\.0\.0 · build ([0-9a-f]{7}|dev)( · [A-Z][a-z]{2} \d{1,2}, \d{4})?$/);
+  const build = line.getByRole('link', { name: /^build [0-9a-f]{7}$/ });
+  if ((await build.count()) > 0) {
+    await expect(build).toHaveAttribute('href', /^https:\/\/github\.com\/ecuaryan\/bitcoin-basis\/commit\/[0-9a-f]{40}$/);
+    await expect(build).toHaveAttribute('rel', 'noopener noreferrer');
+  }
+  await expect(page.getByRole('link', { name: 'Verify this build' })).toHaveAttribute('href', /docs\/deploy\.md#verifying-a-deployment$/);
+});

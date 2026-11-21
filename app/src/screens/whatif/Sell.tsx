@@ -102,7 +102,7 @@ export function Sell() {
           className="flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold text-text hover:bg-surface-2"
         >
           <span>
-            {wallet.name} · <Amount sats={wallet.sats} short interactive={false} /> BTC
+            {wallet.name} · <Amount sats={wallet.sats} showUnit interactive={false} />
           </span>
           <ChevronDownIcon size={14} className="text-muted" />
         </button>

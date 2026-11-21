@@ -59,13 +59,13 @@ export function scrubText(points: readonly PricePoint[], index: number, averageC
     const t = formatMoney(cents, opts);
     return hidden ? maskDigits(t) : t;
   };
-  if (averageCostCents === null) return { date, price, cost: null, gap: null, spoken: `${date}: price ${price}` };
+  if (averageCostCents === null) return { date, price, cost: null, gap: null, spoken: `${date}: BTC price ${price}` };
   const diff = p.cents - averageCostCents;
   const abs = Math.abs(diff);
   const cost = money(averageCostCents, { precision: 'dollars' });
   const rel = diff === 0 ? 'at your cost' : diff > 0 ? 'above your cost' : 'below your cost';
   const gap = diff === 0 ? 'At your cost' : `${diff > 0 ? '+' : '−'}${money(abs, { precision: 'dollars' }).replace('−', '')} ${diff > 0 ? 'above' : 'below'} your cost`;
-  const spoken = `${date}: price ${price}, your average cost ${cost}${hidden ? ' (hidden)' : `, ${money(abs, { precision: 'dollars' })} ${rel}`}`;
+  const spoken = `${date}: BTC price ${price}, your average cost ${cost}${hidden ? ' (hidden)' : `, ${money(abs, { precision: 'dollars' })} ${rel}`}`;
   return { date, price, cost, gap, spoken };
 }
 

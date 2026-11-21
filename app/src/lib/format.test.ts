@@ -22,8 +22,17 @@ describe('format', () => {
     expect(formatMoney(-50, { precision: 'dollars' })).toBe('$0');
     expect(formatMoney(5)).toBe('$0.05');
   });
-  it('masks digits only', () => {
-    expect(maskDigits('$319,206')).toBe('$•••,•••');
+  it('masks every amount to one fixed shape, so size never shows', () => {
+    expect(maskDigits('$319,206')).toBe('$•••••');
+    expect(maskDigits('$0.00')).toBe('$•••••');
+    expect(maskDigits('$1,000,000.00')).toBe('$•••••');
+    expect(maskDigits('\u2212$4.10')).toBe('\u2212$•••••');
+    expect(maskDigits('+$180,329')).toBe('+$•••••');
+    expect(maskDigits('0.0074 2665')).toBe('•.•••• ••••');
+    expect(maskDigits('12.0000 0000 BTC')).toBe('•.•••• •••• BTC');
+    expect(maskDigits('1.1802')).toBe('•.•••• ••••');
+    expect(maskDigits('336,672,105 sats')).toBe('••••••• sats');
+    expect(maskDigits('5')).toBe('•••••••');
   });
   it('values sats at a price in whole cents', () => {
     expect(satsToCents(336_672_105, 9_481_240)).toBe(31_920_690);

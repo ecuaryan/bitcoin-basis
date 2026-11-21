@@ -5,28 +5,34 @@ import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { satsToCents, shortDate } from '../../lib/format.ts';
+import { confirmedLabel, countOf, satsToCents, shortDate } from '../../lib/format.ts';
 import { describeOrigin, TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
 import { Button, buttonClasses } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { Callout, TextField } from '../../ui/form-fields.tsx';
-import { ChevronRightIcon } from '../../ui/icons.tsx';
+import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
 import { BtcInput } from '../../ui/formatted-inputs.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { GainText, TIER_BG } from '../holdings-parts.tsx';
 import { useAmount } from '../log/hooks.ts';
 import { describeEntry } from '../../lib/describe-entry.ts';
-import { DELETABLE_KINDS, EDITABLE_KINDS, localInputFor, lockedYear, longDate, nextDay, nowInstant, trialReplay } from '../log/model.ts';
+import { buildItems, entryRows, NO_FILTER, RECHECK_REASON } from '../../lib/entry-list.ts';
+import { EntryRow, EntrySheet } from '../entry-parts.tsx';
+import { entriesCount } from '../records/records-entries.tsx';
+import { EmptyLine, SectionCount, SectionHeader, ShowMore } from '../../ui/SectionHeader.tsx';
+import { localInputFor, longDate, nextDay, nowInstant, trialReplay } from '../log/model.ts';
 import { CloseOutSheet } from './CloseOut.tsx';
-import { collapseChecks, lastConfirmed, walletEntries, walletLots } from './model.ts';
+import { checkHistory, lastConfirmed, walletEntries, walletLots } from './model.ts';
 import { WalletMenu, type WalletMenuStart } from './WalletMenu.tsx';
 import { useTitle } from '../../ui/use-title.ts';
 import { TERM_HELP } from '../../lib/terms.ts';
 import { useHelp } from '../../ui/Help.tsx';
+import { WorthLine } from '../../ui/WorthLine.tsx';
+import { WALLET_TYPE_LABEL } from '../../lib/wallet-label.ts';
+import { worthNow } from '../../lib/worth-now.ts';
 
-const TYPE_LABEL = { exchange: 'Exchange', 'self-custody': 'Self-custody', retirement: 'Retirement' } as const;
 
 function DotsIcon() {
   return (
@@ -38,7 +44,7 @@ function DotsIcon() {
   );
 }
 
-const ROUND_BTN = 'press flex size-11 flex-none items-center justify-center rounded-full border border-line bg-surface text-soft hover:text-text';
+const ROUND_BTN = 'press flex size-11 flex-none items-center justify-center rounded-xl border border-line bg-surface text-soft hover:text-text';
 
 // ---- Header ----------------------------------------------------------------------------
 
@@ -46,9 +52,9 @@ function Header({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): void; wide
   return (
     <header className="flex items-center gap-3">
       <Link to="/" aria-label="Back to Holdings" className={ROUND_BTN}>
-        <ChevronRightIcon size={18} className="rotate-180" />
+        <ChevronLeftIcon size={18} />
       </Link>
-      <h1 className="m-0 min-w-0 flex-1 truncate font-display text-[26px] font-semibold tracking-tight lg:text-4xl">{wallet.name}</h1>
+      <h1 className="m-0 min-w-0 flex-1 truncate font-display text-[28px] font-semibold tracking-tight lg:text-4xl">{wallet.name}</h1>
       {wide ? <HideButton variant="text" /> : null}
       {wide ? <LockButton variant="text" /> : null}
       <button type="button" onClick={onMenu} aria-label="Wallet options" className={ROUND_BTN}>
@@ -66,7 +72,7 @@ function Balance({ wallet, sats, costCents, avg, priceCents }: { wallet: Wallet;
   return (
     <section aria-label="Balance" className="flex flex-col gap-1.5">
       <span className="text-xs normal-nums tracking-[0.06em] text-muted">
-        {TYPE_LABEL[wallet.type].toUpperCase()}
+        {WALLET_TYPE_LABEL[wallet.type].toUpperCase()}
         {wallet.archived ? ' · ARCHIVED' : ''}
       </span>
       <span className="font-display text-[34px] font-semibold leading-none tracking-[-0.02em] lg:text-5xl">
@@ -80,7 +86,7 @@ function Balance({ wallet, sats, costCents, avg, priceCents }: { wallet: Wallet;
         <>
           {worth !== null && counted ? (
             <span className="text-sm">
-              <Money cents={worth} /> · <GainText cents={worth - costCents} className="font-semibold" /> <span className="text-muted">on paper</span>
+              <Money cents={worth} precision="dollars" /> · <GainText cents={worth - costCents} className="font-semibold" /> <span className="text-muted">on paper</span>
             </span>
           ) : null}
           <span className="text-[13px] text-muted">Average cost {avg === null ? '—' : <Money cents={avg} />} per BTC</span>
@@ -107,6 +113,7 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
   const confirmed = lastConfirmed(state, wallet.id);
   const lastCheck = state.balanceChecks.filter((c) => c.wallet === wallet.id).at(-1);
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
+  const checks = useMemo(() => checkHistory(buildItems(entries), state, wallet.id), [entries, state, wallet.id]);
 
   useEffect(() => {
     if (different) inputRef.current?.focus();
@@ -127,7 +134,7 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
     if (last !== undefined && last.kind === 'balance-confirm' && last.sats === entry.sats) {
       if (confirmed !== today) {
         // Same check, new day: the old confirmation is replaced, so the history stays one line.
-        const again: BalanceConfirmEntry = { ...entry, replaces: last.id, reason: 'Re-checked' };
+        const again: BalanceConfirmEntry = { ...entry, replaces: last.id, reason: RECHECK_REASON };
         if (trialReplay(entries, state, [again], last.id).problems.length === 0) await append([again]);
         else await append([entry]);
       }
@@ -176,12 +183,7 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
   const sinceEntries = pending === null ? [] : pending.since.map((id) => entries.find((e) => e.id === id)).filter((e): e is Entry => e !== undefined);
   return (
     <Card as="section" aria-label="Does it match?" className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="m-0 text-[15px] font-semibold">Does it match?</h2>
-        <span className="text-xs text-muted" role="status">
-          {confirmed === null ? 'Not confirmed yet' : confirmed === today ? 'Confirmed today' : `Last confirmed ${shortDate(confirmed, today)}`}
-        </span>
-      </div>
+      <SectionHeader title="Does it match?" right={<SectionCount>{confirmedLabel(confirmed, today)}</SectionCount>} className="-my-2" />
       {confirmed === null ? <p className="-mt-1.5 m-0 text-xs leading-snug text-muted">A quick check that nothing was missed. If the numbers differ, a buy or fee wasn&apos;t logged.</p> : null}
       <p className="m-0 text-[15px] leading-snug">
         Does {wallet.name} show{' '}
@@ -307,29 +309,39 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
           </Button>
         </div>
       ) : null}
+      {checks.length > 0 ? (
+        <details className="-mb-2 text-xs text-muted">
+          <summary className="flex min-h-11 w-fit items-center font-semibold text-soft hover:text-text">History</summary>
+          <ul className="m-0 mb-2 flex list-none flex-col gap-1 p-0">
+            {checks.map((c) => (
+              <li key={c.date} className="flex justify-between gap-3">
+                <span>
+                  {shortDate(c.date, today)}
+                  {c.times > 1 ? ` · ${countOf(c.times, 'check')}` : ''}
+                </span>
+                <span className={c.matched ? 'text-muted' : 'text-amber'}>{c.matched ? 'Matched' : 'Did not match'}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
     </Card>
   );
 }
 
 // ---- Coins -----------------------------------------------------------------------------
 
-function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; today: string; entries: readonly Entry[]; walletsById: ReadonlyMap<string, Wallet> }) {
+function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots: Lot[]; today: string; entries: readonly Entry[]; walletsById: ReadonlyMap<string, Wallet>; priceCents: number | null }) {
   const [all, setAll] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const sorted = useMemo(() => [...lots].sort((a, b) => (a.acquiredAt < b.acquiredAt ? -1 : a.acquiredAt > b.acquiredAt ? 1 : 0)), [lots]);
   const shown = all ? sorted : sorted.slice(0, 5);
-  const termHelp = useHelp('What are long-term and short-term?', TERM_HELP);
+  const termHelp = useHelp('What are short-term and long-term?', TERM_HELP);
   return (
-    <Card as="section" aria-label="Coins in this wallet" className="flex flex-col gap-1">
-      <div className="flex items-center justify-between">
-        <h2 className="m-0 flex items-center gap-1 text-[15px] font-semibold">
-          Coins, oldest first
-          {termHelp.button}
-        </h2>
-        <span className="text-xs text-muted">Cost per BTC</span>
-      </div>
+    <Card as="section" aria-label="Coins in this wallet" className="flex flex-col">
+      <SectionHeader title="Coins, oldest first" help={termHelp.button} right={<span className="flex-none text-xs text-muted">Cost per BTC</span>} className="-mt-2" />
       {termHelp.panel}
-      {sorted.length === 0 ? <p className="m-0 py-3 text-sm text-muted">No coins here.</p> : null}
+      {sorted.length === 0 ? <EmptyLine>No coins here.</EmptyLine> : null}
       <ul className="m-0 flex list-none flex-col p-0">
         {shown.map((l) => {
           const long = termFor(l, today) === 'long';
@@ -339,7 +351,7 @@ function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; toda
           return (
             <li key={l.id} className="border-b border-line last:border-b-0">
               <button type="button" aria-expanded={open} onClick={() => setOpenId(open ? null : l.id)} className="flex min-h-[54px] w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
-                <span className={cx('h-8 w-1.5 flex-none rounded-full', TIER_BG[l.tier])} aria-hidden="true" />
+                <span className={cx('h-8 w-1.5 flex-none self-center rounded-full', TIER_BG[l.tier])} aria-hidden="true" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="text-sm font-semibold">
                     <Amount sats={l.sats} interactive={false} />
@@ -347,6 +359,7 @@ function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; toda
                   <span className="text-xs text-muted">
                     {shortDate(l.acquiredDate, today)} · {TIER_LABEL[l.tier]}
                   </span>
+                  <WorthLine worth={worthNow(l.sats, l.costCents, priceCents)} className="mt-0.5 text-xs" />
                 </span>
                 <span className="flex flex-col items-end text-right">
                   <span className="text-sm font-semibold">{perBtc === null ? '—' : <Money cents={perBtc} />}</span>
@@ -361,7 +374,7 @@ function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; toda
                   <dd className="m-0">
                     <Money cents={l.costCents} />
                   </dd>
-                  <dt className="text-muted">Record</dt>
+                  <dt className="text-muted">Receipt</dt>
                   <dd className="m-0">{l.proof || 'None yet'}</dd>
                 </dl>
               ) : null}
@@ -369,100 +382,33 @@ function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; toda
           );
         })}
       </ul>
-      {sorted.length > shown.length ? (
-        <Button variant="ghost" onClick={() => setAll(true)} className="-ml-4 self-start">
-          Show all {sorted.length} coins
-        </Button>
-      ) : null}
+      {sorted.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {countOf(sorted.length, 'coin')}</ShowMore> : null}
     </Card>
   );
 }
 
-// ---- History (entries, with edit and remove) --------------------------------------------
+// ---- Entries (the shared list: tap one for its details, history, Edit and Remove) ------
 
-function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
-  const { state, today } = useLedger();
-  const { open } = useLogSheet();
-  const [count, setCount] = useState(5);
+function History({ wallet }: { wallet: Wallet }) {
+  const { entries, state, today } = useLedger();
+  const [all, setAll] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
-  const groups = useMemo(() => collapseChecks(rows), [rows]);
+  const items = useMemo(() => buildItems(entries), [entries]);
+  const rows = useMemo(() => entryRows(items, { ...NO_FILTER, wallet: wallet.id }, wallets), [items, wallet.id, wallets]);
+  const shown = all ? rows : rows.slice(0, 5);
+  const open = rows.find((r) => r.item.id === openId) ?? null;
   return (
-    <Card as="section" aria-label="Entries" className="flex flex-col gap-1">
-      <h2 className="m-0 text-[15px] font-semibold">Entries</h2>
-      <p className="m-0 mb-1 text-xs text-muted">Changes are saved as new entries. The original is kept.</p>
+    <Card as="section" aria-label="Entries" className="flex flex-col">
+      <SectionHeader title="Entries" right={<SectionCount>{entriesCount(rows.length)}</SectionCount>} className="-mt-2" />
+      {rows.length === 0 ? <EmptyLine>Nothing logged for {wallet.name} yet.</EmptyLine> : null}
       <ul className="m-0 flex list-none flex-col p-0">
-        {groups.slice(0, count).map(({ entry: e, same }) => {
-          const line = describeEntry(e, wallets);
-          const locked = lockedYear(e, state);
-          const isOpen = openId === e.id;
-          const date = localInputFor(e.at, e.tz).slice(0, 10);
-          const canEdit = EDITABLE_KINDS.has(e.kind);
-          const canRemove = DELETABLE_KINDS.has(e.kind);
-          return (
-            <li key={e.id} className="border-b border-line last:border-b-0">
-              <button type="button" aria-expanded={isOpen} onClick={() => setOpenId(isOpen ? null : e.id)} className="flex min-h-14 w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-semibold">
-                    {line.summary}
-                    {same.length > 1 ? ` ×${same.length}` : ''}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {shortDate(date, today)}
-                    {locked !== null ? ` · locked, ${locked} is closed` : ''}
-                    {e.replaces !== undefined && e.reason !== 'Re-checked' ? ' · edited' : ''}
-                  </span>
-                </span>
-                <span className="flex flex-col items-end text-sm font-semibold">
-                  {line.sats !== null ? <Amount sats={line.sats} interactive={false} short /> : null}
-                  {line.cents !== null ? (
-                    <span className="text-xs font-normal text-muted">
-                      <Money cents={line.cents} /> {line.centsLabel}
-                    </span>
-                  ) : null}
-                </span>
-                <ChevronRightIcon size={16} className={cx('flex-none text-muted transition-transform duration-150', isOpen && 'rotate-90')} />
-              </button>
-              {isOpen ? (
-                <div className="mb-2 flex flex-col gap-2 rounded-xl bg-bg px-3 py-2.5 text-xs">
-                  {same.length > 1 ? <span className="text-muted">Checked on {same.map((x) => shortDate(localInputFor(x.at, x.tz).slice(0, 10), today)).join(', ')}.</span> : null}
-                  {e.reason && e.reason !== 'Re-checked' ? <span className="text-muted">Why it was changed: {e.reason}</span> : null}
-                  {e.note ? <span className="whitespace-pre-line text-muted">{e.note}</span> : null}
-                  {e.kind === 'give' && e.to === 'person' ? (
-                    <Link to={`/gift-note/${e.id}`} className="w-fit text-sm font-semibold">
-                      Open the gift note
-                    </Link>
-                  ) : null}
-                  {locked !== null ? (
-                    <span className="flex items-center gap-1.5 font-semibold text-amber">
-                      Locked: {locked} is closed. Unlock the year in Records to change this.
-                    </span>
-                  ) : canEdit || canRemove ? (
-                    <div className="flex flex-wrap gap-2">
-                      {canEdit ? (
-                        <Button variant="secondary" onClick={() => open({ edit: e.id })}>
-                          Edit
-                        </Button>
-                      ) : null}
-                      {canRemove ? (
-                        <Button variant="ghost" onClick={() => open({ remove: e.id })}>
-                          Remove
-                        </Button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
+        {shown.map((run, i, arr) => (
+          <EntryRow key={run.item.id} run={run} wallets={wallets} today={today} onOpen={() => setOpenId(run.item.id)} last={i === arr.length - 1} />
+        ))}
       </ul>
-      {rows.length === 0 ? <p className="m-0 py-2 text-sm text-muted">Nothing logged for {wallet.name} yet.</p> : null}
-      {groups.length > count ? (
-        <Button variant="ghost" onClick={() => setCount(groups.length)} className="-ml-4 self-start">
-          Show all {groups.length} entries
-        </Button>
-      ) : null}
+      {rows.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {entriesCount(rows.length)}</ShowMore> : null}
+      {open && <EntrySheet run={open} state={state} today={today} onClose={() => setOpenId(null)} />}
     </Card>
   );
 }
@@ -679,8 +625,8 @@ export function WalletDetail() {
   );
   const right = (
     <>
-      <CoinsSection lots={lots} today={today} entries={entries} walletsById={walletsById} />
-      <History wallet={wallet} rows={rows} />
+      <CoinsSection lots={lots} today={today} entries={entries} walletsById={walletsById} priceCents={priceCents} />
+      <History wallet={wallet} />
     </>
   );
 

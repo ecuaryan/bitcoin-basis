@@ -2,6 +2,7 @@ import { exportEntriesJson, exportOpeningLotsCsv, form8949Csv, TIERS, yearOf, ty
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { countOf } from '../../lib/format.ts';
 import { TIER_LABEL } from '../../lib/origin.ts';
 import { Segmented } from '../../ui/Segmented.tsx';
 import { nowInstant } from '../log/model.ts';
@@ -90,7 +91,7 @@ function ImportLots() {
       return;
     }
     const n = p.entries.length;
-    toast.show(`Added ${n} ${n === 1 ? 'coin' : 'coins'}${p.newWallets.length > 0 ? ` and ${p.newWallets.length} ${p.newWallets.length === 1 ? 'wallet' : 'wallets'}` : ''}.`, { success: true });
+    toast.show(`Added ${countOf(n, 'coin')}${p.newWallets.length > 0 ? ` and ${countOf(p.newWallets.length, 'wallet')}` : ''}.`, { success: true });
     setFile(null);
     setProgress(null);
     navigate('/');
@@ -148,7 +149,7 @@ function ImportLots() {
 
 function ReadyBlock({ p, types, setTypes, progress, failed, onAdd, goodOnly = false }: { p: ImportPreview; types: Record<string, WalletType>; setTypes(t: Record<string, WalletType>): void; progress: { done: number; total: number } | null; failed: boolean; onAdd(): void; goodOnly?: boolean }) {
   const n = p.entries.length;
-  const coins = (k: number) => `${k.toLocaleString('en-US')} ${k === 1 ? 'coin' : 'coins'}`;
+  const coins = (k: number) => countOf(k, 'coin');
   const mix = TIERS.filter((t) => (p.tiers[t] ?? 0) > 0).map((t) => `${TIER_LABEL[t]} ${Math.max(1, Math.round(((p.tiers[t] ?? 0) * 100) / p.sats))}%`);
   const busy = progress !== null;
   const make = p.newWallets.length > 0;
@@ -157,7 +158,7 @@ function ReadyBlock({ p, types, setTypes, progress, failed, onAdd, goodOnly = fa
       {make && (
         <div className="flex flex-col gap-2">
           <span className="font-semibold">
-            {p.newWallets.length} {p.newWallets.length === 1 ? 'wallet' : 'wallets'} will be created
+            {countOf(p.newWallets.length, 'wallet')} will be created
           </span>
           <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="New wallets">
             {p.newWallets.map((w) => (
@@ -210,7 +211,7 @@ function ImportJson() {
   const addFresh = useSubmit(async () => {
     if (preview === null || preview.fresh.length === 0) return;
     await append(preview.fresh);
-    toast.show(`Added ${preview.fresh.length} entries.`, { success: true });
+    toast.show(`Added ${countOf(preview.fresh.length, 'entry', 'entries')}.`, { success: true });
     setPreview(null);
   });
   return (

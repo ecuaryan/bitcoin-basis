@@ -115,6 +115,30 @@ export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>): E
     case 'giving-paid':
       return line('♥', 'Giving paid', `For ${e.year}`, { cents: e.cents });
     case 'delete':
-      return line('×', 'Deleted', e.reason, { summary: 'Removed an entry' });
+      return line('×', 'Removed', e.reason, { summary: 'Removed an entry' });
+  }
+}
+
+/** What one entry is called in an action label: `Edit purchase`, `Remove this balance check`. */
+export function entryNoun(e: Entry): string {
+  switch (e.kind) {
+    case 'buy':
+      return 'purchase';
+    case 'receive':
+      return e.source.type === 'income' ? 'income' : e.source.type === 'gift' ? 'gift received' : e.source.type === 'inherited' ? 'inheritance' : 'payout';
+    case 'move':
+      return 'move';
+    case 'sell':
+      return e.spent ? 'spending' : 'sale';
+    case 'give':
+      return 'gift';
+    case 'lost':
+      return 'loss';
+    case 'balance-confirm':
+      return 'balance check';
+    case 'retirement-snapshot':
+      return 'balance note';
+    default:
+      return 'entry';
   }
 }

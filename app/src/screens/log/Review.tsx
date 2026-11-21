@@ -163,7 +163,7 @@ export function Review({ draft, onBack, onSaved, showTitle = true }: { draft: Dr
       ) : null}
       <FormFooter>
         <Button variant="secondary" onClick={onBack} className="min-h-14 rounded-[18px]">
-          Back
+          {draft.backLabel ?? 'Back'}
         </Button>
         <Button type="submit" variant="primary" disabled={busy || blocked} className="min-h-14 flex-1 rounded-[18px] text-[17px] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
           {busy ? 'Saving…' : draft.saveLabel}

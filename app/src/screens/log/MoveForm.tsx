@@ -3,7 +3,7 @@ import { useSaving } from './saving.ts';
 import { useMemo, useState } from 'react';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
-import { Callout, TextField } from '../../ui/form-fields.tsx';
+import { ErrorLine, Callout, TextField } from '../../ui/form-fields.tsx';
 import { CoinPicker } from './CoinPicker.tsx';
 import type { FormProps } from './draft.ts';
 import { stripSource, useAmount, useBaseState, useFormEnv, usePriceAt, useValue, withSource } from './hooks.ts';
@@ -125,11 +125,7 @@ export function MoveForm({ initial, preset, onReview }: FormProps) {
       {feeSats !== null && feeSats > 0 ? <ValueField label="Fee worth in dollars" value={fee} price={price} error={tried && errors.fee ? errors.fee : null} /> : null}
       <MoreDetails open={more} onOpenChange={setMore}>
         <CoinPicker lots={available} needed={total} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} walletName={fromW?.name ?? 'this wallet'} />
-        {tried && errors.picks ? (
-          <p role="alert" className="m-0 text-xs text-loss">
-            {errors.picks}
-          </p>
-        ) : null}
+        <ErrorLine error={tried && errors.picks} className="block" />
         <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
       </MoreDetails>
       <FormFooter>

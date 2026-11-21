@@ -41,7 +41,7 @@ test('axe: the gift note page', async ({ page }) => {
   await go(page, '/wallet/wallet-strike');
   await expect(page.getByRole('region', { name: 'Entries' })).toBeVisible();
   const showMore = page.getByRole('button', { name: /^Show all \d+ entries/ });
-  const gave = page.getByRole('button', { name: /Gave to Sam/ });
+  const gave = page.getByRole('button', { name: /^Gave.* to Sam/ });
   while ((await gave.count()) === 0 && (await showMore.count()) > 0) await showMore.click();
   await gave.first().click();
   await page.getByRole('link', { name: 'Open the gift note' }).click();

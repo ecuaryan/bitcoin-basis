@@ -66,7 +66,7 @@ describe('hide amounts', () => {
 
   it('masks every digit but keeps the shape', async () => {
     app = await renderApp(<Both />, { hidden: true });
-    expect(text()).toContain('$•••,•••');
+    expect(text()).toContain('$•••••');
     expect(text()).toContain('•.•••• •••• BTC');
     expect(text()).not.toMatch(/\d/);
   });
@@ -105,7 +105,7 @@ describe('hide amounts', () => {
     await fire(money, 'pointerdown');
     expect(text()).toContain('$319,206');
     await fire(window, 'pointerup');
-    expect(text()).toContain('$•••,•••');
+    expect(text()).toContain('$•••••');
     expect(text()).toContain('hidden');
   });
 

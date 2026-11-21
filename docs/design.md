@@ -54,7 +54,10 @@ Type: hero 46px (phone) / 64px (desktop) Space Grotesk 600, tracking -0.03em, `l
 - `Money({ cents, precision: 'cents'|'dollars', signed, countUp })`: `$1,234.56`.
 - `PriceChart`: hand-rolled SVG price line with dashed average-cost line and orange gap fill.
 - `useCountUp`, `useMediaQuery` (`motion.ts`); `Toast` (`useToast().show(msg)`, polite live region).
-- Hide amounts: `usePrefs()` gives `hidden`, `masked`, `toggleHidden`. Holding any masked amount (pointer or Space/Enter) or the eye button shows everything until release.
+- Hide amounts: `usePrefs()` gives `hidden`, `masked`, `toggleHidden`. Holding any masked amount (pointer or Space/Enter) or the eye button shows everything until release. A hidden amount is always one fixed shape (`$•••••`, `•.•••• ••••`; `maskDigits`), so its length never hints at its size.
+- `SectionHeader` (`ui/SectionHeader.tsx`): the one section header. Title left (with its "?" right after the words), a count (`SectionCount`, e.g. `9 entries`) or one action (`SectionLink`, e.g. `All 9 entries`) right. Under a shortened list, `ShowMore` (quiet button, left): `Show all 12 entries`. Empty lists use `EmptyLine`.
+- Entry lists: every list of entries (Records' recent and all entries, a wallet's entries) comes from `entryRows` in `lib/entry-list.ts` and renders `EntryRow`; tapping a row opens `EntrySheet` (details, history, `Edit purchase` / `Remove this purchase`). Settings changes are hidden unless filtered for, balance confirmations are never listed (they show as `Confirmed Nov 21` on the wallet), and every count is the number of rows shown. Strikethrough means removed and always comes with a `Removed` badge; `Edited` appears only for the person's own edits.
+- Field errors use `ErrorLine` (built into every field): once shown, its line stays reserved after the fix so the form does not jump. One back button style (44px, `rounded-xl`, `ChevronLeftIcon`); in a pair of buttons the cancel comes first and the primary last.
 
 Documentation tiers (`TIER_BG`, `TIER_LABEL` in `screens/holdings-parts.tsx` and `lib/origin.ts`): Documented orange, Reconstructed cream, Estimated tan, Unknown grey. Always show the tier by color plus text.
 

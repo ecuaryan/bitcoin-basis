@@ -49,7 +49,7 @@ export function rangeLabel(from: string, to: string): string {
 /** Half-up percent with one decimal from 1/10000ths: 1234 becomes `12.3%`. */
 export function percentFromBp(bp: number): string {
   const tenths = Math.floor((Math.abs(bp) + 5) / 10);
-  return `${bp < 0 ? '-' : ''}${Math.floor(tenths / 10)}.${tenths % 10}%`;
+  return `${bp < 0 ? '\u2212' : ''}${Math.floor(tenths / 10)}.${tenths % 10}%`;
 }
 
 /** Whole percent from 1/10000ths, rounded down when it is not 0 or 100 (never overstates a share). */

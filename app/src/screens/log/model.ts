@@ -122,12 +122,8 @@ export function nextDay(date: string): string {
   return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** `2026-11-02` as `Nov 2, 2026`. */
-export function longDate(date: string): string {
-  const [y = '', m = '1', d = '1'] = date.split('-');
-  return `${MONTHS[Number(m) - 1] ?? ''} ${Number(d)}, ${y}`;
-}
+/** `2026-11-02` as `Nov 2, 2026` (one definition, in lib/format). */
+export { longDate } from '../../lib/format.ts';
 
 // ---- Wallets ---------------------------------------------------------------------------
 
@@ -362,8 +358,8 @@ export function computeEffect(entry: Entry, before: LedgerState, after: LedgerSt
 
 /** Kinds that can be edited from a wallet's history. */
 export const EDITABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give']);
-/** Kinds that can be removed from a wallet's history. */
-export const DELETABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'lost', 'balance-confirm']);
+/** Kinds that can be removed (balance confirmations are not listed, so they have no Remove). */
+export const DELETABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'lost']);
 const TAX_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'lost', 'wallet-close-out']);
 
 /** The closed year an entry sits in, or null if it can still be changed. */

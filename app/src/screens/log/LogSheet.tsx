@@ -12,7 +12,7 @@ import type { Draft, FormProps, LogKind, LogPreset } from './draft.ts';
 import { GiftNoteActions, GiftNoteCard } from './GiftNote.tsx';
 import { GiveForm } from './GiveForm.tsx';
 import { resetScroll, useNowMs } from './hooks.ts';
-import { describeEntry } from '../../lib/describe-entry.ts';
+import { describeEntry, entryNoun } from '../../lib/describe-entry.ts';
 import { lockedYear, trialReplay } from './model.ts';
 import { MoveForm } from './MoveForm.tsx';
 import { ReceiveForm } from './ReceiveForm.tsx';
@@ -107,12 +107,14 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
   const removeDraft: Draft | null = useMemo(() => {
     if (!removing || head === null) return null;
     const line = describeEntry(head, walletsById);
+    const noun = entryNoun(head);
     return {
-      title: 'Remove this entry',
-      saveLabel: 'Remove entry',
-      savedMessage: 'Entry removed.',
+      title: `Remove this ${noun}?`,
+      saveLabel: `Remove ${noun}`,
+      savedMessage: `${noun.charAt(0).toUpperCase()}${noun.slice(1)} removed.`,
       removing: true,
       replacing: head.id,
+      backLabel: 'Cancel',
       rows: [
         { label: 'Entry', value: line.summary },
         ...(line.sats === null ? [] : [{ label: 'Amount', value: <Amount sats={line.sats} interactive={false} showUnit /> }]),
@@ -160,7 +162,7 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
       return;
     }
     await append(gone);
-    toast.show('Undone.');
+    toast.show('Undone.', { success: true });
   }
 
   /** A purchase or a move saves straight from its form. If something blocks it, the review screen explains. */
@@ -226,7 +228,7 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
     <div className="flex flex-col gap-4">
       <div ref={formAreaRef} hidden={reviewing} className="flex flex-col gap-4">
         {editing ? (
-          <h3 className="m-0 font-display text-lg font-semibold tracking-tight">Change this entry</h3>
+          <h3 className="m-0 font-display text-lg font-semibold tracking-tight">{head === null ? 'Edit this entry' : `Edit this ${entryNoun(head)}`}</h3>
         ) : (
           <SheetSlotsPaused paused={reviewing}>
             <SheetSlot name="header">
@@ -252,7 +254,7 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
 /** The Log sheet: five tabs (Bought, Received, Moved, Sold, Gave), each ending on a review screen. Also edits and removals. */
 export function LogSheet({ open, onClose, preset }: { open: boolean; onClose(): void; preset: LogPreset }) {
   const [step, setStep] = useState<{ title: string; back: (() => void) | null } | null>(null);
-  const title = step?.title ?? (preset.edit !== undefined ? 'Edit entry' : preset.remove !== undefined ? 'Remove entry' : 'Log');
+  const title = step?.title ?? (preset.edit !== undefined ? 'Edit entry' : preset.remove !== undefined ? 'Remove' : 'Log');
   return (
     <Sheet open={open} onClose={onClose} title={title} onBack={step?.back ?? undefined} fixedHeight className="sm:max-w-xl">
       <LogBody preset={preset} onClose={onClose} onStep={setStep} />

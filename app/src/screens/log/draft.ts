@@ -42,6 +42,8 @@ export interface Draft {
   replacing?: string;
   /** Removal: no tax effect is shown, only what would break. */
   removing?: boolean;
+  /** Label of the button that leaves the review (default `Back`). */
+  backLabel?: string;
   afterSave?(saved: Entry[]): AfterSave;
   /** Extra content under the effect (for example the gift note preview). */
   extra?: ReactNode;

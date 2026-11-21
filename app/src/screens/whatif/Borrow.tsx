@@ -230,18 +230,18 @@ export function Borrow() {
             <h2 className="m-0 text-[15px] font-semibold">Saved scenarios</h2>
             <p className="m-0 text-xs text-muted">Kept until you lock.</p>
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
-              {saved.map((s) => (
+              {saved.map((s, i) => (
                 <li key={s.id} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2">
                   <span className="min-w-0 text-sm">
-                    <Money cents={parseDollars(s.loan) ?? 0} precision="dollars" /> against {s.pledge} BTC at {s.rate}%
-                    <span className="block text-xs text-muted">{state.wallets.find((w) => w.id === s.wallet)?.name ?? 'a wallet'} · limits {s.marginCall}% and {s.liquidation}%</span>
+                    <Money cents={parseDollars(s.loan) ?? 0} precision="dollars" /> against <Amount sats={parseBtc(s.pledge) ?? 0} showUnit interactive={false} /> at {s.rate}%
+                    <span className="block text-xs text-muted">{state.wallets.find((w) => w.id === s.wallet)?.name ?? 'Unknown wallet'} · limits {s.marginCall}% and {s.liquidation}%</span>
                   </span>
                   <span className="flex gap-1.5">
-                    <Button onClick={() => load(s)} aria-label={`Open the scenario: loan of ${s.loan} dollars`}>
+                    <Button onClick={() => load(s)} aria-label={`Open scenario ${i + 1}`}>
                       Open
                     </Button>
-                    <Button variant="ghost" onClick={() => remove(s.id)} aria-label={`Delete the scenario: loan of ${s.loan} dollars`}>
-                      Delete
+                    <Button variant="ghost" onClick={() => remove(s.id)} aria-label={`Remove scenario ${i + 1}`}>
+                      Remove
                     </Button>
                   </span>
                 </li>

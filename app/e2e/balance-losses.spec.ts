@@ -50,14 +50,14 @@ test('reminder: appears for a wallet with coins that was never checked, and Not 
   await go(page, '/');
   const nudge = page.getByRole('region', { name: 'Balance reminder' });
   await expect(nudge).toContainText("Check Ledger's balance");
-  await expect(nudge).toContainText('Not checked yet');
+  await expect(nudge).toContainText('Not confirmed yet');
   await expectNoViolations(page);
   await nudge.getByRole('link').click();
   await expect(page.getByRole('heading', { name: 'Ledger', level: 1 })).toBeVisible();
   await go(page, '/');
   await page.getByRole('region', { name: 'Balance reminder' }).getByRole('button', { name: 'Not now' }).click();
   await expect(page.getByRole('region', { name: 'Balance reminder' })).toHaveCount(0);
-  expect(await page.evaluate(() => window.localStorage.getItem('bb.nudge-until'))).toBe('2027-01-19');
+  expect(await page.evaluate(() => window.localStorage.getItem('bb.nudge-until'))).toBe('2026-12-20');
 });
 
 test('losses from past years: Holdings explains them and Settings uses the new words', async ({ page }) => {

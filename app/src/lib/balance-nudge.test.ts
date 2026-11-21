@@ -6,7 +6,7 @@ import { addDays, balanceNudge, NUDGE_KEY, nudgeSnoozed, snoozeNudge } from './b
 const book = buildDemoBook().entries;
 const nudgeFor = (entries: readonly Entry[], today: string) => {
   const state = replay(entries);
-  return balanceNudge(state, holdings(state), today);
+  return balanceNudge(state, holdings(state), today, entries);
 };
 const memory = () => {
   const m = new Map<string, string>();
@@ -14,15 +14,29 @@ const memory = () => {
 };
 
 describe('balance reminder', () => {
-  it('is quiet when every live wallet was checked in the last 60 days', () => {
+  it('is quiet when every live wallet was checked in the last 90 days', () => {
     expect(nudgeFor(book, DEMO_TODAY)).toBeNull();
+    expect(nudgeFor(book, '2026-12-31')).toBeNull();
   });
-  it('picks the wallet that has waited longest once 60 days pass', () => {
-    const n = nudgeFor(book, '2027-01-05');
-    expect(n?.lastChecked).toBe('2026-10-30');
-    expect(addDays('2026-11-20', 60)).toBe('2027-01-19');
-    expect(nudgeFor(book, '2026-12-28')).toBeNull();
-    expect(nudgeFor(book, '2026-12-29')?.lastChecked).toBe('2026-10-30');
+  it('picks the wallet that has waited longest once 90 days pass', () => {
+    const state = replay(book);
+    const h = holdings(state);
+    expect(addDays('2026-10-30', 90)).toBe('2027-01-28');
+    // Without the tax-season rule (no entries given), only the 90 days count.
+    expect(balanceNudge(state, h, '2027-01-27')).toBeNull();
+    expect(balanceNudge(state, h, '2027-01-28')).toMatchObject({ lastChecked: '2026-10-30', why: 'stale' });
+  });
+  it('asks once in tax season about a wallet used last year and not confirmed since Jan 1', () => {
+    expect(nudgeFor(book, '2027-01-01')).toMatchObject({ lastChecked: '2026-10-30', why: 'tax-season' });
+    expect(nudgeFor(book, '2027-04-15')?.why).toBe('stale');
+    const state = replay(book);
+    // Confirmed this year: quiet until 90 days pass.
+    const confirmed = state.balanceChecks.map((c) => ({ ...c, date: '2027-01-02' }));
+    expect(balanceNudge({ ...state, balanceChecks: confirmed }, holdings(state), '2027-02-01', book)).toBeNull();
+    // Confirmed on Dec 31: still asked once the new year starts, because last year's entries are not confirmed since.
+    const late = { ...state, balanceChecks: state.balanceChecks.map((c) => ({ ...c, date: '2026-12-31' })) };
+    expect(balanceNudge(late, holdings(state), '2026-12-31', book)).toBeNull();
+    expect(balanceNudge(late, holdings(state), '2027-01-05', book)?.why).toBe('tax-season');
   });
   it('asks about a wallet with coins that was never checked, but not an empty one', () => {
     const noChecks = book.filter((e) => e.kind !== 'balance-confirm');
@@ -39,13 +53,13 @@ describe('balance reminder', () => {
 });
 
 describe('dismissing the reminder', () => {
-  it('stays quiet for 60 days, then comes back', () => {
+  it('stays quiet for 30 days, then comes back', () => {
     const store = memory();
     expect(nudgeSnoozed('2026-11-20', store)).toBe(false);
     snoozeNudge('2026-11-20', store);
-    expect(store.getItem(NUDGE_KEY)).toBe('2027-01-19');
-    expect(nudgeSnoozed('2027-01-18', store)).toBe(true);
-    expect(nudgeSnoozed('2027-01-19', store)).toBe(false);
+    expect(store.getItem(NUDGE_KEY)).toBe('2026-12-20');
+    expect(nudgeSnoozed('2026-12-19', store)).toBe(true);
+    expect(nudgeSnoozed('2026-12-20', store)).toBe(false);
   });
   it('ignores junk and blocked storage', () => {
     expect(nudgeSnoozed('2026-11-20', { getItem: () => 'soon' })).toBe(false);

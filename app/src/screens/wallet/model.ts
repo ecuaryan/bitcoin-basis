@@ -1,31 +1,11 @@
-import type { Entry, LedgerState, Lot, Wallet } from '@bitcoin-basis/engine';
+import { isRecheck, walletsOf, type EntryItem } from '../../lib/entry-list.ts';
+import { localDate, type Entry, type LedgerState, type Lot, type Wallet } from '@bitcoin-basis/engine';
 
-/** Entries (newest versions only) that touch this wallet, newest first. */
+/** Entries (newest versions only, the ones that count) that touch this wallet, newest first. For logic; lists use `entryRows`. */
 export function walletEntries(entries: readonly Entry[], state: LedgerState, walletId: string): Entry[] {
   const applied = new Set(state.applied);
-  const touches = (e: Entry): boolean => {
-    switch (e.kind) {
-      case 'move':
-        return e.from === walletId || e.to === walletId;
-      case 'receive':
-        return e.wallet === walletId || (e.source.type === 'frozen-payout' && e.source.fromWallet === walletId);
-      case 'buy':
-      case 'sell':
-      case 'give':
-      case 'lost':
-      case 'balance-confirm':
-      case 'opening-lot':
-      case 'wallet-update':
-      case 'wallet-freeze':
-      case 'wallet-close-out':
-      case 'retirement-snapshot':
-        return e.wallet === walletId;
-      default:
-        return false;
-    }
-  };
   return entries
-    .filter((e) => applied.has(e.id) && touches(e))
+    .filter((e) => applied.has(e.id) && walletsOf(e).includes(walletId))
     .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.id < b.id ? 1 : -1));
 }
 
@@ -42,13 +22,31 @@ export function findWallet(state: LedgerState, id: string | undefined): Wallet |
   return state.wallets.find((w) => w.id === id);
 }
 
-/** Newest first. Back-to-back identical balance checks become one row ("Checked the balance ×3"). */
-export function collapseChecks(rows: readonly Entry[]): { entry: Entry; same: Entry[] }[] {
-  const out: { entry: Entry; same: Entry[] }[] = [];
-  for (const e of rows) {
-    const prev = out.at(-1);
-    if (prev !== undefined && e.kind === 'balance-confirm' && prev.entry.kind === 'balance-confirm' && prev.entry.sats === e.sats) prev.same.push(e);
-    else out.push({ entry: e, same: [e] });
+export interface CheckDay {
+  date: string;
+  /** Checks made that day (re-checks included). */
+  times: number;
+  matched: boolean;
+}
+
+/**
+ * Every day this wallet's balance was confirmed, newest first. Balance confirmations are not listed with the entries;
+ * this is their only history. A re-check replaces the last check, so the older version still counts as a match.
+ */
+export function checkHistory(items: readonly EntryItem[], state: LedgerState, walletId: string): CheckDay[] {
+  const result = new Map(state.balanceChecks.map((c) => [c.entryId, c.matches]));
+  const days = new Map<string, CheckDay>();
+  for (const item of items) {
+    const e = item.current;
+    if (item.deleted || e.kind !== 'balance-confirm' || e.wallet !== walletId) continue;
+    for (const v of item.versions) {
+      if (v.kind !== 'balance-confirm') continue;
+      const date = localDate(v.at, v.tz);
+      const matched = result.get(v.id) ?? isRecheck(item.versions[item.versions.indexOf(v) + 1] ?? v);
+      const day = days.get(date);
+      if (day === undefined) days.set(date, { date, times: 1, matched });
+      else days.set(date, { date, times: day.times + 1, matched: day.matched && matched });
+    }
   }
-  return out;
+  return [...days.values()].sort((a, b) => (a.date < b.date ? 1 : -1));
 }

@@ -1,10 +1,7 @@
-import type { Wallet, WalletType } from '@bitcoin-basis/engine';
+import type { Wallet } from '@bitcoin-basis/engine';
+import { WALLET_TYPE_LABEL } from '../../lib/wallet-label.ts';
 
-export const WALLET_TYPE_LABEL: Record<WalletType, string> = {
-  exchange: 'Exchange',
-  'self-custody': 'Self-custody',
-  retirement: 'Retirement',
-};
+export { WALLET_TYPE_LABEL };
 
 export interface KitWalletRow {
   readonly name: string;
@@ -16,14 +13,8 @@ export function kitWalletRows(wallets: readonly Wallet[]): KitWalletRow[] {
   return wallets.filter((w) => !w.archived).map((w) => ({ name: w.name, type: WALLET_TYPE_LABEL[w.type] }));
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** `YYYY-MM-DD` to "Nov 20, 2026". */
-export function longDate(date: string): string {
-  const [y, m, d] = date.split('-').map(Number);
-  if (y === undefined || m === undefined || d === undefined) return date;
-  return `${MONTHS[m - 1] ?? ''} ${d}, ${y}`;
-}
+/** `YYYY-MM-DD` to "Nov 20, 2026" (one definition, in lib/format). */
+export { longDate } from '../../lib/format.ts';
 
 /** The same day one year later (Feb 29 becomes Feb 28), `YYYY-MM-DD`. */
 export function oneYearLater(date: string): string {

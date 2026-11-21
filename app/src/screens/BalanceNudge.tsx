@@ -2,14 +2,14 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { balanceNudge, nudgeSnoozed, snoozeNudge } from '../lib/balance-nudge.ts';
-import { shortDate } from '../lib/format.ts';
+import { confirmedLabel } from '../lib/format.ts';
 import { ChevronRightIcon } from '../ui/icons.tsx';
 
-/** One calm reminder to check a wallet that has not been matched in a while. Not now keeps it quiet for 60 days. */
+/** One calm reminder to confirm a wallet that has not been matched in a while (or before filing). Not now keeps it quiet for 30 days. */
 export function BalanceNudge() {
-  const { state, holdings, today } = useLedger();
+  const { entries, state, holdings, today } = useLedger();
   const [snoozed, setSnoozed] = useState(() => nudgeSnoozed(today));
-  const nudge = useMemo(() => balanceNudge(state, holdings, today), [state, holdings, today]);
+  const nudge = useMemo(() => balanceNudge(state, holdings, today, entries), [state, holdings, today, entries]);
   if (nudge === null || snoozed) return null;
   return (
     <section aria-label="Balance reminder" className="flex items-center gap-1 rounded-2xl border border-line bg-surface pl-3.5">
@@ -18,7 +18,7 @@ export function BalanceNudge() {
           Check {nudge.walletName}&apos;s balance
           <ChevronRightIcon size={14} className="flex-none text-muted" />
         </span>
-        <span className="text-xs text-muted">{nudge.lastChecked === null ? 'Not checked yet' : `Last checked ${shortDate(nudge.lastChecked, today)}`} · catches missed entries</span>
+        <span className="text-xs text-muted">{confirmedLabel(nudge.lastChecked, today)} · {nudge.why === 'tax-season' ? 'worth a check before you file' : 'catches missed entries'}</span>
       </Link>
       <button
         type="button"

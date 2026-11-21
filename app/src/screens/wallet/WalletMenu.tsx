@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { Amount } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
-import { Callout, SelectField, TextAreaField, TextField } from '../../ui/form-fields.tsx';
+import { ErrorLine, Callout, SelectField, TextAreaField, TextField } from '../../ui/form-fields.tsx';
 import { ChevronRightIcon } from '../../ui/icons.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 import { useToast } from '../../ui/Toast.tsx';
@@ -344,11 +344,7 @@ function LostView({ wallet, startSats, onBack, onClose }: { wallet: Wallet; star
       <SelectField label="What happened" value={cause} onChange={(e) => setCause(e.target.value as LostCause)} options={CAUSES} />
       <MoreDetails open={more} onOpenChange={setMore}>
         <CoinPicker lots={available} needed={sats} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} walletName={wallet.name} />
-        {tried && errors.picks ? (
-          <p role="alert" className="m-0 text-xs text-loss">
-            {errors.picks}
-          </p>
-        ) : null}
+        <ErrorLine error={tried && errors.picks} className="block" />
         <TextAreaField label="What you know (optional)" value={note} onChange={(e) => setNote(e.target.value)} hint="No deduction is recorded. This entry is flagged for your CPA." />
       </MoreDetails>
       <FormFooter>

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { dayChangeTenthsPercent, type PriceQuote } from '../data/price.ts';
 import { cx } from '../lib/cx.ts';
-import { formatDay, formatMoney, longDate, satsToCents } from '../lib/format.ts';
+import { countOf, formatMoney, satsToCents, shortDate } from '../lib/format.ts';
 import type { HoldingsView, StackYear, WalletCard } from '../lib/holdings-view.ts';
 import { describeOrigin, TIER_HELP, TIER_LABEL } from '../lib/origin.ts';
 import { useLedger } from '../data/ledger-provider.tsx';
@@ -13,6 +13,10 @@ import { Card } from '../ui/Card.tsx';
 import { Sheet } from '../ui/Sheet.tsx';
 import { ChevronRightIcon } from '../ui/icons.tsx';
 import { useHelp } from '../ui/Help.tsx';
+import { usePrice } from '../data/price-provider.tsx';
+import { walletKindLabel } from '../lib/wallet-label.ts';
+import { sumWorth, worthNow } from '../lib/worth-now.ts';
+import { GainWords, WorthLine } from '../ui/WorthLine.tsx';
 
 export const TIER_BG: Record<Tier, string> = {
   documented: 'bg-accent',
@@ -111,7 +115,7 @@ export function StackColumns({ stack, onPick }: { stack: StackYear[]; onPick(yea
   );
 }
 
-/** What the colours mean. With `mix` it also says how much of your stack each one is (so there is no separate card for it on a phone). */
+/** What the colors mean. With `mix` it also says how much of your stack each one is (so there is no separate card for it on a phone). */
 export function TierLegend({ tiers, mix, className }: { tiers: Tier[]; mix?: Record<Tier, number>; className?: string }) {
   const total = mix ? Math.max(1, TIER_ORDER.reduce((n, t) => n + mix[t], 0)) : 1;
   return (
@@ -127,7 +131,7 @@ export function TierLegend({ tiers, mix, className }: { tiers: Tier[]; mix?: Rec
   );
 }
 
-/** What the four colours mean, for a "?" next to a legend. */
+/** What the four colors mean, for a "?" next to a legend. */
 export const TIER_COLORS_HELP = 'The colour says how sure the cost is. Documented: a receipt or export backs it up. Reconstructed: rebuilt from statements. Estimated: a best guess. Unknown: no cost yet.';
 
 /** Tiers that actually have coins, documented first. */
@@ -138,7 +142,7 @@ export function tiersPresent(mix: Record<Tier, number>): Tier[] {
 
 // ---- Coins of one year, with their origin ----------------------------------------------
 
-function CoinRow({ lot }: { lot: Lot }) {
+function CoinRow({ lot, priceCents }: { lot: Lot; priceCents: number | null }) {
   const { entries, state, today } = useLedger();
   const [open, setOpen] = useState(false);
   const origin = entries.find((e) => e.id === lot.originEntryId);
@@ -154,8 +158,9 @@ function CoinRow({ lot }: { lot: Lot }) {
             <Amount sats={lot.sats} interactive={false} />
           </span>
           <span className="truncate text-xs text-muted">
-            {longDate(lot.acquiredDate)} · {wallet?.name ?? 'Wallet'}
+            {shortDate(lot.acquiredDate, today)} · {wallet?.name ?? 'Unknown wallet'}
           </span>
+          <WorthLine worth={worthNow(lot.sats, lot.costCents, priceCents)} className="truncate text-xs" />
         </span>
         <span className="text-xs text-muted">{TIER_LABEL[lot.tier]}</span>
         <ChevronRightIcon size={16} className={cx('flex-none text-muted transition-transform duration-150', open && 'rotate-90')} />
@@ -170,18 +175,16 @@ function CoinRow({ lot }: { lot: Lot }) {
             {perBtc !== null && (
               <span className="text-muted">
                 {' '}
-                · <Money cents={perBtc} precision="dollars" /> per BTC
+                · <Money cents={perBtc} /> per BTC
               </span>
             )}
           </dd>
-          <dt className="text-muted">Record</dt>
+          <dt className="text-muted">Receipt</dt>
           <dd>{lot.proof || 'None yet'}</dd>
           <dt className="text-muted">How sure</dt>
           <dd>
             {TIER_LABEL[lot.tier]}. {TIER_HELP[lot.tier]}
           </dd>
-          <dt className="text-muted">Bought</dt>
-          <dd>{formatDay(lot.acquiredDate, today)}</dd>
         </dl>
       )}
     </li>
@@ -189,22 +192,37 @@ function CoinRow({ lot }: { lot: Lot }) {
 }
 
 export function YearSheet({ row, onClose }: { row: StackYear | null; onClose(): void }) {
+  const { quote } = usePrice();
+  const priceCents = quote?.usdCents ?? null;
   return (
     <Sheet open={row !== null} onClose={onClose} title={row ? `${row.year} coins` : ''}>
       {row && (
         <>
           <p className="mb-2 text-sm text-muted">
-            {row.lots.length} {row.lots.length === 1 ? 'coin' : 'coins'}, oldest first. Tap one to see where it came from.
+            {countOf(row.lots.length, 'coin')}, oldest first. Tap one to see where it came from.
           </p>
           <TierLegend tiers={tiersPresent(row.byTier)} className="mb-2" />
+          <YearTotal lots={row.lots} year={row.year} priceCents={priceCents} />
           <ul className="m-0 list-none p-0">
             {row.lots.map((l) => (
-              <CoinRow key={l.id} lot={l} />
+              <CoinRow key={l.id} lot={l} priceCents={priceCents} />
             ))}
           </ul>
         </>
       )}
     </Sheet>
+  );
+}
+
+function YearTotal({ lots, year, priceCents }: { lots: Lot[]; year: number; priceCents: number | null }) {
+  const w = sumWorth(lots, priceCents);
+  return (
+    <p className="mb-2 mt-0 text-sm" aria-label={`${year} total`}>
+      <span className="text-soft">All {year} coins now </span>
+      {w.valueCents === null ? '—' : <Money cents={w.valueCents} />}
+      <span className="text-soft"> · </span>
+      <GainWords worth={w} className="font-semibold" />
+    </p>
   );
 }
 
@@ -216,7 +234,7 @@ export function WalletLinkCard({ w }: { w: WalletCard }) {
       <span className="flex flex-col gap-0.5">
         <span className="text-sm font-semibold">{w.name}</span>
         <span className={cx('text-xs normal-nums', w.needsAttention ? 'text-amber' : 'text-muted')}>
-          {w.typeLabel} · {w.needsAttention ? 'needs a check' : w.confirmedLabel}
+          {w.typeLabel} · {w.needsAttention ? 'Needs a check' : w.confirmedLabel}
         </span>
       </span>
       <span className="flex items-center gap-1.5 text-sm font-semibold">
@@ -239,15 +257,11 @@ export function WalletRow({ w }: { w: WalletCard }) {
         <span className="text-sm font-semibold">
           <Amount sats={w.sats} interactive={false} />
         </span>
-        <span className={cx('text-xs', w.needsAttention ? 'text-amber' : 'text-muted')}>{w.needsAttention ? 'Needs a check' : capitalize(w.confirmedLabel)}</span>
+        <span className={cx('text-xs', w.needsAttention ? 'text-amber' : 'text-muted')}>{w.needsAttention ? 'Needs a check' : w.confirmedLabel}</span>
       </span>
       <ChevronRightIcon size={16} className="-ml-1 flex-none text-muted transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 // ---- Extra cards (below the design's first screen) -------------------------------------
@@ -322,7 +336,7 @@ export function RetirementCard({ view, priceCents }: { view: HoldingsView; price
             <Link to={`/wallet/${r.id}`} className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-text no-underline last:border-b-0 hover:text-text">
               <span className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold">{r.name}</span>
-                <span className="text-xs text-muted">Retirement · view only</span>
+                <span className="text-xs text-muted">{walletKindLabel({ type: 'retirement', frozen: false, archived: false })}</span>
                 {priceCents !== null && (
                   <span className="text-xs text-muted">
                     Worth <PlainMoney cents={satsToCents(r.sats, priceCents)} precision="dollars" />
@@ -341,9 +355,9 @@ export function RetirementCard({ view, priceCents }: { view: HoldingsView; price
             <Link to={`/wallet/${w.id}`} className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-text no-underline last:border-b-0 hover:text-text">
               <span className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold">{w.name}</span>
-                <span className="text-xs text-muted">Frozen platform</span>
+                <span className="text-xs text-muted">{walletKindLabel({ type: w.type, frozen: true, archived: false })}</span>
                 <span className="text-xs text-muted">
-                  Cost <PlainMoney cents={w.costCents} precision="dollars" />
+                  Cost <PlainMoney cents={w.costCents} />
                 </span>
               </span>
               <span className="flex items-center gap-1.5 text-sm font-semibold">

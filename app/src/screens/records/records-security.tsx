@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
+import { BUILD, VERIFY_URL, versionLine } from '../../lib/build-info.ts';
 import { cx } from '../../lib/cx.ts';
 import { appAddress, shortAddress } from '../../data/app-url.ts';
 import { explainError, wasCancelled } from '../../data/explain-error.ts';
@@ -68,7 +69,31 @@ export function AppView() {
       <Group title="Hide amounts">
         <p className={P}>Amounts show when you open the app. Tap the eye at the top to hide them.</p>
       </Group>
+      <VersionGroup />
     </div>
+  );
+}
+
+/** `Version 1.0.0 · build 047e565 · Nov 21, 2026`; the build opens its commit on GitHub. */
+function VersionGroup() {
+  const v = versionLine(BUILD);
+  return (
+    <Group title="Version">
+      <p className={P} data-testid="app-version">
+        {v.version} ·{' '}
+        {v.commitUrl === null ? (
+          v.build
+        ) : (
+          <a href={v.commitUrl} target="_blank" rel="noopener noreferrer" className="font-semibold">
+            {v.build}
+          </a>
+        )}
+        {v.date === null ? '' : ` · ${v.date}`}
+      </p>
+      <a href={VERIFY_URL} target="_blank" rel="noopener noreferrer" className="flex min-h-11 w-fit items-center text-[13px] font-semibold">
+        Verify this build
+      </a>
+    </Group>
   );
 }
 
@@ -239,6 +264,7 @@ function RealSecurity() {
         <div className="flex flex-col gap-3 p-1">
           <p className={P}>Your current kit stops working the moment this finishes. You&apos;ll see the new code once, and print a new kit right away.</p>
           <div className="flex flex-wrap gap-2.5">
+            <Button onClick={() => setRotateOpen(false)}>Cancel</Button>
             <Button
               variant="primary"
               disabled={busy !== null}
@@ -253,7 +279,6 @@ function RealSecurity() {
             >
               {busy === 'rotate' ? 'Working…' : 'Make a new code'}
             </Button>
-            <Button onClick={() => setRotateOpen(false)}>Cancel</Button>
           </div>
         </div>
       </Sheet>
@@ -267,10 +292,10 @@ function RealSecurity() {
           </p>
           {unsynced && <p className="m-0 text-[13px] font-semibold leading-[1.45] text-loss">Changes not yet synced from this device will be lost.</p>}
           <div className="flex flex-wrap gap-2.5">
+            <Button onClick={() => setForgetOpen(false)}>Cancel</Button>
             <Button variant="primary" disabled={busy !== null || unsynced} onClick={() => void forget()}>
               Forget this device
             </Button>
-            <Button onClick={() => setForgetOpen(false)}>Cancel</Button>
             {unsynced && (
               <Button variant="ghost" disabled={busy !== null} onClick={() => void forget()}>
                 Forget anyway

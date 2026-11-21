@@ -3,7 +3,7 @@ import { SheetSlot, useFixedFooter } from '../../ui/Sheet.tsx';
 import { cx } from '../../lib/cx.ts';
 import { cleanDecimal, formatMoney, prettyBtc, prettyDollars } from '../../lib/format.ts';
 import { MoneyInput } from '../../ui/formatted-inputs.tsx';
-import { SelectField, TextField, type SelectOption } from '../../ui/form-fields.tsx';
+import { ErrorLine, SelectField, TextField, type SelectOption } from '../../ui/form-fields.tsx';
 import { AddWalletSheet } from '../wallet/AddWallet.tsx';
 import type { AmountState, PriceAt, ValueState } from './hooks.ts';
 import type { AmountUnit } from './model.ts';
@@ -51,11 +51,7 @@ export function AmountInput({ amount, label = 'Amount', error, needsPrice }: { a
         })}
       </div>
       {needsPrice && amount.unit === 'usd' ? <span className="text-xs text-muted">Turned into BTC at the market price for that time.</span> : null}
-      {error ? (
-        <span id={`${id}-err`} role="alert" className="text-xs text-loss">
-          {error}
-        </span>
-      ) : null}
+      <ErrorLine id={`${id}-err`} error={error} />
     </div>
   );
 }

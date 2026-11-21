@@ -1,8 +1,22 @@
 import { formatBtc, mulDivRoundHalfUp, SATS_PER_BTC } from '@bitcoin-basis/engine';
 
-/** Replace every digit with a bullet, keeping separators: `$319,206` becomes `$•••,•••`. */
+/** A hidden dollar amount: always this one shape, so its length says nothing about the amount. */
+export const MASKED_MONEY = '$•••••';
+/** A hidden BTC amount, always this shape. */
+export const MASKED_BTC = '•.•••• ••••';
+/** A hidden sats amount, always this shape. */
+export const MASKED_SATS = '•••••••';
+
+/**
+ * A hidden amount in one fixed shape that never shows its size: `$319,206` and `$4.10` both become `$•••••`,
+ * `0.0074 2665 BTC` becomes `•.•••• •••• BTC`. A leading + or − and a trailing unit stay (where the words already say up or down).
+ */
 export function maskDigits(text: string): string {
-  return text.replace(/\d/g, '•');
+  const sign = /^[+\u2212-]/.exec(text)?.[0] ?? '';
+  const unit = / (BTC|sats)$/.exec(text)?.[0] ?? '';
+  const body = text.slice(sign.length, text.length - unit.length);
+  const shape = body.startsWith('$') ? MASKED_MONEY : body.includes('.') || unit === ' BTC' ? MASKED_BTC : MASKED_SATS;
+  return `${sign}${shape}${unit}`;
 }
 
 /** Sats as BTC with 8 decimals in two groups of four: `0.0074 2665`. */
@@ -55,6 +69,11 @@ export function shortDate(date: string, todayDate: string): string {
   return y === todayDate.slice(0, 4) ? base : `${base}, ${y}`;
 }
 
+/** How long ago a wallet's balance last matched, the same words everywhere: `Confirmed Nov 21`, `Confirmed today`, `Not confirmed yet`. */
+export function confirmedLabel(date: string | null, today: string): string {
+  return date === null ? 'Not confirmed yet' : date === today ? 'Confirmed today' : `Confirmed ${shortDate(date, today)}`;
+}
+
 /** `1 lot`, `2 lots`: a count with its noun, pluralised with an "s" unless `plural` is given. */
 export function countOf(n: number, noun: string, plural = `${noun}s`): string {
   return `${n} ${n === 1 ? noun : plural}`;
@@ -83,6 +102,12 @@ function clockIn(ms: number, tz: string | undefined): ClockParts {
   const v: Record<string, string> = {};
   for (const p of f.formatToParts(new Date(ms))) v[p.type] = p.value;
   return { y: Number(v['year']), mo: Number(v['month']), d: Number(v['day']), time: `${v['hour'] ?? '12'}:${v['minute'] ?? '00'} ${(v['dayPeriod'] ?? 'AM').toUpperCase()}` };
+}
+
+/** The clock time of a moment, `9:02 AM`, read on `tz`. */
+export function clockTime(at: string | number, tz?: string): string {
+  const ms = typeof at === 'number' ? at : Date.parse(at);
+  return Number.isNaN(ms) ? '' : clockIn(ms, tz).time;
 }
 
 /**

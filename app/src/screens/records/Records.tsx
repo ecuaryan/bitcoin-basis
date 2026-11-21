@@ -3,16 +3,18 @@ import { useMemo, type ReactNode } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { formatMoney } from '../../lib/format.ts';
+import { PlainMoney } from '../../ui/plain-money.tsx';
 import { useIsWide } from '../../ui/AppShell.tsx';
 import { ChevronLeftIcon, SearchIcon } from '../../ui/more-icons.tsx';
 import { PageHeader } from '../../ui/PageHeader.tsx';
-import { EntriesView, EntryRow, EntrySheet } from './records-entries.tsx';
+import { EntriesView, entriesCount } from './records-entries.tsx';
+import { EntryRow, EntrySheet } from '../entry-parts.tsx';
+import { EmptyLine, SectionHeader, SectionLink } from '../../ui/SectionHeader.tsx';
 import { GivingView } from './records-giving.tsx';
 import { ImportExportView } from './records-io.tsx';
 import { ClosedYearsView, WalletsView } from './records-misc.tsx';
 import { KitCard } from './records-kit.tsx';
-import { buildItems } from './records-logic.ts';
+import { buildItems, entryRows, NO_FILTER } from '../../lib/entry-list.ts';
 import { useState } from 'react';
 import { useTitle } from '../../ui/use-title.ts';
 import { ChevronRightIcon } from '../../ui/icons.tsx';
@@ -25,7 +27,7 @@ function viewTitle(view: View, givingName: string): string {
   return titles[view];
 }
 
-function Tile({ to, title, sub, hot, active, className }: { to: string; title: string; sub: string; hot?: boolean; active?: boolean; className?: string }) {
+function Tile({ to, title, sub, hot, active, className }: { to: string; title: string; sub: ReactNode; hot?: boolean; active?: boolean; className?: string }) {
   return (
     <Link
       to={to}
@@ -48,7 +50,7 @@ function Tile({ to, title, sub, hot, active, className }: { to: string; title: s
 /** Records: every entry and its history, giving, closed years, wallets, import and export, settings. */
 export function Records() {
   const wide = useIsWide();
-  const { entries, state, holdings, today } = useLedger();
+  const { entries, state, today } = useLedger();
   const [params] = useSearchParams();
   const asked = params.get('v');
   const view: View | null = VIEWS.find((v) => v === asked) ?? null;
@@ -58,33 +60,33 @@ export function Records() {
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
   const due = useMemo(() => (state.settings.givingEnabled ? givingDue(state, state.settings, year) : null), [state, year]);
   const [openId, setOpenId] = useState<string | null>(null);
-  const open = items.find((i) => i.id === openId) ?? null;
-  const active = holdings.wallets.filter((w) => !w.frozen && !w.archived).length;
+  const rows = useMemo(() => entryRows(items, NO_FILTER, wallets), [items, wallets]);
+  const open = rows.find((r) => r.item.id === openId) ?? null;
+  // The same wallets the Wallets view lists as active (retirement included).
+  const active = state.wallets.filter((w) => !w.frozen && !w.archived).length;
 
   const tiles: ReactNode = (
     <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-5' : 'grid-cols-4') : 'grid-cols-2')}>
-      {due !== null && <Tile to="/records?v=giving" title={state.settings.givingName} sub={`${formatMoney(Math.max(0, due.owedCents))} due`} hot={due.owedCents > 0} active={view === 'giving'} />}
+      {due !== null && <Tile to="/records?v=giving" title={state.settings.givingName} sub={<><PlainMoney cents={Math.max(0, due.owedCents)} /> still to give</>} hot={due.owedCents > 0} active={view === 'giving'} />}
       <Tile to="/records?v=closed" title="Closed years" sub={state.closedYears.length === 0 ? 'Lock a year once filed' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
       <Tile to="/records?v=wallets" title="Wallets" sub={`${active} active`} active={view === 'wallets'} />
       <Tile to="/records?v=io" title={'Import and\u00a0export'} sub="CSV · backup" active={view === 'io'} className={state.settings.givingEnabled ? '' : 'col-span-2 lg:col-span-1'} />
-      <Tile to="/records?v=entries" title="All entries" sub={`${items.length} in total`} active={view === 'entries'} className="hidden lg:order-first lg:flex" />
+      <Tile to="/records?v=entries" title="All entries" sub={entriesCount(rows.length)} active={view === 'entries'} className="hidden lg:order-first lg:flex" />
     </section>
   );
 
   const recent = (
-    <section aria-label="Recent entries" className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between px-0.5 pb-1.5 pt-1">
-        <h2 className="m-0 text-[15px] font-semibold">Recent entries</h2>
-        <Link to="/records?v=entries" className="flex min-h-11 items-center text-[13px] font-semibold no-underline">
-          All {items.length}
-        </Link>
-      </div>
-      <ul className="m-0 list-none rounded-[18px] border border-line bg-surface px-3.5 py-0.5">
-        {items.slice(0, 4).map((item, i, arr) => (
-          <EntryRow key={item.id} item={item} wallets={wallets} today={today} onOpen={() => setOpenId(item.id)} last={i === arr.length - 1} />
-        ))}
-        {items.length === 0 && <li className="py-4 text-sm text-muted">Nothing logged yet.</li>}
-      </ul>
+    <section aria-label="Recent entries" className="flex flex-col">
+      <SectionHeader title="Recent entries" right={rows.length > 0 ? <SectionLink to="/records?v=entries">All {entriesCount(rows.length)}</SectionLink> : null} />
+      {rows.length === 0 ? (
+        <EmptyLine className="rounded-[18px] border border-line bg-surface px-4">Nothing logged yet.</EmptyLine>
+      ) : (
+        <ul className="m-0 list-none rounded-[18px] border border-line bg-surface px-3.5 py-0.5">
+          {rows.slice(0, 4).map((run, i, arr) => (
+            <EntryRow key={run.item.id} run={run} wallets={wallets} today={today} onOpen={() => setOpenId(run.item.id)} last={i === arr.length - 1} />
+          ))}
+        </ul>
+      )}
     </section>
   );
 
@@ -117,14 +119,14 @@ export function Records() {
           <Link to="/records" aria-label="Back to Records" className="flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-soft hover:text-text">
             <ChevronLeftIcon size={18} />
           </Link>
-          <h1 className="m-0 font-display text-xl font-semibold">{viewTitle(view, state.settings.givingName)}</h1>
+          <h1 className="m-0 min-w-0 truncate font-display text-[28px] font-semibold tracking-tight">{viewTitle(view, state.settings.givingName)}</h1>
         </div>
       )}
       {(wide || view === null) && <KitCard today={today} />}
       {(wide || view === null) && tiles}
       {view === null && recent}
       {body}
-      {open && <EntrySheet item={open} state={state} today={today} onClose={() => setOpenId(null)} />}
+      {open && <EntrySheet run={open} state={state} today={today} onClose={() => setOpenId(null)} />}
     </div>
   );
 }

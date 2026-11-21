@@ -1,8 +1,8 @@
 import { replay, type Entry } from '@bitcoin-basis/engine';
 import { describe as suite, expect, it } from 'vitest';
-import { buildDemoBook } from '../../demo/demo-data.ts';
-import { describeEntry as describe } from '../../lib/describe-entry.ts';
-import { buildItems, collapseRuns, entryYears, kindGroup, matches, type EntryFilter } from './records-logic.ts';
+import { buildDemoBook } from '../demo/demo-data.ts';
+import { describeEntry as describe } from './describe-entry.ts';
+import { buildItems, collapseRuns, entryRows, entryYears, kindGroup, matches, NO_FILTER, userEdited, type EntryFilter } from './entry-list.ts';
 
 const tz = 'America/Boise';
 const entry = <T extends Entry['kind']>(e: Extract<Entry, { kind: T }>): Entry => e;
@@ -83,8 +83,10 @@ suite('settings noise', () => {
   const none: EntryFilter = { text: '', wallet: '', group: '', year: '' };
   const book = [wallet, set('s1', '2026-05-01T10:00:00Z', { givingEnabled: true }), set('s2', '2026-05-01T10:01:00Z', { givingEnabled: false }), set('s3', '2026-05-01T10:02:00Z', { givingEnabled: true, givingMode: 'after-tax' }), conf('c1', '2026-05-02T10:00:00Z'), conf('c2', '2026-05-03T10:00:00Z')];
   const items = buildItems(book);
-  it('hides settings entries unless Kind is Settings', () => {
-    expect(items.filter((i) => matches(i, none, names)).map((i) => i.id)).toEqual(['c2', 'c1', 'w1']);
+  it('hides settings entries unless Kind is Settings, and never lists balance confirmations', () => {
+    expect(items.filter((i) => matches(i, none, names)).map((i) => i.id)).toEqual(['w1']);
+    expect(items.filter((i) => matches(i, { ...none, group: 'checks' }, names))).toHaveLength(0);
+    expect(items.filter((i) => matches(i, { ...none, wallet: 'strike' }, names)).map((i) => i.id)).toEqual(['w1']);
     expect(items.filter((i) => matches(i, { ...none, group: 'settings' }, names))).toHaveLength(3);
   });
   it('folds a run of settings changes into one row with the net change', () => {
@@ -97,10 +99,28 @@ suite('settings noise', () => {
     const b = buildItems([wallet, set('s1', '2026-05-01T10:00:00Z', { givingEnabled: true }), set('s2', '2026-05-01T10:01:00Z', { givingEnabled: false })]);
     expect(collapseRuns(b.filter((i) => i.id !== 'w1'), b)[0]?.net).toBe('No net change');
   });
-  it('folds identical back-to-back balance checks, not different ones', () => {
-    const rows = collapseRuns(items.filter((i) => matches(i, none, names)), items);
-    expect(rows.map((r) => r.count)).toEqual([2, 1]);
-    const diff = buildItems([wallet, conf('c1', '2026-05-02T10:00:00Z'), conf('c2', '2026-05-03T10:00:00Z', 5)]);
-    expect(collapseRuns(diff, diff).map((r) => r.count)).toEqual([1, 1, 1]);
+  it('counts what the list shows: entryRows is the one source for every list', () => {
+    const rows = entryRows(items, NO_FILTER, names);
+    expect(rows.map((r) => r.item.id)).toEqual(['w1']);
+    expect(entryRows(items, { ...NO_FILTER, group: 'settings' }, names)).toHaveLength(1);
+  });
+});
+
+suite('edited or not', () => {
+  const conf = (id: string, at: string, extra: object = {}): Entry => entry({ id, kind: 'balance-confirm', at, tz, wallet: 'strike', sats: 100, ...extra });
+  it('a re-checked balance is not an edit; a changed amount is', () => {
+    const b = buildItems([conf('c1', '2026-05-02T10:00:00Z'), conf('c2', '2026-05-09T10:00:00Z', { replaces: 'c1', reason: 'Re-checked' })]);
+    expect(b).toHaveLength(1);
+    expect(userEdited(b[0] as (typeof b)[number])).toBe(false);
+    const e = buildItems([wallet, buy1, buy2]).find((i) => i.id === 'b1');
+    expect(e && userEdited(e)).toBe(true);
+    const d = buildItems([wallet, buy1, buy2, del]).find((i) => i.id === 'b1');
+    expect(d && userEdited(d)).toBe(false);
+  });
+  it('a payout from a frozen wallet shows in both wallets', () => {
+    const payout = entry({ id: 'p', kind: 'receive', at: '2026-05-02T10:00:00Z', tz, wallet: 'river', sats: 5, valueCents: 1, source: { type: 'frozen-payout', fromWallet: 'strike' } });
+    const [item] = buildItems([payout]);
+    expect(item && matches(item, { ...NO_FILTER, wallet: 'strike' }, names)).toBe(true);
+    expect(item && matches(item, { ...NO_FILTER, wallet: 'river' }, names)).toBe(true);
   });
 });

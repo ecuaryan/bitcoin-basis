@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -73,10 +74,24 @@ function serviceWorkerManifest(): Plugin {
   };
 }
 
+/**
+ * Version, commit and commit date for Settings › App. Only inputs fixed by the commit (never the current time), so the
+ * same commit always builds the same bytes. Without git (a source archive) the build says `dev`.
+ */
+function buildInfo(): { version: string; sha: string; date: string } {
+  const version = (JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8')) as { version: string }).version;
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: import.meta.dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  try {
+    return { version, sha: git('rev-parse', 'HEAD'), date: git('log', '-1', '--format=%cI') };
+  } catch {
+    return { version, sha: 'dev', date: '' };
+  }
+}
+
 export default defineConfig(({ mode }) => ({
   // The fake server and authenticator exist only in `--mode fake` (the e2e build). Every other mode gets `false`,
   // so the bundler removes them. There is deliberately no environment variable that can switch this on.
-  define: { __BB_FAKE__: JSON.stringify(mode === 'fake') },
+  define: { __BB_FAKE__: JSON.stringify(mode === 'fake'), __BB_BUILD__: JSON.stringify(buildInfo()) },
   plugins: [react(), tailwindcss(), cspMeta(), displayFontPreload(), serviceWorkerManifest()],
   build: { outDir: 'dist', sourcemap: false, target: 'es2023' },
   server: { host: '127.0.0.1' },
