@@ -7,7 +7,7 @@ import { useVault, usePendingKit, useVaultStatus } from '../../data/vault-provid
 import { cx } from '../../lib/cx.ts';
 import { PrinterIcon } from '../../ui/auth-icons.tsx';
 import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
-import { BigButton, BigLink, CodeGroups, ErrorLine, Frame, LogoMark, NotSeedPhrase, TextButton } from './parts.tsx';
+import { BigButton, BigLink, CodeGroups, ErrorLine, Frame, GroupMap, LogoMark, NotSeedPhrase, TextButton } from './parts.tsx';
 import { RecoveryInput } from './RecoveryInput.tsx';
 import { SaveCode } from './SaveCode.tsx';
 import { matchesGroup, normalizeSetupCode } from './setup-logic.ts';
@@ -316,7 +316,10 @@ function ConfirmStep({ code, onDone }: { code: string; onDone(): void }) {
     <Frame glowTop={0} className="pt-5">
       <Progress step={4} />
       <h1 className="m-0 mt-[18px] font-display text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">Check your recovery code</h1>
-      <p className="m-0 mt-2.5 text-[15px] leading-normal text-soft">Look at the paper, not the screen, and type group&nbsp;4. That proves you copied it right.</p>
+      <p className="m-0 mt-2.5 text-[15px] leading-normal text-soft">Look at where you saved it (your password manager or the printed kit), not this screen, and type group&nbsp;4: the fourth block of five characters, counting from the start.</p>
+      <div className="mt-4">
+        <GroupMap n={4} />
+      </div>
       <form
         className="relative mt-5 flex flex-col gap-4"
         onSubmit={(e) => {

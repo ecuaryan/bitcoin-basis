@@ -204,7 +204,7 @@ test('Settings, Security and devices: add a device QR, passkey, auto-lock, rotat
   await page.getByRole('button', { name: 'Make a new code' }).click();
   await expect(page.getByRole('article', { name: 'Emergency kit' })).toBeVisible();
   const slots = await page.getByRole('list', { name: 'Recovery code groups' }).locator('li').allInnerTexts();
-  const fresh = slots.join('-');
+  const fresh = slots.map((t) => t.trim().split(/\s+/).pop()).join('-'); // each box is "<number> <group>"
   expect(fresh).not.toEqual(code);
   expect(fresh).toMatch(/^([0-9A-Z]{5}-){5}[0-9A-Z]{5}$/);
   await expectNoViolations(page);

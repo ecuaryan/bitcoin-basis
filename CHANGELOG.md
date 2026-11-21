@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- **Recovery code groups are numbered** on the printed kit, and the check step shows which block is group 4 (the fourth of six) and says to look where you saved it: your password manager or the kit.
 - **Recovery code from your password manager**: where the browser supports it (Chrome, Edge, Android), “Fill in from my password manager” puts in the saved recovery code, so you don't type 30 characters. The field still works with ordinary autofill elsewhere.
 - **Emergency kit**: stays on one letter page with many wallets (a print test checks six wallets, a long name and a code). The square code now only opens the app (the recovery code is typed), so using the kit no longer puts the code in browser history or asks for a new code and a new kit. The yearly test instructions moved off the paper; the app still reminds you. A note for the tax preparer appears when there are retirement wallets. Toasts no longer print.
 - **Adding a device whose passkey already syncs there**: "Add a passkey on this device" no longer fails when the passkey from your other device is already on this one (Google Password Manager, iCloud Keychain, a password manager). The app uses that passkey instead of making a second one, after checking that it opens these records. If it can't unlock records on this device, the app says so.

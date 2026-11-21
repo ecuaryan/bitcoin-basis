@@ -74,7 +74,7 @@ export function CodeGroups({ code }: { code: string }) {
     <ol aria-label="Recovery code, six groups of five" className="m-0 grid list-none grid-cols-2 gap-2.5 p-0">
       {groups.map((g, i) => (
         <li key={i} className="flex min-h-[50px] items-center gap-2.5 rounded-xl bg-bg px-3">
-          <span aria-hidden="true" className="w-2.5 text-[11px] text-muted">
+          <span aria-hidden="true" className="w-3 text-xs font-semibold text-soft">
             {i + 1}
           </span>
           <span className="sr-only">Group {i + 1}: </span>
@@ -82,5 +82,21 @@ export function CodeGroups({ code }: { code: string }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** Where group `n` sits in the code: six blocks, that one lit. A picture for "group 4"; the words say it too. */
+export function GroupMap({ n }: { n: number }) {
+  return (
+    <span aria-hidden="true" className="flex items-center justify-center gap-1.5">
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <span
+          key={i}
+          className={i === n ? 'flex h-6 w-9 items-center justify-center rounded-md bg-accent text-xs font-bold text-bg' : 'flex h-6 w-9 items-center justify-center rounded-md border border-line text-xs text-muted'}
+        >
+          {i}
+        </span>
+      ))}
+    </span>
   );
 }

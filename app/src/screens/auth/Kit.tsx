@@ -149,7 +149,11 @@ export function Kit() {
             <span className="text-[13px] font-semibold leading-[1.45]">This is NOT a Bitcoin seed phrase. It only opens the records.</span>
             <ol aria-label="Recovery code groups" className="m-0 grid list-none grid-cols-3 gap-2 p-0">
               {slots.map((g, i) => (
-                <li key={i} className={cx('flex h-10 items-center justify-center rounded-lg border-[1.5px] border-[#161514] font-display text-[17px] font-semibold tracking-[0.08em]', g === '' ? 'text-[#595550]' : 'text-[#161514]')}>
+                <li key={i} className={cx('relative flex h-10 items-center justify-center rounded-lg border-[1.5px] border-[#161514] font-display text-[17px] font-semibold tracking-[0.08em]', g === '' ? 'text-[#595550]' : 'text-[#161514]')}>
+                  <span aria-hidden="true" className="absolute left-2 top-1 font-sans text-[10px] font-bold tracking-normal text-[#595550]">
+                    {i + 1}
+                  </span>
+                  <span className="sr-only">Group {i + 1}: </span>
                   {g === '' ? <span className="sr-only">Not printed</span> : g}
                 </li>
               ))}
