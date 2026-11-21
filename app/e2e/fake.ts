@@ -19,8 +19,11 @@ export async function setUp(page: Page, { finish = true }: { finish?: boolean } 
     // "Add my first wallet" opens the Add-a-wallet sheet over Holdings; close it so tests start on the page.
     await page.getByRole('button', { name: 'Add my first wallet' }).click();
     await expect(page.getByRole('dialog', { name: 'Add a wallet' })).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    // Escape can land before the sheet has taken focus on a slow machine, so retry until it closes.
+    await expect(async () => {
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 1000 });
+    }).toPass({ timeout: 10_000 });
     await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
   }
   return code;
