@@ -49,18 +49,72 @@ export interface RecoveryRecordInput {
   readonly wrappedDk: string;
 }
 
+/** A DK delivered to one passkey's ECDH key. */
+export interface DeliveryInput {
+  readonly ephemeralPublicKey: string;
+  readonly wrappedDk: string;
+}
+
+export interface DeliveryJSON extends DeliveryInput {
+  readonly epoch: number;
+}
+
+/** A passkey's ECDH key as the server stores it (`binding` proves a key holder registered it). */
+export interface CredentialKeyJSON {
+  readonly publicKey: string;
+  readonly wrappedPrivateKey: string;
+  readonly epoch: number;
+  readonly binding: string;
+}
+
+/** Step-up proof: a fresh passkey assertion over a step-up challenge, or (registration only) the recovery auth token. */
+export type StepUp = { readonly response: AuthenticationResponseJSON; readonly challengeToken: string } | { readonly authToken: string };
+
 export interface RegisterVerifyBody {
   readonly response: RegistrationResponseJSON;
   readonly challengeToken: string;
   readonly prfSalt: string;
-  readonly wrappedDk: string;
+  readonly credentialKey: CredentialKeyJSON;
+  readonly delivery: DeliveryJSON;
   readonly claim?: { readonly vaultId: string; readonly recovery: RecoveryRecordInput };
+  /** Required for every registration after the claim. */
+  readonly stepUp?: StepUp;
+}
+
+/** The current epoch and the newest delivery (and its epoch's history) for one credential. */
+export interface EpochKeys {
+  readonly epoch: number;
+  readonly delivery: DeliveryJSON | null;
+  readonly history: string | null;
 }
 
 export interface LoginResult {
   readonly vaultId: string;
-  readonly prfSalt: string;
+  readonly credential: CredentialKeyJSON & { readonly prfSalt: string };
+  readonly keys: EpochKeys & { readonly delivery: DeliveryJSON };
+}
+
+export interface RecoveryLoginResult {
   readonly wrappedDk: string;
+  readonly version: number;
+  readonly history: string | null;
+}
+
+export interface RotateBody extends RecoveryRecordInput {
+  /** The new version = the new epoch (current + 1); the client needs it for the AADs. */
+  readonly version: number;
+  /** The new epoch's history: every older DK sealed under the new one. */
+  readonly history: string;
+  /** The new DK for every registered passkey, by credential id. */
+  readonly deliveries: Readonly<Record<string, DeliveryInput>>;
+  readonly stepUp: StepUp;
+}
+
+export interface ServerCredential {
+  readonly id: string;
+  readonly publicKey: string;
+  readonly epoch: number;
+  readonly binding: string;
 }
 
 export interface RecoveryParams {
@@ -89,9 +143,15 @@ export interface ApiClient {
   loginOptions(): Promise<ChallengeOptions<PublicKeyCredentialRequestOptionsJSON>>;
   loginVerify(body: { response: AuthenticationResponseJSON; challengeToken: string }): Promise<LoginResult>;
   recoveryParams(): Promise<RecoveryParams>;
-  recoveryLogin(authToken: string): Promise<{ wrappedDk: string; version: number }>;
-  /** `version` is the new version (current + 1); the client needs it for the wrapping AAD. */
-  recoveryRotate(body: RecoveryRecordInput & { readonly version: number }): Promise<{ version: number }>;
+  recoveryLogin(authToken: string): Promise<RecoveryLoginResult>;
+  /** Needs a passkey session and a `rotate` step-up. */
+  recoveryRotate(body: RotateBody): Promise<{ version: number }>;
+  /** A step-up challenge for this (passkey) session, valid five minutes, for one purpose. */
+  stepUpOptions(purpose: 'register' | 'rotate'): Promise<ChallengeOptions<PublicKeyCredentialRequestOptionsJSON>>;
+  /** Every registered passkey's ECDH public key and binding (passkey session). */
+  credentials(): Promise<ServerCredential[]>;
+  /** The current epoch and a credential's newest delivery (passkey session). */
+  keys(credentialId: string): Promise<EpochKeys>;
   uploadBlob(blob: Bytes): Promise<{ key: string }>;
   /** `after` is a key or any `e/<13 digits>` prefix; `null` lists from the start. */
   listBlobs(after: string | null, limit?: number): Promise<BlobPage>;
@@ -153,7 +213,14 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async loginVerify(body) {
       const r = obj(await post('/api/login/verify', body));
-      return { vaultId: str(r.vaultId), prfSalt: str(r.prfSalt), wrappedDk: str(r.wrappedDk) };
+      const c = obj(r.credential);
+      const keys = epochKeys(r.keys);
+      if (keys.delivery === null) throw bad('login without a delivery');
+      return {
+        vaultId: str(r.vaultId),
+        credential: { prfSalt: str(c.prfSalt), publicKey: str(c.publicKey), wrappedPrivateKey: str(c.wrappedPrivateKey), epoch: int(c.epoch), binding: str(c.binding) },
+        keys: { ...keys, delivery: keys.delivery },
+      };
     },
     async recoveryParams() {
       const r = obj(await request('GET', '/api/recovery/params'));
@@ -161,11 +228,25 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async recoveryLogin(authToken) {
       const r = obj(await post('/api/recovery/login', { authToken }));
-      return { wrappedDk: str(r.wrappedDk), version: int(r.version) };
+      return { wrappedDk: str(r.wrappedDk), version: int(r.version), history: optStr(r.history) };
     },
     async recoveryRotate(body) {
       const r = obj(await post('/api/recovery/rotate', body));
       return { version: r.version === undefined ? body.version : int(r.version) };
+    },
+    async stepUpOptions(purpose) {
+      return challenge<PublicKeyCredentialRequestOptionsJSON>(await post('/api/stepup/options', { purpose }));
+    },
+    async credentials() {
+      const r = obj(await request('GET', '/api/credentials'));
+      if (!Array.isArray(r.credentials)) throw bad('credentials');
+      return r.credentials.map((c: unknown) => {
+        const o = obj(c);
+        return { id: str(o.id), publicKey: str(o.publicKey), epoch: int(o.epoch), binding: str(o.binding) };
+      });
+    },
+    async keys(credentialId) {
+      return epochKeys(await request('GET', `/api/keys?${new URLSearchParams({ credential: credentialId }).toString()}`));
     },
     async uploadBlob(blob) {
       const r = obj(await request('POST', '/api/blobs', undefined, blob));
@@ -228,6 +309,17 @@ function int(v: unknown): number {
   const n = typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v;
   if (typeof n !== 'number' || !Number.isSafeInteger(n) || n < 1) throw bad('expected a positive integer');
   return n;
+}
+function optStr(v: unknown): string | null {
+  return v === null || v === undefined ? null : str(v);
+}
+function delivery(v: unknown): DeliveryJSON {
+  const o = obj(v);
+  return { epoch: int(o.epoch), ephemeralPublicKey: str(o.ephemeralPublicKey), wrappedDk: str(o.wrappedDk) };
+}
+function epochKeys(v: unknown): EpochKeys {
+  const r = obj(v);
+  return { epoch: int(r.epoch), delivery: r.delivery === null || r.delivery === undefined ? null : delivery(r.delivery), history: optStr(r.history) };
 }
 function challenge<T>(v: unknown): ChallengeOptions<T> {
   const r = obj(v);

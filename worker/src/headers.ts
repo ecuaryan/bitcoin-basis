@@ -13,6 +13,8 @@ export const CSP = [
   "base-uri 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
+  // DOM XSS sinks (innerHTML, script src, …) only accept Trusted Types; the app uses none.
+  "require-trusted-types-for 'script'",
   'upgrade-insecure-requests',
 ].join('; ');
 

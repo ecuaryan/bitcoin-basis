@@ -13,6 +13,13 @@ import { checkOrigin } from "./check-origin.mjs";
 export const WORKER_NAME = "bitcoin-basis";
 export const BUCKETS = { data: "bitcoin-basis-data", backup: "bitcoin-basis-backup" };
 export const LOCK_RULE = "keep-backups";
+/** Spent single-use markers in the data bucket: useless after minutes (challenges) or hours (sessions). */
+export const EXPIRY_RULES = [
+  { name: "expire-used-challenges", prefix: "used/" },
+  { name: "expire-revoked-sessions", prefix: "revoked/" },
+  { name: "expire-backup-progress", prefix: "backup-progress/" },
+];
+export const EXPIRY_DAYS = 30;
 
 export function parseArgs(argv) {
   const o = { dryRun: false, rotateSecrets: false, subdomain: null, accountId: null, retentionDays: 365, help: false };
@@ -206,7 +213,33 @@ export async function run(argv, env = process.env, io = { out: (s) => console.lo
     }
   }
 
-  // 5. Secrets
+  // 5. Lifecycle rules: the Worker never deletes, so R2 expires its spent markers.
+  heading(`Expire spent markers in the data bucket (after ${EXPIRY_DAYS} days)`);
+  const lcList = ["r2", "bucket", "lifecycle", "list", BUCKETS.data];
+  show(lcList);
+  let rules = "";
+  if (!dry) {
+    const l = wrangler(lcList);
+    rules = l.ok ? l.out : "";
+  }
+  for (const { name, prefix } of EXPIRY_RULES) {
+    const add = ["r2", "bucket", "lifecycle", "add", BUCKETS.data, name, prefix, "--expire-days", String(EXPIRY_DAYS), "-y"];
+    show(add);
+    if (dry) continue;
+    if (rules.includes(name)) {
+      say(`   Rule '${name}' already present, skipping`);
+      continue;
+    }
+    const r = wrangler(add);
+    if (r.ok) say(`   Rule '${name}': objects under ${prefix} expire after ${EXPIRY_DAYS} days`);
+    else {
+      say(`   Could not add rule '${name}' automatically (not fatal; the markers are tiny). Add it by hand:`);
+      say(`     Cloudflare dashboard -> R2 -> ${BUCKETS.data} -> Settings -> Object lifecycle rules -> Add rule`);
+      say(`     Name: ${name}, prefix: ${prefix}, delete objects ${EXPIRY_DAYS} days after upload.`);
+    }
+  }
+
+  // 6. Secrets
   heading("Set the Worker secrets");
   let present = new Set();
   const listArgs = ["secret", "list", "--format", "json"];
@@ -243,7 +276,7 @@ export async function run(argv, env = process.env, io = { out: (s) => console.lo
     if (name === "SETUP_CODE") printedCode = value;
   }
 
-  // 6. GitHub configuration
+  // 7. GitHub configuration
   heading("Add this to your GitHub repository (Settings -> Secrets and variables -> Actions)");
   say("   Variables tab:");
   say(`     CF_ACCOUNT_ID = ${accountId}`);
@@ -254,7 +287,7 @@ export async function run(argv, env = process.env, io = { out: (s) => console.lo
   say("       Limit it to this account. See docs/deploy.md.");
   say("   Also create the environment: Settings -> Environments -> New environment -> 'production'.");
 
-  // 7. Final check
+  // 8. Final check
   heading("Check the deployment");
   say(`   After the first deploy (push to main, CI passes, Deploy runs), this should print {"claimed":false}:`);
   say(`     curl -s ${shownOrigin}/api/status`);

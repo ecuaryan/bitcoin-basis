@@ -88,5 +88,12 @@ describe('recovery code', () => {
     expect(calls).toEqual(['/?a=1']);
     expect(takeRecoveryCodeFromUrl({ hash: '', pathname: '/', search: '' }, { state: null, replaceState: () => calls.push('x') })).toBeNull();
     expect(calls).toHaveLength(1);
+    // A code anywhere in the fragment is taken, and the whole fragment goes.
+    expect(takeRecoveryCodeFromUrl({ hash: `#x=1&recover=${FIXED_TEXT}`, pathname: '/kit', search: '' }, { state: null, replaceState: (_s, _t, url) => void calls.push(String(url)) })).toBe(FIXED_TEXT);
+    expect(calls.at(-1)).toBe('/kit');
+    // An empty or broken one is still removed.
+    expect(takeRecoveryCodeFromUrl({ hash: '#recover=', pathname: '/', search: '' }, { state: null, replaceState: () => calls.push('empty') })).toBeNull();
+    expect(calls.at(-1)).toBe('empty');
+    expect(takeRecoveryCodeFromUrl(null, null)).toBeNull();
   });
 });

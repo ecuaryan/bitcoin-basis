@@ -23,10 +23,11 @@ describe('daily backup cron', () => {
     await env.BACKUP.put(first, 'pre-existing backup bytes');
 
     await worker.scheduled({ cron: '17 3 * * *' });
-    const wanted = (await keys(env.DATA)).filter((k) => !k.startsWith('used/'));
+    const wanted = (await keys(env.DATA)).filter((k) => !k.startsWith('used/') && !k.startsWith('backup-progress/'));
     expect(wanted.some((k) => k.startsWith('cred/'))).toBe(true);
     expect(wanted).toContain('meta/claimed');
     expect(wanted).toContain('recovery/000001');
+    expect(wanted.some((k) => k.startsWith('epoch/000001/cred/'))).toBe(true);
     expect(await keys(env.BACKUP)).toEqual(wanted);
     expect(await text(env.BACKUP, first)).toBe('pre-existing backup bytes');
     for (const k of wanted.slice(1).filter((k) => k !== ups[0])) expect(await text(env.BACKUP, k)).toBe(await text(env.DATA, k));
@@ -38,5 +39,22 @@ describe('daily backup cron', () => {
     const after = (await env.BACKUP.list()).objects;
     expect(after.map((o) => o.key).sort()).toEqual([...wanted, late].sort());
     for (const o of after) if (o.key !== late) expect(o.etag).toBe(etags[o.key]);
+
+    // Each run leaves an append-only progress marker (newest lists first) with the last e/ key reached.
+    const markers = (await env.DATA.list({ prefix: 'backup-progress/' })).objects.map((o) => o.key);
+    expect(markers).toHaveLength(2);
+    expect(JSON.parse((await text(env.DATA, markers[0] as string)) ?? '{}')).toEqual({ last: late });
+
+    // The next run lists e/ only from ten minutes before the marker, not from the start: an object
+    // planted far behind it is not seen (a real upload is never stamped that far back).
+    await env.DATA.put('e/0000000000001-0000000000000000', 'old');
+    const lateMs = Number(late.slice(2, 15));
+    const nearKey = `e/${String(lateMs - 60_000).padStart(13, '0')}-0000000000000000`;
+    await env.DATA.put(nearKey, 'slow upload');
+    await worker.scheduled({ cron: '17 3 * * *' });
+    const backedUp = (await keys(env.BACKUP));
+    expect(backedUp).toContain(nearKey);
+    expect(backedUp).not.toContain('e/0000000000001-0000000000000000');
+    expect(backedUp.some((k) => k.startsWith('used/') || k.startsWith('revoked/') || k.startsWith('backup-progress/'))).toBe(false);
   });
 });

@@ -27,6 +27,11 @@
     "RP_NAME": "Bitcoin Basis"
   },
   // Secrets (never committed): SESSION_SECRET, SETUP_CODE. Set with `wrangler secret put`.
+  // Workers Rate Limiting (free): sign-in, recovery sign-in and registration, per client IP.
+  // namespace_id is any number unique within the account.
+  "ratelimits": [
+    { "name": "AUTH_LIMITER", "namespace_id": "4417", "simple": { "limit": 30, "period": 60 } }
+  ],
   // Daily copy of new objects from DATA to BACKUP.
   "triggers": { "crons": ["17 3 * * *"] },
   // No request logging or tracing: bodies and cookies never leave the Worker.

@@ -18,6 +18,7 @@ const CSP = [
   "object-src 'none'",
   "base-uri 'none'",
   "frame-ancestors 'none'",
+  "require-trusted-types-for 'script'",
 ].join('; ');
 
 function cspMeta(): Plugin {

@@ -118,17 +118,20 @@ export function readRecoveryFragment(hash: string): string | null {
 }
 
 /**
- * Read a `#recover=` code from the address bar and immediately remove it from the URL and the
- * history entry (`history.replaceState`). Returns the unvalidated text, or `null`.
+ * Read a `#recover=` code from the address bar and remove it from the URL and the current history
+ * entry (`history.replaceState`), synchronously, before anything renders or loads. Call it once at
+ * startup (main.tsx, before `createRoot`). Returns the code text (unvalidated, as typed in the
+ * link), or `null`. Any fragment that mentions `recover=` is removed whole, even a malformed one,
+ * so a code never lingers in the address bar or history.
  */
 export function takeRecoveryCodeFromUrl(
-  loc: Pick<Location, 'hash' | 'pathname' | 'search'> = window.location,
-  hist: Pick<History, 'replaceState' | 'state'> = window.history,
+  loc: Pick<Location, 'hash' | 'pathname' | 'search'> | null = typeof window === 'undefined' ? null : window.location,
+  hist: Pick<History, 'replaceState' | 'state'> | null = typeof window === 'undefined' ? null : window.history,
 ): string | null {
-  const code = readRecoveryFragment(loc.hash);
-  if (code === null) return null;
-  hist.replaceState(hist.state, '', loc.pathname + loc.search);
-  return code;
+  if (loc === null || !/recover=/i.test(loc.hash)) return null;
+  const code = readRecoveryFragment(loc.hash) ?? readRecoveryFragment(`#${loc.hash.slice(loc.hash.search(/recover=/i))}`);
+  hist?.replaceState(hist.state, '', loc.pathname + loc.search);
+  return code === null || code === '' ? null : code;
 }
 
 async function checkOf(secret: Bytes): Promise<bigint> {

@@ -10,5 +10,5 @@
     "lib": ["ES2023", "ESNext.TypedArrays", "DOM"],
     "types": ["node"]
   },
-  "include": [".", "../src/headers.ts"]
+  "include": [".", "../src/headers.ts", "../src/config.ts"]
 }

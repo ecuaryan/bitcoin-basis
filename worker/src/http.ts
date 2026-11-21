@@ -10,6 +10,7 @@ const STATUS_CODES = {
   409: 'conflict',
   413: 'payload_too_large',
   415: 'unsupported_media_type',
+  429: 'rate_limited',
   500: 'server_error',
 } as const;
 

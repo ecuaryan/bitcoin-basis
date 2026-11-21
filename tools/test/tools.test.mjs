@@ -176,7 +176,7 @@ describe("setup", () => {
     const code = await run(["--dry-run", "--subdomain", "me"], { BB_WRANGLER: join(here, "mock-wrangler.mjs"), MOCK_STATE: state }, io);
     const text = lines.join("\n");
     expect(code).toBe(0);
-    for (const needle of ["wrangler whoami --json", "r2 bucket create bitcoin-basis-data", "r2 bucket create bitcoin-basis-backup", "r2 bucket lock add bitcoin-basis-backup keep-backups '' --retention-days 365 -y", "secret put SESSION_SECRET", "secret put SETUP_CODE", "ORIGIN = https://bitcoin-basis.me.workers.dev", "CF_ACCOUNT_ID", "APP_ORIGIN", "CLOUDFLARE_API_TOKEN", "/api/status"]) {
+    for (const needle of ["wrangler whoami --json", "r2 bucket create bitcoin-basis-data", "r2 bucket create bitcoin-basis-backup", "r2 bucket lock add bitcoin-basis-backup keep-backups '' --retention-days 365 -y", "r2 bucket lifecycle add bitcoin-basis-data expire-used-challenges used/ --expire-days 30 -y", "r2 bucket lifecycle add bitcoin-basis-data expire-revoked-sessions revoked/ --expire-days 30 -y", "secret put SESSION_SECRET", "secret put SETUP_CODE", "ORIGIN = https://bitcoin-basis.me.workers.dev", "CF_ACCOUNT_ID", "APP_ORIGIN", "CLOUDFLARE_API_TOKEN", "/api/status"]) {
       expect(text).toContain(needle);
     }
     expect(text).not.toMatch(/([0-9A-F]{4}-){7}[0-9A-F]{4}/);
@@ -192,6 +192,11 @@ describe("setup", () => {
     const s1 = JSON.parse(readFileSync(state, "utf8"));
     expect(s1.buckets).toEqual(["bitcoin-basis-data", "bitcoin-basis-backup"]);
     expect(s1.locks).toEqual(["keep-backups"]);
+    expect(s1.lifecycle).toEqual([
+      { bucket: "bitcoin-basis-data", name: "expire-used-challenges", prefix: "used/", days: "30" },
+      { bucket: "bitcoin-basis-data", name: "expire-revoked-sessions", prefix: "revoked/", days: "30" },
+      { bucket: "bitcoin-basis-data", name: "expire-backup-progress", prefix: "backup-progress/", days: "30" },
+    ]);
     expect(s1.secrets).toEqual(["SESSION_SECRET", "SETUP_CODE"]);
     const puts = s1.calls.filter((c) => c.args[0] === "secret" && c.args[1] === "put");
     expect(puts).toHaveLength(2);
@@ -206,7 +211,7 @@ describe("setup", () => {
     const second = capture();
     expect(await run(["--subdomain", "me"], env(state), second.io)).toBe(0);
     const s2 = JSON.parse(readFileSync(state, "utf8"));
-    expect(s2.calls.filter((c) => c.args[1] === "put" || c.args[2] === "create" || c.args[3] === "add")).toHaveLength(puts.length + 2 + 1);
+    expect(s2.calls.filter((c) => c.args[1] === "put" || c.args[2] === "create" || c.args[3] === "add")).toHaveLength(puts.length + 2 + 1 + 3);
     expect(second.lines.join("\n")).toContain("already set, keeping it");
     expect(second.lines.join("\n")).not.toContain(code);
 
@@ -221,5 +226,12 @@ describe("setup", () => {
     const { lines, io } = capture();
     expect(await run(["--subdomain", "me"], env(state, { MOCK_NO_LOCK: "1" }), io)).toBe(0);
     expect(lines.join("\n")).toContain("Add it by hand");
+  });
+
+  it("prints a dashboard fallback when lifecycle rules can't be added", async () => {
+    const state = join(tmp(), "state.json");
+    const { lines, io } = capture();
+    expect(await run(["--subdomain", "me"], env(state, { MOCK_NO_LIFECYCLE: "1" }), io)).toBe(0);
+    expect(lines.join("\n")).toContain("Object lifecycle rules");
   });
 });

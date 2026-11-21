@@ -59,13 +59,40 @@ export function fakeVault() {
   };
 }
 
-export const fakeCredentialKeys = () => ({ prfSalt: rand(32), wrappedDk: rand(60) });
+/** An uncompressed P-256 public key shape (0x04 || 64 bytes). The server can't check the curve point. */
+export const fakeEcKey = () => {
+  const b = new Uint8Array(randomBytes(65));
+  b[0] = 4;
+  return b64u(b);
+};
 
-/** A sealed blob of a valid size: version byte 1, then random bytes. */
-export function fakeBlob(bucketKiB = 1): Uint8Array {
-  const b = new Uint8Array(randomBytes(bucketKiB * 1024 + 29));
-  b[0] = 1;
+/** A credential's key material in the shapes the protocol requires, for epoch `epoch`. */
+export const fakeCredentialKeys = (epoch = 1) => ({
+  prfSalt: rand(32),
+  credentialKey: { publicKey: fakeEcKey(), wrappedPrivateKey: rand(12 + 138 + 16), epoch, binding: rand(28) },
+  delivery: { epoch, ephemeralPublicKey: fakeEcKey(), wrappedDk: rand(60) },
+});
+
+/** A sealed blob of a valid size: version byte 2, the epoch (4 bytes, big-endian), then random bytes. */
+export function fakeBlob(bucketKiB = 1, epoch = 1): Uint8Array {
+  const b = new Uint8Array(randomBytes(bucketKiB * 1024 + 33));
+  b[0] = 2;
+  new DataView(b.buffer).setUint32(1, epoch);
   return b;
+}
+
+/** Fake rotation body for `version` (epoch) with deliveries for the given credential ids. */
+export function fakeRotation(version: number, credIds: string[]) {
+  const next = fakeVault();
+  return {
+    next,
+    body: {
+      version,
+      ...next.recovery,
+      history: rand(12 + 32 * (version - 1) + 16),
+      deliveries: Object.fromEntries(credIds.map((id) => [id, { ephemeralPublicKey: fakeEcKey(), wrappedDk: rand(60) }])),
+    },
+  };
 }
 
 /** Signs a token exactly like the Worker does, to forge expired or tampered ones in tests. */
@@ -77,12 +104,16 @@ export function forgeToken(payload: Record<string, unknown>, secret = SESSION_SE
 type Init = { origin?: string | null; type?: string | null; cookie?: string };
 
 /** A browser-like client: same origin, JSON bodies, keeps the session cookie. */
+export const COOKIE = '__Secure-bb_session';
+
 export class Client {
   cookie: string | undefined;
+  /** Each client looks like its own IP to the rate limiter (Cloudflare sets CF-Connecting-IP). */
+  ip = `198.51.100.${randomBytes(1)[0]}-${rand(6)}`;
   constructor(private readonly server: TestHarness) {}
 
   async request(method: string, path: string, body?: unknown, init: Init = {}) {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { 'CF-Connecting-IP': this.ip };
     const origin = init.origin === undefined ? ORIGIN : init.origin;
     if (origin !== null) headers.Origin = origin;
     const raw = body instanceof Uint8Array;
@@ -111,12 +142,24 @@ export class Client {
     return this.post('/api/register/options', body);
   }
 
-  /** Full registration ceremony with a software authenticator. */
-  async register(auth: SoftAuthenticator, extra: Record<string, unknown> = {}, optionsBody: Record<string, unknown> = {}) {
+  /** Full registration ceremony with a software authenticator (no step-up: add `stepUp` in `extra`). */
+  async register(auth: SoftAuthenticator, extra: Record<string, unknown> = {}, optionsBody: Record<string, unknown> = {}, epoch = 1) {
     const opts = await this.registerOptions(optionsBody);
     if (opts.status !== 200) return opts;
     const response = auth.register({ origin: ORIGIN, rpId: RP_ID, challenge: opts.data.options.challenge });
-    return this.post('/api/register/verify', { response, challengeToken: opts.data.challengeToken, ...fakeCredentialKeys(), ...extra });
+    return this.post('/api/register/verify', { response, challengeToken: opts.data.challengeToken, ...fakeCredentialKeys(epoch), ...extra });
+  }
+
+  /** A fresh step-up assertion `{ response, challengeToken }` from `auth` for `purpose`. */
+  async stepUp(auth: SoftAuthenticator, purpose: 'register' | 'rotate') {
+    const opts = await this.post('/api/stepup/options', { purpose });
+    if (opts.status !== 200) throw new Error(`step-up options: ${opts.status}`);
+    return { response: auth.assert({ origin: ORIGIN, rpId: RP_ID, challenge: opts.data.options.challenge }), challengeToken: opts.data.challengeToken };
+  }
+
+  /** Adds `added` as a passkey, stepping up with the already registered `existing`. */
+  async addPasskey(added: SoftAuthenticator, existing: SoftAuthenticator, extra: Record<string, unknown> = {}, epoch = 1) {
+    return this.register(added, { stepUp: await this.stepUp(existing, 'register'), ...extra }, {}, epoch);
   }
 
   async login(auth: SoftAuthenticator) {

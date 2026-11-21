@@ -1,20 +1,25 @@
 /**
  * An in-memory server that follows docs/sync-protocol.md closely enough to test the client:
- * setup-code claim, stateless-looking challenge tokens, passkey and recovery sessions (cookies per
- * client), only-if-new storage, bucket-size checks and paged listing. It does not verify WebAuthn
- * signatures (the real Worker does, with @simplewebauthn/server).
+ * setup-code claim, challenge tokens (single use, purpose-bound), revocable passkey and recovery
+ * sessions (cookies per client), step-up for registration and rotation, data-key epochs (deliveries,
+ * histories, epoch-checked uploads), only-if-new storage, bucket-size checks and paged listing.
+ * It does not verify WebAuthn signatures (the real Worker does, with @simplewebauthn/server).
  */
 import { fromBase64Url, fromUtf8, randomBytes, toBase64Url, toBytes, toHex, type Bytes } from '../bytes.ts';
-import { isValidBlobSize } from '../seal.ts';
+import { blobEpoch, isValidBlobSize } from '../seal.ts';
 
-interface StoredCred {
+export interface StoredCred {
   publicKey: string;
   prfSalt: string;
-  wrappedDk: string;
+  credentialKey: { publicKey: string; wrappedPrivateKey: string; epoch: number; binding: string };
 }
-interface StoredRecovery {
+export interface StoredRecovery {
   salt: string;
   authVerifier: string;
+  wrappedDk: string;
+}
+export interface StoredDelivery {
+  ephemeralPublicKey: string;
   wrappedDk: string;
 }
 
@@ -24,21 +29,39 @@ export interface FakeClient {
   offline: boolean;
   /** Drop this client's session cookie (expired). */
   expireSession(): void;
+  /** The raw cookie value (a stolen copy, for tests). */
+  readonly cookie: string | null;
+  /** Replace the cookie (replay a stolen one, for tests). */
+  setCookie(cookie: string | null): void;
 }
+
+interface Session {
+  kind: 'passkey' | 'recovery';
+  cid?: string;
+  rv?: number;
+}
+
+type Result = { status: number; json?: unknown; session?: Session | 'clear' };
 
 export class FakeServer {
   claimed: { vaultId: string } | null = null;
   readonly creds = new Map<string, StoredCred>();
   readonly recovery = new Map<number, StoredRecovery>();
+  /** `<epoch>/<credentialId>` → delivery. */
+  readonly deliveries = new Map<string, StoredDelivery>();
+  /** epoch → history (base64url). */
+  readonly histories = new Map<number, string>();
   readonly blobs = new Map<string, Bytes>();
+  /** Revoked session ids (the cookie value stands in for the id). */
+  readonly revoked = new Set<string>();
   /** Every request body seen (for "nothing secret is sent" checks). */
   readonly requests: { path: string; body: string | Bytes }[] = [];
   /** Page size cap (the real server allows up to 200). */
   maxPage = 200;
   /** Server clock for blob keys (ms). Tests may move it to model a slow upload. */
   clock = 1_800_000_000_000;
-  private readonly sessions = new Map<string, 'passkey' | 'recovery'>();
-  private readonly challenges = new Map<string, { challenge: string; type: 'create' | 'get' }>();
+  private readonly sessions = new Map<string, Session>();
+  private readonly challenges = new Map<string, { challenge: string; type: 'create' | 'get'; purpose?: string; cookie?: string }>();
 
   constructor(readonly setupCode: string) {}
 
@@ -49,10 +72,16 @@ export class FakeServer {
       expireSession: () => {
         cookie = null;
       },
+      get cookie() {
+        return cookie;
+      },
+      setCookie: (v) => {
+        cookie = v;
+      },
       fetch: async (input, init) => {
         if (c.offline) throw new TypeError('fetch failed');
         if (init.credentials !== 'same-origin') throw new Error('fake server: credentials must be same-origin');
-        const res = await this.handle(input, init, cookie === null ? null : (this.sessions.get(cookie) ?? null));
+        const res = await this.handle(input, init, cookie);
         if (res.session === 'clear') cookie = null;
         else if (res.session !== undefined) {
           cookie = toHex(randomBytes(16));
@@ -69,14 +98,39 @@ export class FakeServer {
     return [...this.blobs.keys()].sort();
   }
 
-  private async handle(
-    input: string,
-    init: RequestInit,
-    session: 'passkey' | 'recovery' | null,
-  ): Promise<{ status: number; json?: unknown; session?: 'passkey' | 'recovery' | 'clear' }> {
+  /** The current recovery version = data-key epoch (0 before the claim). */
+  epoch(): number {
+    const vs = [...this.recovery.keys()];
+    return vs.length === 0 ? 0 : Math.max(...vs);
+  }
+
+  private live(cookie: string | null): Session | null {
+    if (cookie === null || this.revoked.has(cookie)) return null;
+    const s = this.sessions.get(cookie);
+    if (s === undefined) return null;
+    if (s.kind === 'recovery' && s.rv !== this.epoch()) return null;
+    return s;
+  }
+
+  private newestDelivery(credId: string): { epoch: number; ephemeralPublicKey: string; wrappedDk: string } | null {
+    for (let e = this.epoch(); e >= 1; e--) {
+      const d = this.deliveries.get(`${e}/${credId}`);
+      if (d !== undefined) return { epoch: e, ...d };
+    }
+    return null;
+  }
+
+  private async recoveryTokenOk(authToken: unknown): Promise<boolean> {
+    const rec = this.recovery.get(this.epoch());
+    if (rec === undefined || !isB64u(authToken, 32)) return false;
+    return toBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', fromBase64Url(authToken as string)))) === rec.authVerifier;
+  }
+
+  private async handle(input: string, init: RequestInit, cookie: string | null): Promise<Result> {
     const url = new URL(input, 'https://basis.example');
     const method = init.method ?? 'GET';
     const headers = (init.headers ?? {}) as Record<string, string>;
+    const session = this.live(cookie);
     let body: unknown = null;
     if (method !== 'GET') {
       const ct = headers['Content-Type'];
@@ -92,14 +146,13 @@ export class FakeServer {
       }
     }
     const b = body as Record<string, unknown>;
-    const route = `${method} ${url.pathname}`;
-    switch (route) {
+    switch (`${method} ${url.pathname}`) {
       case 'GET /api/status':
         return { status: 200, json: { claimed: this.claimed !== null } };
       case 'POST /api/register/options': {
         if (session === null) {
-          if (this.claimed !== null) return { status: b.setupCode !== undefined ? 403 : 401 };
-          if (b.setupCode !== this.setupCode) return { status: 403 };
+          if (this.claimed !== null) return { status: 401 };
+          if (b.setupCode !== this.setupCode) return { status: 401 };
         }
         const challenge = toBase64Url(randomBytes(32));
         const challengeToken = toBase64Url(randomBytes(16));
@@ -122,60 +175,112 @@ export class FakeServer {
       }
       case 'POST /api/register/verify': {
         const claim = b.claim as { vaultId: string; recovery: StoredRecovery } | undefined;
-        if (session === null && !(this.claimed === null && claim !== undefined)) return { status: 401 };
         if (claim !== undefined && this.claimed !== null) return { status: 409 };
         if (claim === undefined && this.claimed === null) return { status: 400 };
-        const response = b.response as { id: string; rawId: string; type: string; response: { clientDataJSON: string; publicKey?: string }; clientExtensionResults: Record<string, unknown> };
-        if (!this.checkChallenge(b.challengeToken, response.response.clientDataJSON, 'create')) return { status: 400 };
+        const response = b.response as { id: string; rawId: string; type: string; response: { clientDataJSON: string; publicKey?: string } };
+        const key = b.credentialKey as StoredCred['credentialKey'] | undefined;
+        const delivery = b.delivery as (StoredDelivery & { epoch: number }) | undefined;
+        if (!isB64u(b.prfSalt, 32) || !key || !isB64u(key.publicKey, 65) || !isB64u(key.binding, 28) || typeof key.wrappedPrivateKey !== 'string') return { status: 400 };
+        if (!delivery || !isB64u(delivery.ephemeralPublicKey, 65) || !isB64u(delivery.wrappedDk, 60)) return { status: 400 };
+        if (claim !== undefined && (!isB64u(claim.vaultId, 16) || !isB64u(claim.recovery.salt, 32) || !isB64u(claim.recovery.authVerifier, 32) || !isB64u(claim.recovery.wrappedDk, 60))) return { status: 400 };
+        let stepUpToken: string | null = null;
+        if (claim === undefined) {
+          if (session === null) return { status: 401 };
+          const stepUp = b.stepUp as { authToken?: string; challengeToken?: string; response?: { id: string; response: { clientDataJSON: string } } } | undefined;
+          if (stepUp === undefined) return { status: 401 };
+          if (stepUp.authToken !== undefined) {
+            if (!(await this.recoveryTokenOk(stepUp.authToken))) return { status: 401 };
+          } else {
+            if (!this.peekChallenge(stepUp.challengeToken, stepUp.response?.response.clientDataJSON ?? '', 'get', 'register', cookie)) return { status: 401 };
+            if (!this.creds.has(stepUp.response?.id ?? '')) return { status: 401 };
+            stepUpToken = stepUp.challengeToken as string;
+          }
+        }
+        const epoch = claim === undefined ? this.epoch() : 1;
+        if (key.epoch !== epoch || delivery.epoch !== epoch) return { status: 409 };
         if (response.id !== response.rawId || response.type !== 'public-key') return { status: 400 };
         if (this.creds.has(response.id)) return { status: 409 };
-        if (!isB64u(b.prfSalt, 32) || !isB64u(b.wrappedDk, 60)) return { status: 400 };
-        if (claim !== undefined && (!isB64u(claim.vaultId, 16) || !isB64u(claim.recovery.salt, 32) || !isB64u(claim.recovery.authVerifier, 32) || !isB64u(claim.recovery.wrappedDk, 60))) return { status: 400 };
-        this.creds.set(response.id, { publicKey: response.response.publicKey ?? '', prfSalt: b.prfSalt as string, wrappedDk: b.wrappedDk as string });
+        if (!this.peekChallenge(b.challengeToken, response.response.clientDataJSON, 'create')) return { status: 400 };
+        this.challenges.delete(b.challengeToken as string);
+        if (stepUpToken !== null) this.challenges.delete(stepUpToken);
         if (claim !== undefined) {
           this.claimed = { vaultId: claim.vaultId };
           this.recovery.set(1, claim.recovery);
         }
-        return { status: 201, json: { credentialId: response.id }, session: 'passkey' };
+        this.deliveries.set(`${epoch}/${response.id}`, { ephemeralPublicKey: delivery.ephemeralPublicKey, wrappedDk: delivery.wrappedDk });
+        this.creds.set(response.id, { publicKey: response.response.publicKey ?? '', prfSalt: b.prfSalt as string, credentialKey: key });
+        return { status: 201, json: { credentialId: response.id }, session: { kind: 'passkey', cid: response.id } };
       }
-      case 'POST /api/login/options': {
+      case 'POST /api/login/options':
+      case 'POST /api/stepup/options': {
+        const stepup = url.pathname === '/api/stepup/options';
+        if (stepup && (session === null || session.kind !== 'passkey')) return { status: 401 };
+        if (stepup && b.purpose !== 'register' && b.purpose !== 'rotate') return { status: 400 };
         const challenge = toBase64Url(randomBytes(32));
         const challengeToken = toBase64Url(randomBytes(16));
-        this.challenges.set(challengeToken, { challenge, type: 'get' });
+        this.challenges.set(challengeToken, { challenge, type: 'get', ...(stepup ? { purpose: b.purpose as string, cookie: cookie as string } : {}) });
         return { status: 200, json: { challengeToken, options: { challenge, rpId: 'basis.example', userVerification: 'required', allowCredentials: [] } } };
       }
       case 'POST /api/login/verify': {
         const response = b.response as { id: string; response: { clientDataJSON: string; signature: string } };
-        if (!this.checkChallenge(b.challengeToken, response.response.clientDataJSON, 'get')) return { status: 401 };
+        if (!this.peekChallenge(b.challengeToken, response.response.clientDataJSON, 'get')) return { status: 401 };
         const cred = this.creds.get(response.id);
         if (cred === undefined || this.claimed === null || response.response.signature === '') return { status: 401 };
-        return { status: 200, json: { vaultId: this.claimed.vaultId, prfSalt: cred.prfSalt, wrappedDk: cred.wrappedDk }, session: 'passkey' };
+        this.challenges.delete(b.challengeToken as string);
+        const delivery = this.newestDelivery(response.id);
+        if (delivery === null) return { status: 500 };
+        return {
+          status: 200,
+          json: {
+            vaultId: this.claimed.vaultId,
+            credential: { prfSalt: cred.prfSalt, ...cred.credentialKey },
+            keys: { epoch: this.epoch(), delivery, history: this.histories.get(delivery.epoch) ?? null },
+          },
+          session: { kind: 'passkey', cid: response.id },
+        };
+      }
+      case 'GET /api/credentials': {
+        if (session?.kind !== 'passkey') return { status: 401 };
+        return { status: 200, json: { credentials: [...this.creds].map(([id, c]) => ({ id, publicKey: c.credentialKey.publicKey, epoch: c.credentialKey.epoch, binding: c.credentialKey.binding })) } };
+      }
+      case 'GET /api/keys': {
+        if (session?.kind !== 'passkey') return { status: 401 };
+        const delivery = this.newestDelivery(url.searchParams.get('credential') ?? '');
+        return { status: 200, json: { epoch: this.epoch(), delivery, history: delivery === null ? null : (this.histories.get(delivery.epoch) ?? null) } };
       }
       case 'GET /api/recovery/params': {
-        const v = this.currentVersion();
-        if (this.claimed === null || v === null) return { status: 404 };
+        const v = this.epoch();
+        if (this.claimed === null || v === 0) return { status: 404 };
         return { status: 200, json: { vaultId: this.claimed.vaultId, version: v, salt: (this.recovery.get(v) as StoredRecovery).salt } };
       }
       case 'POST /api/recovery/login': {
-        const v = this.currentVersion();
-        if (v === null || typeof b.authToken !== 'string') return { status: 401 };
+        const v = this.epoch();
+        if (v === 0 || !(await this.recoveryTokenOk(b.authToken))) return { status: 401 };
         const rec = this.recovery.get(v) as StoredRecovery;
-        const h = toBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', fromBase64Url(b.authToken))));
-        if (h !== rec.authVerifier) return { status: 401 };
-        return { status: 200, json: { wrappedDk: rec.wrappedDk, version: v }, session: 'recovery' };
+        return { status: 200, json: { wrappedDk: rec.wrappedDk, version: v, history: this.histories.get(v) ?? null }, session: { kind: 'recovery', rv: v } };
       }
       case 'POST /api/recovery/rotate': {
-        if (session === null) return { status: 401 };
-        const v = this.currentVersion() ?? 0;
-        if (b.version !== v + 1) return { status: 409 };
-        if (!isB64u(b.salt, 32) || !isB64u(b.authVerifier, 32) || !isB64u(b.wrappedDk, 60)) return { status: 400 };
-        this.recovery.set(v + 1, { salt: b.salt as string, authVerifier: b.authVerifier as string, wrappedDk: b.wrappedDk as string });
-        return { status: 201, json: { version: v + 1 } };
+        if (session?.kind !== 'passkey') return { status: 401 };
+        const v = this.epoch() + 1;
+        if (b.version !== v) return { status: 409 };
+        if (!isB64u(b.salt, 32) || !isB64u(b.authVerifier, 32) || !isB64u(b.wrappedDk, 60) || !isB64u(b.history, 12 + 32 * (v - 1) + 16)) return { status: 400 };
+        const deliveries = b.deliveries as Record<string, StoredDelivery>;
+        const ids = [...this.creds.keys()];
+        if (Object.keys(deliveries).length !== ids.length || !ids.every((id) => Object.hasOwn(deliveries, id))) return { status: 409 };
+        const stepUp = b.stepUp as { challengeToken?: string; response?: { id: string; response: { clientDataJSON: string } } } | undefined;
+        if (!stepUp || !this.peekChallenge(stepUp.challengeToken, stepUp.response?.response.clientDataJSON ?? '', 'get', 'rotate', cookie)) return { status: 401 };
+        if (!this.creds.has(stepUp.response?.id ?? '')) return { status: 401 };
+        this.challenges.delete(stepUp.challengeToken as string);
+        this.histories.set(v, b.history as string);
+        for (const id of ids) this.deliveries.set(`${v}/${id}`, deliveries[id] as StoredDelivery);
+        this.recovery.set(v, { salt: b.salt as string, authVerifier: b.authVerifier as string, wrappedDk: b.wrappedDk as string });
+        return { status: 201, json: { version: v } };
       }
       case 'POST /api/blobs': {
         if (session === null) return { status: 401 };
         const raw = body as Bytes;
-        if (!isValidBlobSize(raw.length)) return { status: 400 };
+        if (!isValidBlobSize(raw.length) || raw[0] !== 2) return { status: 400 };
+        if (blobEpoch(raw) !== this.epoch()) return { status: 409 };
         const key = `e/${String(this.clock++).padStart(13, '0')}-${toHex(randomBytes(8))}`;
         this.blobs.set(key, raw);
         return { status: 201, json: { key } };
@@ -190,22 +295,19 @@ export class FakeServer {
         return { status: 200, json: { blobs: page.map((key) => ({ key, data: toBase64Url(this.blobs.get(key) as Bytes) })), more: keys.length > page.length } };
       }
       case 'POST /api/logout':
+        if (cookie !== null && this.sessions.has(cookie)) this.revoked.add(cookie);
         return { status: 200, json: {}, session: 'clear' };
       default:
         return { status: 404 };
     }
   }
 
-  private currentVersion(): number | null {
-    const vs = [...this.recovery.keys()];
-    return vs.length === 0 ? null : Math.max(...vs);
-  }
-
-  private checkChallenge(token: unknown, clientDataJSON: string, type: 'create' | 'get'): boolean {
+  /** Checks a challenge token (purpose, session, clientData) without spending it. */
+  private peekChallenge(token: unknown, clientDataJSON: string, type: 'create' | 'get', purpose?: string, cookie?: string | null): boolean {
     if (typeof token !== 'string') return false;
     const c = this.challenges.get(token);
-    this.challenges.delete(token);
-    if (c === undefined || c.type !== type) return false;
+    if (c === undefined || c.type !== type || c.purpose !== purpose) return false;
+    if (purpose !== undefined && c.cookie !== cookie) return false;
     const data = JSON.parse(fromUtf8(fromBase64Url(clientDataJSON))) as { type: string; challenge: string };
     return data.type === `webauthn.${type}` && data.challenge === c.challenge;
   }

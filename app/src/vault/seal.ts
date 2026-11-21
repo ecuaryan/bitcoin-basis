@@ -2,20 +2,23 @@
  * Sealed blobs: the only thing that leaves the device.
  *
  * Plaintext = UTF-8 JSON `{"v":1,"entries":[…]}`, then `0x80`, then zeros up to the smallest bucket
- * (1, 4, 16 or 64 KiB) that fits. Wire format = `version (1) || iv (12) || AES-GCM ciphertext+tag`,
- * AAD = `bitcoin-basis/blob/v1|<vaultId>`. A blob's length reveals only its bucket.
+ * (1, 4, 16 or 64 KiB) that fits. Wire format = `version (1 byte = 2) || epoch (4, big-endian) ||
+ * iv (12) || AES-GCM ciphertext+tag`, AAD = `bitcoin-basis/blob/v2|<vaultId>|<epoch>`. The epoch says
+ * which data key sealed it. A blob's length reveals only its bucket.
  * See docs/sync-protocol.md, "Padding".
  */
 import { concatBytes, fromUtf8, randomBytes, utf8, type Bytes } from './bytes.ts';
 
-export const BLOB_VERSION = 1;
+export const BLOB_VERSION = 2;
 export const PAYLOAD_VERSION = 1;
 /** Padded plaintext sizes, smallest first. */
 export const BUCKETS = [1024, 4096, 16384, 65536] as const;
 export const MAX_BUCKET = 65536;
-/** version byte + IV + GCM tag. */
-export const BLOB_OVERHEAD = 1 + 12 + 16;
-export const BLOB_AAD_PREFIX = 'bitcoin-basis/blob/v1';
+/** version byte + epoch. */
+export const BLOB_HEADER = 1 + 4;
+/** header + IV + GCM tag. */
+export const BLOB_OVERHEAD = BLOB_HEADER + 12 + 16;
+export const BLOB_AAD_PREFIX = 'bitcoin-basis/blob/v2';
 
 export type SealErrorCode = 'too-large' | 'bad-size' | 'unsupported-version' | 'decrypt-failed' | 'malformed';
 
@@ -36,9 +39,19 @@ export function isValidBlobSize(size: number): boolean {
   return BUCKETS.some((b) => blobSizeForBucket(b) === size);
 }
 
-export function blobAad(vaultId: string): Bytes {
+export function blobAad(vaultId: string, epoch: number): Bytes {
   if (vaultId.length === 0 || vaultId.includes('|')) throw new SealError('malformed', 'bad vault id');
-  return utf8(`${BLOB_AAD_PREFIX}|${vaultId}`);
+  if (!isEpoch(epoch)) throw new SealError('malformed', 'bad epoch');
+  return utf8(`${BLOB_AAD_PREFIX}|${vaultId}|${epoch}`);
+}
+
+const isEpoch = (n: number) => Number.isSafeInteger(n) && n >= 1 && n <= 0xffffffff;
+
+/** The epoch a blob says it was sealed under, or `null` if it isn't a valid v2 blob. */
+export function blobEpoch(blob: Uint8Array): number | null {
+  if (!isValidBlobSize(blob.length) || blob[0] !== BLOB_VERSION) return null;
+  const e = new DataView(blob.buffer, blob.byteOffset + 1, 4).getUint32(0);
+  return e >= 1 ? e : null;
 }
 
 /** Append `0x80` and zeros up to the smallest bucket that fits. Throws `too-large` past 64 KiB. */
@@ -100,28 +113,33 @@ export function packEntries<T>(entries: readonly T[]): PackedBatch<T>[] {
   return batches;
 }
 
-/** Encrypt one padded payload. `iv` is injectable for test vectors only. */
-export async function sealPadded(dk: CryptoKey, vaultId: string, padded: Bytes, iv: Bytes = randomBytes(12)): Promise<Bytes> {
+/** Encrypt one padded payload under DK_epoch. `iv` is injectable for test vectors only. */
+export async function sealPadded(dk: CryptoKey, vaultId: string, epoch: number, padded: Bytes, iv: Bytes = randomBytes(12)): Promise<Bytes> {
   if (!BUCKETS.some((b) => b === padded.length)) throw new SealError('malformed', 'payload is not padded to a bucket');
   if (iv.length !== 12) throw new SealError('malformed', 'IV must be 12 bytes');
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: blobAad(vaultId) }, dk, padded);
-  return concatBytes(Uint8Array.of(BLOB_VERSION), iv, new Uint8Array(ct));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: blobAad(vaultId, epoch) }, dk, padded);
+  const header = new Uint8Array(BLOB_HEADER);
+  header[0] = BLOB_VERSION;
+  new DataView(header.buffer).setUint32(1, epoch);
+  return concatBytes(header, iv, new Uint8Array(ct));
 }
 
-/** Pack and seal entries; returns one sealed blob per batch, with the entries it holds. */
-export async function sealEntries<T>(dk: CryptoKey, vaultId: string, entries: readonly T[]): Promise<{ entries: readonly T[]; blob: Bytes }[]> {
+/** Pack and seal entries under DK_epoch; returns one sealed blob per batch, with the entries it holds. */
+export async function sealEntries<T>(dk: CryptoKey, vaultId: string, epoch: number, entries: readonly T[]): Promise<{ entries: readonly T[]; blob: Bytes }[]> {
   const out: { entries: readonly T[]; blob: Bytes }[] = [];
-  for (const batch of packEntries(entries)) out.push({ entries: batch.entries, blob: await sealPadded(dk, vaultId, batch.padded) });
+  for (const batch of packEntries(entries)) out.push({ entries: batch.entries, blob: await sealPadded(dk, vaultId, epoch, batch.padded) });
   return out;
 }
 
-/** Decrypt and check a blob; returns its raw (not yet validated) entries. Throws `SealError`. */
+/** Decrypt and check a blob with the DK of its epoch (`blobEpoch`); returns its raw (not yet validated) entries. Throws `SealError`. */
 export async function openBlob(dk: CryptoKey, vaultId: string, blob: Uint8Array): Promise<unknown[]> {
   if (!isValidBlobSize(blob.length)) throw new SealError('bad-size');
   if (blob[0] !== BLOB_VERSION) throw new SealError('unsupported-version');
+  const epoch = blobEpoch(blob);
+  if (epoch === null) throw new SealError('malformed', 'bad epoch');
   let padded: Bytes;
   try {
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: blob.slice(1, 13), additionalData: blobAad(vaultId) }, dk, blob.slice(13));
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: blob.slice(BLOB_HEADER, BLOB_HEADER + 12), additionalData: blobAad(vaultId, epoch) }, dk, blob.slice(BLOB_HEADER + 12));
     padded = new Uint8Array(pt);
   } catch {
     throw new SealError('decrypt-failed');

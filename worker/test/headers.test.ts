@@ -46,11 +46,13 @@ describe('security headers', () => {
 
 describe('configuration', () => {
   it('runs Worker code only for /api/*, serves the app as a SPA, and wires the buckets and cron', () => {
-    const cfg = wranglerConfig() as ReturnType<typeof wranglerConfig> & { r2_buckets: { binding: string }[]; triggers: { crons: string[] } };
+    const cfg = wranglerConfig() as ReturnType<typeof wranglerConfig> & { r2_buckets: { binding: string }[]; triggers: { crons: string[] }; ratelimits: { name: string; simple: { period: number } }[] };
     expect(cfg.name).toBe('bitcoin-basis');
     expect(cfg.assets).toEqual({ directory: '../app/dist', not_found_handling: 'single-page-application', run_worker_first: ['/api/*'] });
     expect(cfg.r2_buckets.map((b) => b.binding)).toEqual(['DATA', 'BACKUP']);
+    // DEV_ALLOW_HTTP must never be a deployed var (it lives in .dev.vars only).
     expect(Object.keys(cfg.vars).sort()).toEqual(['ORIGIN', 'RP_ID', 'RP_NAME']);
+    expect(cfg.ratelimits.map((r) => r.name)).toEqual(['AUTH_LIMITER']);
     expect(cfg.triggers.crons).toHaveLength(1);
     expect(cfg.observability).toEqual({ enabled: false });
   });

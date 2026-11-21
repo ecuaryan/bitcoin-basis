@@ -8,6 +8,11 @@
  * identical copies (a retried upload) are dropped silently, different content under one id is
  * counted in `status.conflicts`.
  *
+ * Blobs are sealed under the newest data-key epoch the vault knows; each blob names its epoch, so
+ * older blobs open with older keys. Outbox blobs sealed under an older epoch (written offline, or
+ * before a rotation) are re-sealed under the current one before upload: the server accepts only the
+ * current epoch, and answers 409 to anything else, which makes the next sync refresh the keys first.
+ *
  * Pulling lists from ten minutes before the last key held (see "Listing cursor" in the protocol)
  * and skips keys already held; the first sync after unlock, and one every six hours, lists from the
  * start and counts blobs the server no longer has (`status.missingOnServer`).
@@ -20,7 +25,7 @@ import { randomUnit, type BroadcastLike, type Scheduler } from './env.ts';
 import { VaultError } from './errors.ts';
 import type { DbOp, VaultDb } from './idb.ts';
 import { RECORD_KEY, parseRecord, type VaultRecord } from './record.ts';
-import { isValidBlobSize, openBlob, sealEntries } from './seal.ts';
+import { blobEpoch, isValidBlobSize, openBlob, sealEntries } from './seal.ts';
 
 export type SyncPhase =
   /** Locked: nothing in memory. */
@@ -57,6 +62,8 @@ export interface EncryptedStoreDeps {
   readonly pollIntervalMs: number;
   readonly channel: BroadcastLike | null;
   readonly onStatus: (status: SyncStatus) => void;
+  /** Runs at the start of every online sync, before any upload (the vault checks the epoch and recovery version). */
+  readonly beforeSync?: () => Promise<void>;
 }
 
 const EMPTY: readonly Entry[] = Object.freeze([]);
@@ -74,10 +81,13 @@ export function listAfter(cursor: string | null): string | null {
   return `e/${String(Math.max(0, Number(m[1]) - LIST_OVERLAP_MS)).padStart(13, '0')}`;
 }
 
-interface Keys {
+/** The data keys the store can use: `epoch` seals new blobs; `keys` opens blobs of any epoch it holds. */
+export interface StoreKeys {
   readonly vaultId: string;
-  readonly dk: CryptoKey;
+  readonly epoch: number;
+  readonly keys: ReadonlyMap<number, CryptoKey>;
 }
+type Keys = StoreKeys;
 
 export class EncryptedLedgerStore implements LedgerStore {
   private keys: Keys | null = null;
@@ -87,6 +97,10 @@ export class EncryptedLedgerStore implements LedgerStore {
   private readonly outboxEntries = new Map<string, readonly Entry[]>();
   /** Server keys whose blobs failed to open (not stored, not retried this session). */
   private readonly rejectedKeys = new Set<string>();
+  /** Local blobs and outbox items that could not be opened with the keys held (retried after `setKeys`). */
+  private readonly unreadable = new Set<string>();
+  /** One retry per run after the server refused an upload for its epoch (409). */
+  private conflictRetried = false;
   private view: readonly Entry[] = EMPTY;
   private readonly listeners = new Set<() => void>();
   private running: Promise<SyncResult> | null = null;
@@ -123,7 +137,7 @@ export class EncryptedLedgerStore implements LedgerStore {
       fresh.push(e);
     }
     if (fresh.length === 0) return;
-    const sealed = await sealEntries(keys.dk, keys.vaultId, fresh);
+    const sealed = await sealEntries(currentKey(keys), keys.vaultId, keys.epoch, fresh);
     if (gen !== this.gen) throw new VaultError('locked');
     const ops: DbOp[] = [];
     const added: [string, readonly Entry[]][] = [];
@@ -168,6 +182,15 @@ export class EncryptedLedgerStore implements LedgerStore {
     await this.reload(gen);
   }
 
+  /** New keys (a newer epoch, or older keys now available). Re-reads anything that failed to open. */
+  setKeys(keys: Keys): void {
+    if (this.keys === null) return;
+    this.keys = keys;
+    this.rejectedKeys.clear();
+    this.lastFullCompare = null;
+    void this.reload(this.gen);
+  }
+
   /** Drop the key and every plaintext entry, cancel sync. */
   stop(): void {
     this.gen++;
@@ -175,6 +198,7 @@ export class EncryptedLedgerStore implements LedgerStore {
     this.blobEntries.clear();
     this.outboxEntries.clear();
     this.rejectedKeys.clear();
+    this.unreadable.clear();
     this.running = null;
     this.again = false;
     this.attempt = 0;
@@ -204,6 +228,7 @@ export class EncryptedLedgerStore implements LedgerStore {
       await Promise.resolve(); // so `run` is assigned before the loop can finish
       try {
         let result: SyncResult;
+        this.conflictRetried = false;
         do {
           this.again = false;
           result = await this.syncOnce(gen);
@@ -229,6 +254,9 @@ export class EncryptedLedgerStore implements LedgerStore {
     }
     this.setStatus({ ...this.current, phase: 'syncing', error: null });
     try {
+      await this.deps.beforeSync?.();
+      if (gen !== this.gen) return { ok: false, reason: 'locked' };
+      await this.reseal(gen);
       const pushed = await this.upload(gen);
       const pulled = await this.pull(gen);
       if (gen !== this.gen) return { ok: false, reason: 'locked' };
@@ -238,6 +266,12 @@ export class EncryptedLedgerStore implements LedgerStore {
       return { ok: true, pulled, pushed };
     } catch (e) {
       if (gen !== this.gen) return { ok: false, reason: 'locked' };
+      if (e instanceof ApiError && e.kind === 'conflict' && !this.conflictRetried) {
+        // The server moved to a newer epoch than this upload: refresh the keys and go again.
+        this.conflictRetried = true;
+        this.again = true;
+        return { ok: false, reason: 'error' };
+      }
       if (e instanceof ApiError && e.kind === 'unauthorized') {
         this.setStatus({ ...this.current, phase: 'signed-out', error: null });
         return { ok: false, reason: 'signed-out' };
@@ -246,6 +280,32 @@ export class EncryptedLedgerStore implements LedgerStore {
       this.setStatus({ ...this.current, phase: offline ? 'offline' : 'error', error: offline ? null : String((e as Error).message ?? e) });
       this.retryLater(gen);
       return { ok: false, reason: offline ? 'offline' : 'error' };
+    }
+  }
+
+  /** Re-seal outbox blobs from older epochs under the current one (one transaction per blob). */
+  private async reseal(gen: number): Promise<void> {
+    const keys = this.keys;
+    if (keys === null) return;
+    for (const [localKey, value] of await this.deps.db.entries('outbox')) {
+      const blob = asBlob(value);
+      if (blob === null || blobEpoch(blob) === keys.epoch) continue;
+      const entries = this.outboxEntries.get(localKey) ?? (await this.tryOpen(blob));
+      if (entries === null || entries.length === 0) continue; // can't open it yet: keep it
+      const sealed = await sealEntries(currentKey(keys), keys.vaultId, keys.epoch, entries);
+      if (gen !== this.gen) return;
+      const ops: DbOp[] = [{ type: 'delete', store: 'outbox', key: localKey }];
+      const added: [string, readonly Entry[]][] = [];
+      for (const s of sealed) {
+        const key = this.outboxKey();
+        ops.push({ type: 'put', store: 'outbox', key, value: s.blob });
+        added.push([key, s.entries]);
+      }
+      await this.deps.db.write(ops);
+      if (gen !== this.gen) return;
+      this.outboxEntries.delete(localKey);
+      this.unreadable.delete(localKey);
+      for (const [k, v] of added) this.outboxEntries.set(k, v);
     }
   }
 
@@ -258,6 +318,7 @@ export class EncryptedLedgerStore implements LedgerStore {
         await this.deps.db.write([{ type: 'delete', store: 'outbox', key: localKey }]);
         continue;
       }
+      if (blobEpoch(blob) !== this.keys?.epoch) continue; // not re-sealable yet
       const { key } = await this.deps.api.uploadBlob(blob);
       await this.deps.db.write([
         { type: 'delete', store: 'outbox', key: localKey },
@@ -337,26 +398,37 @@ export class EncryptedLedgerStore implements LedgerStore {
     const [blobs, outbox] = await Promise.all([this.deps.db.entries('blobs'), this.deps.db.entries('outbox')]);
     const newBlobs: [string, readonly Entry[]][] = [];
     let rejected = 0;
+    const nowReadable: string[] = [];
+    const stillUnreadable: string[] = [];
     for (const [k, v] of blobs) {
-      if (this.blobEntries.has(k)) continue;
+      if (this.blobEntries.has(k) && !this.unreadable.has(k)) continue;
+      const retry = this.unreadable.has(k);
       const blob = asBlob(v);
       const entries = blob === null ? null : await this.tryOpen(blob);
-      if (entries === null) rejected++;
+      if (entries === null) {
+        stillUnreadable.push(k);
+        if (!retry) rejected++;
+      } else if (retry) nowReadable.push(k);
       newBlobs.push([k, entries ?? EMPTY]);
     }
     const newOutbox = new Map<string, readonly Entry[]>();
     for (const [k, v] of outbox) {
-      const known = this.outboxEntries.get(k);
+      const known = this.unreadable.has(k) ? undefined : this.outboxEntries.get(k);
       if (known !== undefined) {
         newOutbox.set(k, known);
         continue;
       }
       const blob = asBlob(v);
       const entries = blob === null ? null : await this.tryOpen(blob);
-      if (entries === null) rejected++;
+      if (entries === null) {
+        if (!this.unreadable.has(k)) rejected++;
+        stillUnreadable.push(k);
+      } else nowReadable.push(k);
       newOutbox.set(k, entries ?? EMPTY);
     }
     if (gen !== this.gen) return;
+    for (const k of nowReadable) this.unreadable.delete(k);
+    for (const k of stillUnreadable) this.unreadable.add(k);
     for (const [k, v] of newBlobs) this.blobEntries.set(k, v);
     this.outboxEntries.clear();
     for (const [k, v] of newOutbox) this.outboxEntries.set(k, v);
@@ -368,9 +440,12 @@ export class EncryptedLedgerStore implements LedgerStore {
   private async tryOpen(blob: Bytes): Promise<readonly Entry[] | null> {
     const keys = this.keys;
     if (keys === null) return null;
+    const epoch = blobEpoch(blob);
+    const dk = epoch === null ? undefined : keys.keys.get(epoch);
+    if (dk === undefined) return null;
     let raw: unknown[];
     try {
-      raw = await openBlob(keys.dk, keys.vaultId, blob);
+      raw = await openBlob(dk, keys.vaultId, blob);
     } catch {
       return null;
     }
@@ -434,6 +509,12 @@ export class EncryptedLedgerStore implements LedgerStore {
   private notify(): void {
     for (const l of [...this.listeners]) l();
   }
+}
+
+function currentKey(keys: Keys): CryptoKey {
+  const dk = keys.keys.get(keys.epoch);
+  if (dk === undefined) throw new VaultError('locked', 'no key for the current epoch');
+  return dk;
 }
 
 function asBlob(v: unknown): Bytes | null {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { randomBytes, utf8 } from './bytes.ts';
 import { importDataKey } from './keys.ts';
-import { BLOB_OVERHEAD, BUCKETS, isValidBlobSize, openBlob, packEntries, pad, SealError, sealEntries, sealPadded, unpad } from './seal.ts';
+import { BLOB_OVERHEAD, blobEpoch, BUCKETS, isValidBlobSize, openBlob, packEntries, pad, SealError, sealEntries, sealPadded, unpad } from './seal.ts';
 
 const VAULT = 'vault-A';
 const key = () => importDataKey(randomBytes(32));
@@ -34,33 +34,37 @@ describe('padding', () => {
     const dk = await key();
     const sizes = new Set<number>();
     for (const n of [0, 10, 500, 900]) {
-      for (const s of await sealEntries(dk, VAULT, [filler(n)])) sizes.add(s.blob.length);
+      for (const s of await sealEntries(dk, VAULT, 1, [filler(n)])) sizes.add(s.blob.length);
     }
     expect([...sizes]).toEqual([1024 + BLOB_OVERHEAD]);
-    for (const b of BUCKETS) expect(isValidBlobSize(b + 29)).toBe(true);
-    expect(isValidBlobSize(1024 + 28)).toBe(false);
+    for (const b of BUCKETS) expect(isValidBlobSize(b + 33)).toBe(true);
+    expect(isValidBlobSize(1024 + 29)).toBe(false);
     expect(isValidBlobSize(2000)).toBe(false);
   });
 });
 
 describe('seal and open', () => {
-  test('round trip; wire format is version || iv || ciphertext', async () => {
+  test('round trip; wire format is version || epoch || iv || ciphertext', async () => {
     const dk = await key();
     const entries = [{ id: 'a', n: 1 }, { id: 'b', text: 'héllo ₿' }];
-    const sealed = await sealEntries(dk, VAULT, entries);
+    const sealed = await sealEntries(dk, VAULT, 1, entries);
     expect(sealed).toHaveLength(1);
     const blob = (sealed[0] as (typeof sealed)[number]).blob;
-    expect(blob[0]).toBe(1);
+    expect(blob[0]).toBe(2);
+    expect([...blob.slice(1, 5)]).toEqual([0, 0, 0, 1]);
+    expect(blobEpoch(blob)).toBe(1);
     expect(await openBlob(dk, VAULT, blob)).toEqual(entries);
+    const [later] = await sealEntries(dk, VAULT, 70000, entries);
+    expect(blobEpoch((later as NonNullable<typeof later>).blob)).toBe(70000);
     // Fresh IV each time.
-    const again = await sealEntries(dk, VAULT, entries);
+    const again = await sealEntries(dk, VAULT, 1, entries);
     expect(Buffer.from((again[0] as (typeof again)[number]).blob).equals(Buffer.from(blob))).toBe(false);
   });
 
   test('large batches are split, in order, and reassemble exactly', async () => {
     const dk = await key();
     const entries = Array.from({ length: 30 }, (_, i) => ({ id: `e${i}`, note: 'z'.repeat(5000) }));
-    const sealed = await sealEntries(dk, VAULT, entries);
+    const sealed = await sealEntries(dk, VAULT, 1, entries);
     expect(sealed.length).toBeGreaterThan(1);
     for (const s of sealed) expect(isValidBlobSize(s.blob.length)).toBe(true);
     const opened = [];
@@ -75,12 +79,12 @@ describe('seal and open', () => {
   });
 
   test('one entry too large for any blob is refused', async () => {
-    await expect(sealEntries(await key(), VAULT, [filler(70_000)])).rejects.toMatchObject({ code: 'too-large' });
+    await expect(sealEntries(await key(), VAULT, 1, [filler(70_000)])).rejects.toMatchObject({ code: 'too-large' });
   });
 
   test('wrong vault id, wrong key, tampering and malformed blobs fail', async () => {
     const dk = await key();
-    const [s] = await sealEntries(dk, VAULT, [{ id: 'a' }]);
+    const [s] = await sealEntries(dk, VAULT, 1, [{ id: 'a' }]);
     const blob = (s as NonNullable<typeof s>).blob;
     await expect(openBlob(dk, 'vault-B', blob)).rejects.toMatchObject({ code: 'decrypt-failed' });
     await expect(openBlob(await key(), VAULT, blob)).rejects.toMatchObject({ code: 'decrypt-failed' });
@@ -88,13 +92,22 @@ describe('seal and open', () => {
     t[100] = (t[100] ?? 0) ^ 1;
     await expect(openBlob(dk, VAULT, t)).rejects.toMatchObject({ code: 'decrypt-failed' });
     const v = blob.slice();
-    v[0] = 2;
+    v[0] = 1;
     await expect(openBlob(dk, VAULT, v)).rejects.toMatchObject({ code: 'unsupported-version' });
+    expect(blobEpoch(v)).toBeNull();
+    // The epoch is authenticated: relabelling a blob with another epoch breaks it.
+    const relabelled = blob.slice();
+    relabelled[4] = 2;
+    await expect(openBlob(dk, VAULT, relabelled)).rejects.toMatchObject({ code: 'decrypt-failed' });
+    const zero = blob.slice();
+    zero[4] = 0;
+    expect(blobEpoch(zero)).toBeNull();
+    await expect(openBlob(dk, VAULT, zero)).rejects.toMatchObject({ code: 'malformed' });
     await expect(openBlob(dk, VAULT, blob.slice(0, -1))).rejects.toMatchObject({ code: 'bad-size' });
     // Valid encryption of a payload with the wrong shape.
-    const bad = await sealPadded(dk, VAULT, pad(utf8('{"v":2,"entries":[]}')));
+    const bad = await sealPadded(dk, VAULT, 1, pad(utf8('{"v":2,"entries":[]}')));
     await expect(openBlob(dk, VAULT, bad)).rejects.toMatchObject({ code: 'malformed' });
-    const notJson = await sealPadded(dk, VAULT, pad(utf8('nope')));
+    const notJson = await sealPadded(dk, VAULT, 1, pad(utf8('nope')));
     await expect(openBlob(dk, VAULT, notJson)).rejects.toMatchObject({ code: 'malformed' });
   });
 });

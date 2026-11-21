@@ -29,8 +29,11 @@ export function registrationOptions(env: Env, challenge: Uint8Array<ArrayBuffer>
   });
 }
 
-/** Returns the new credential, or null if the attestation doesn't verify. */
-export async function verifyRegistration(env: Env, response: Obj, challenge: string) {
+/**
+ * Returns the new credential, or null if the attestation doesn't verify or its credential id (the
+ * one inside authenticatorData, which is what gets stored) is not the validated `response.id`.
+ */
+export async function verifyRegistration(env: Env, response: Obj & { id: string }, challenge: string) {
   try {
     const { verified, registrationInfo } = await verifyRegistrationResponse({
       response: response as unknown as RegistrationResponseJSON,
@@ -42,6 +45,7 @@ export async function verifyRegistration(env: Env, response: Obj, challenge: str
     });
     if (!verified) return null;
     const { id, publicKey, transports } = registrationInfo.credential;
+    if (id !== response.id) return null;
     return { id, publicKey: toB64u(publicKey), transports: transports ?? [] };
   } catch {
     return null;

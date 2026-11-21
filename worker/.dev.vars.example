@@ -3,3 +3,6 @@
 SESSION_SECRET=dev-only-session-secret-not-for-production-use
 # SETUP_CODE: at least 16 characters; works only until the first passkey is registered.
 SETUP_CODE=dev-only-setup-code
+# DEV_ALLOW_HTTP: lets the API run on the http://localhost ORIGIN of `wrangler dev`. Never set it anywhere else:
+# without it the Worker refuses to serve the API unless ORIGIN is https and RP_ID is its hostname.
+DEV_ALLOW_HTTP=1

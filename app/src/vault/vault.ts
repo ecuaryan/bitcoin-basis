@@ -2,32 +2,48 @@
  * The vault: creates, unlocks and locks the encrypted ledger on this device, and owns its
  * `LedgerStore` (`vault.store`). UI screens (Welcome, Setup, Unlock, Kit) use only this API.
  *
- * While locked, nothing secret is in memory. While unlocked, it holds the non-extractable data
- * key, plus the non-extractable KEK it unlocked with and that KEK's wrapping (to wrap new copies
- * for an added passkey or a rotated recovery code). See keys.ts for why no extractable DK is kept.
+ * Keys come in epochs (see keys.ts and docs/sync-protocol.md): every recovery-code rotation starts
+ * a new data key, delivers it to every registered passkey, and seals the older keys under it. The
+ * old code therefore opens nothing written after the rotation.
+ *
+ * While locked, nothing secret is in memory. While unlocked, it holds the non-extractable data keys,
+ * the passkey's non-extractable ECDH private key (to receive the next epoch's key), and the
+ * non-extractable KEK plus wrapping of the current DK (to wrap new copies for an added passkey or a
+ * rotation). Raw key bytes and PRF outputs are wiped as soon as they are used, on every path.
  */
-import { ApiError, createApiClient, type ApiClient } from './api.ts';
-import { fromBase64Url, randomBytes, toBase64Url, wipe, type Bytes } from './bytes.ts';
+import { ApiError, createApiClient, type ApiClient, type DeliveryJSON, type StepUp } from './api.ts';
+import { concatBytes, fromBase64Url, randomBytes, toBase64Url, wipe, type Bytes } from './bytes.ts';
 import { EncryptedLedgerStore, type SyncResult, type SyncStatus } from './encrypted-store.ts';
 import { defaultChannel, realScheduler, type BroadcastLike, type Scheduler } from './env.ts';
 import { VaultError } from './errors.ts';
 import { openIndexedDb, type VaultDb } from './idb.ts';
 import {
   authVerifier,
+  bindCredential,
+  credentialKeyAad,
+  deliverDataKey,
   deriveRecoveryAuthToken,
   deriveRecoveryKek,
   derivePasskeyKek,
+  generateCredentialKey,
   importDataKey,
   KeyError,
   newDataKeyBytes,
+  openDelivery,
+  openHistory,
+  openHistoryBytes,
   SALT_BYTES,
+  sealHistory,
+  unwrapCredentialKey,
   unwrapDataKey,
   unwrapDataKeyBytes,
+  verifyCredentialBinding,
   wrapAad,
+  wrapCredentialKey,
   wrapDataKey,
 } from './keys.ts';
 import { browserCredentials, createPasskey, detectPrfSupport, evaluatePrf, getAssertion, PasskeyError, type CredentialsLike, type PrfSupport } from './passkey.ts';
-import { RECORD_KEY, parseRecord, type StoredCredential, type StoredRecovery, type VaultRecord } from './record.ts';
+import { RECORD_FORMAT, RECORD_KEY, parseRecord, type StoredCredential, type StoredDelivery, type StoredRecovery, type VaultRecord } from './record.ts';
 import { generateRecoveryCode, parseRecoveryCode } from './recovery-code.ts';
 
 export type VaultState = 'empty' | 'locked' | 'unlocked';
@@ -43,6 +59,12 @@ export interface VaultStatus {
   /** Why the vault last locked itself, for a "Locked after 5 minutes" message. */
   readonly lockReason: LockReason | null;
   readonly autoLockMinutes: number;
+  /**
+   * The recovery code was replaced on another device, so this device dropped its copy of the old
+   * one ("Your recovery code changed"): the old kit no longer works anywhere. Cleared by unlocking
+   * with the new code here, rotating here, or `dismissRecoveryNotice()`.
+   */
+  readonly recoveryCodeChanged: boolean;
   readonly sync: SyncStatus;
 }
 
@@ -83,16 +105,32 @@ export interface VaultOptions {
   readonly pollIntervalMs?: number;
 }
 
+/** A non-extractable KEK and the wrapping it opens: produces the current DK's raw bytes briefly, to wrap new copies. */
+interface Rewrap {
+  readonly kek: CryptoKey;
+  readonly wrapped: Bytes;
+  readonly aad: Bytes;
+}
+
 interface Session {
   readonly vaultId: string;
-  readonly dk: CryptoKey;
-  /** Non-extractable KEK and its wrapping, to produce raw DK bytes briefly when wrapping a new copy. */
-  readonly rewrap: { readonly kek: CryptoKey; readonly wrapped: Bytes; readonly aad: Bytes };
   readonly via: 'passkey' | 'recovery';
+  /** The epoch new blobs are sealed under. */
+  epoch: number;
+  /** Every data key held, by epoch. */
+  readonly keys: Map<number, CryptoKey>;
+  current: Rewrap;
+  /** The current epoch's history ciphertext (older keys under DK_epoch), `null` for epoch 1. */
+  history: Bytes | null;
+  /** The passkey this session unlocked (or later signed in) with, and its ECDH private key (to receive newer epochs). */
+  credential: { readonly id: string; readonly privateKey: CryptoKey; readonly publicKey: Bytes } | null;
+  /** Unlocked with the recovery code: its auth token, the step-up proof for adding a passkey. Wiped on lock. */
+  recoveryToken: Bytes | null;
 }
 
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
 const b64 = toBase64Url;
+const unb64 = fromBase64Url;
 
 export class Vault {
   /** The encrypted ledger. Empty while locked. */
@@ -100,6 +138,13 @@ export class Vault {
 
   private record: VaultRecord | null;
   private session: Session | null = null;
+  /** What kind of server session the cookie holds, as far as this tab knows. */
+  private serverSession: 'passkey' | 'recovery' | null = null;
+  /** Bumped by every lock: an unlock that started before a lock must not finish unlocking. */
+  private lockGen = 0;
+  private logoutInFlight: Promise<void> | null = null;
+  private logoutPending = false;
+  private refreshing: Promise<void> | null = null;
   private readonly listeners = new Set<(s: VaultStatus) => void>();
   private lockReason: LockReason | null = null;
   private autoLockMinutes: number;
@@ -129,6 +174,7 @@ export class Vault {
     options: VaultOptions,
   ) {
     this.record = record;
+    this.logoutPending = record?.logoutPending ?? false;
     this.api = options.api ?? createApiClient();
     this.credentials = options.credentials === undefined ? browserCredentials() : options.credentials;
     this.scheduler = options.scheduler ?? realScheduler;
@@ -148,6 +194,7 @@ export class Vault {
       pollIntervalMs: options.pollIntervalMs ?? 60_000,
       channel: options.channel === undefined ? defaultChannel() : options.channel,
       onStatus: () => this.emit(),
+      beforeSync: () => this.refresh(),
     });
     for (const t of ACTIVITY_EVENTS) this.env?.document?.addEventListener(t, this.onActivity, { passive: true });
     this.env?.document?.addEventListener('visibilitychange', this.onVisibility);
@@ -164,6 +211,7 @@ export class Vault {
       unlockedWith: this.session?.via ?? null,
       lockReason: this.lockReason,
       autoLockMinutes: this.autoLockMinutes,
+      recoveryCodeChanged: this.record?.recoveryChanged ?? false,
       sync: this.store.status,
     };
     return this.cachedStatus;
@@ -175,7 +223,7 @@ export class Vault {
     return () => void this.listeners.delete(listener);
   }
 
-  /** True while the data key (or the KEK that can recover it) is in memory. For tests and diagnostics. */
+  /** True while a data key (or the KEK that can recover it) is in memory. For tests and diagnostics. */
   holdsKeyMaterial(): boolean {
     return this.session !== null || this.store.unlocked;
   }
@@ -187,32 +235,44 @@ export class Vault {
     });
   }
 
+  /** Hide the "recovery code changed" notice. */
+  async dismissRecoveryNotice(): Promise<void> {
+    if (this.record?.recoveryChanged) await this.updateRecord((r) => ({ ...r, recoveryChanged: false }));
+  }
+
   // --- Create ------------------------------------------------------------------------------------
 
   /**
-   * Set up a new vault: new DK and recovery code, register the first passkey with the setup code
-   * and claim the server. Returns the recovery code ONCE; the vault is unlocked afterwards.
+   * Set up a new vault: new DK (epoch 1) and recovery code, register the first passkey with the
+   * setup code and claim the server. Returns the recovery code ONCE; the vault is unlocked afterwards.
    * Needs a passkey with PRF (`prf-unavailable` otherwise, before the server is claimed).
    */
   create({ setupCode }: { setupCode: string }): Promise<CreateResult> {
+    // Taken now, not when the queued work starts: a lock() issued after this call must win.
+    const gen = this.lockGen;
     return this.exclusive(async () => {
       if (this.record !== null) throw new VaultError('vault-exists');
       const creds = this.requireCredentials();
-      // The server needs a PRF-wrapped DK with the first passkey, so setup needs PRF.
+      // The server needs a PRF-wrapped key with the first passkey, so setup needs PRF.
       if ((await this.prfSupport()) === 'unsupported') throw new VaultError('prf-unavailable');
       const vaultId = b64(randomBytes(16));
       const rawDk = newDataKeyBytes();
       const prfSalt = randomBytes(SALT_BYTES);
       let token: Bytes | null = null;
+      let secret: Bytes | null = null;
+      let prfOutput: Bytes | null = null;
       try {
         const code = await generateRecoveryCode();
+        secret = code.secret;
         const salt = randomBytes(SALT_BYTES);
-        const recKek = await deriveRecoveryKek(code.secret, salt);
-        token = await deriveRecoveryAuthToken(code.secret, salt);
-        wipe(code.secret);
+        const recKek = await deriveRecoveryKek(secret, salt);
+        token = await deriveRecoveryAuthToken(secret, salt);
+        wipe(secret);
         const recAad = wrapAad(vaultId, { type: 'recovery', version: 1 });
         const recWrapped = await wrapDataKey(rawDk, recKek, recAad);
+        const dk = await importDataKey(rawDk);
 
+        await this.flushLogout();
         const opts = await this.api.registerOptions({ setupCode }).catch(async (e: unknown) => {
           if (e instanceof ApiError && (e.kind === 'forbidden' || e.kind === 'unauthorized')) {
             const claimed = await this.api.status().then((s) => s.claimed, () => false);
@@ -223,34 +283,53 @@ export class Vault {
         const pk = await createPasskey(creds, opts.options).catch((e: unknown) => {
           throw mapPasskey(e);
         });
+        prfOutput = pk.prfOutput;
         // Created on the authenticator, but it can't unlock: don't claim the server with it.
-        if (pk.prfOutput === null) throw new VaultError('prf-unavailable');
-        const kek = await derivePasskeyKek(pk.prfOutput, prfSalt);
-        wipe(pk.prfOutput);
-        const pkWrapped = await wrapDataKey(rawDk, kek, wrapAad(vaultId, { type: 'passkey', credentialId: pk.credentialId }));
+        if (prfOutput === null) throw new VaultError('prf-unavailable');
+        const kek = await derivePasskeyKek(prfOutput, prfSalt);
+        wipe(prfOutput);
+        const made = await makeCredentialKeys(vaultId, pk.credentialId, kek, rawDk, dk, 1, prfSalt);
         // Sets the session cookie.
         await this.api
           .registerVerify({
             response: pk.response,
             challengeToken: opts.challengeToken,
             prfSalt: b64(prfSalt),
-            wrappedDk: b64(pkWrapped),
+            credentialKey: made.credentialKey,
+            delivery: made.delivery,
             claim: { vaultId, recovery: { salt: b64(salt), authVerifier: b64(await authVerifier(token)), wrappedDk: b64(recWrapped) } },
           })
           .catch((e: unknown) => {
             throw e instanceof ApiError && e.kind === 'conflict' ? new VaultError('already-claimed', undefined, { cause: e }) : mapApi(e);
           });
+        this.serverSession = 'passkey';
 
         // The server is claimed: save the record before anything else can fail.
-        const credentials: StoredCredential[] = [{ id: pk.credentialId, prfSalt: b64(prfSalt), wrappedDk: b64(pkWrapped) }];
-        await this.putRecord({ vaultId, recovery: { version: 1, salt: b64(salt), wrappedDk: b64(recWrapped) }, credentials, cursor: null, origin: this.origin });
-        const dk = await importDataKey(rawDk);
-        await this.begin({ vaultId, dk, rewrap: { kek, wrapped: pkWrapped, aad: wrapAad(vaultId, { type: 'passkey', credentialId: pk.credentialId }) }, via: 'passkey' });
-        void this.store.sync();
+        await this.putRecord({
+          ...emptyRecord(vaultId, this.origin),
+          recovery: { version: 1, salt: b64(salt), wrappedDk: b64(recWrapped) },
+          credentials: [made.stored],
+        });
+        // A lock while setting up leaves the new vault locked (the code is still returned, once).
+        if (gen === this.lockGen) {
+          await this.begin({
+            vaultId,
+            via: 'passkey',
+            epoch: 1,
+            keys: new Map([[1, dk]]),
+            current: { kek: recKek, wrapped: recWrapped, aad: recAad },
+            history: null,
+            credential: { id: pk.credentialId, privateKey: made.privateKey, publicKey: made.publicKey },
+            recoveryToken: null,
+          });
+          void this.store.sync();
+        }
         return { recoveryCode: code.text, credentialId: pk.credentialId };
       } finally {
         wipe(rawDk);
         wipe(token);
+        wipe(secret);
+        wipe(prfOutput);
       }
     });
   }
@@ -263,10 +342,13 @@ export class Vault {
    * challenge, PRF only, no session.
    */
   unlockWithPasskey(): Promise<UnlockResult> {
+    // Taken now, not when the queued work starts: a lock() issued after this call must win.
+    const gen = this.lockGen;
     return this.exclusive(async () => {
       if (this.session !== null) return { via: this.session.via, sync: null };
       const creds = this.requireCredentials();
       const known = this.knownCredentials();
+      if (this.isOnline()) await this.flushLogout();
       const online = this.isOnline() ? await this.api.loginOptions().catch((e: unknown) => (e instanceof ApiError && e.kind === 'network' ? null : Promise.reject(mapApi(e)))) : null;
 
       if (online === null) {
@@ -276,90 +358,148 @@ export class Vault {
           throw mapPasskey(e);
         });
         const stored = this.record.credentials.find((c) => c.id === credentialId) as StoredCredential;
-        await this.beginWithPasskey(this.record.vaultId, stored, prfOutput, null);
+        const history = this.record.histories[String(stored.delivery.epoch)] ?? null;
+        const session = await this.openWithPasskey(this.record.vaultId, stored, prfOutput, history);
+        this.assertGen(gen);
+        await this.begin(session);
         return { via: 'passkey', sync: null };
       }
 
       const assertion = await getAssertion(creds, online.options, known).catch((e: unknown) => {
         throw mapPasskey(e);
       });
-      const login = await this.api.loginVerify({ response: assertion.response, challengeToken: online.challengeToken }).catch((e: unknown) => {
-        throw e instanceof ApiError && (e.kind === 'unauthorized' || e.kind === 'not-found') ? new VaultError('passkey-rejected', undefined, { cause: e }) : mapApi(e);
-      });
-      if (this.record !== null && login.vaultId !== this.record.vaultId) throw new VaultError('vault-mismatch');
-      const local = this.record?.credentials.find((c) => c.id === assertion.credentialId);
-      const prfSalt = local?.prfSalt ?? login.prfSalt;
-      const wrappedDk = local?.wrappedDk ?? login.wrappedDk;
-      const stored: StoredCredential = { id: assertion.credentialId, prfSalt, wrappedDk };
       let prfOutput = assertion.prfOutput;
-      if (prfOutput === null) {
-        prfOutput = (
-          await evaluatePrf(creds, [stored.id], online.options.rpId).catch((e: unknown) => {
-            throw mapPasskey(e);
-          })
-        ).prfOutput;
+      try {
+        const login = await this.api.loginVerify({ response: assertion.response, challengeToken: online.challengeToken }).catch((e: unknown) => {
+          throw e instanceof ApiError && (e.kind === 'unauthorized' || e.kind === 'not-found') ? new VaultError('passkey-rejected', undefined, { cause: e }) : mapApi(e);
+        });
+        this.serverSession = 'passkey';
+        if (this.record !== null && login.vaultId !== this.record.vaultId) throw new VaultError('vault-mismatch');
+        const local = this.record?.credentials.find((c) => c.id === assertion.credentialId);
+        const server = login.credential;
+        const stored: StoredCredential = {
+          id: assertion.credentialId,
+          prfSalt: local?.prfSalt ?? server.prfSalt,
+          wrappedPrivateKey: local?.wrappedPrivateKey ?? server.wrappedPrivateKey,
+          publicKey: local?.publicKey ?? server.publicKey,
+          delivery: newestDelivery(local?.delivery, login.keys.delivery),
+        };
+        const history = stored.delivery === local?.delivery ? (this.record?.histories[String(stored.delivery.epoch)] ?? null) : login.keys.history;
+        if (prfOutput === null) {
+          prfOutput = (
+            await evaluatePrf(creds, [stored.id], online.options.rpId).catch((e: unknown) => {
+              throw mapPasskey(e);
+            })
+          ).prfOutput;
+        }
+        const session = await this.openWithPasskey(login.vaultId, stored, prfOutput, history);
+        prfOutput = null;
+        this.assertGen(gen);
+        const fresh = this.record === null;
+        const base = this.record ?? emptyRecord(login.vaultId, this.origin);
+        const next = withEpoch(
+          { ...base, credentials: upsert(base.credentials, stored), histories: history === null ? base.histories : { ...base.histories, [String(stored.delivery.epoch)]: history } },
+          login.keys.epoch,
+        );
+        if (fresh) await this.putRecord(next);
+        else await this.updateRecord((r) => withEpoch({ ...r, credentials: upsert(r.credentials, stored), histories: next.histories }, login.keys.epoch));
+        this.assertGen(gen);
+        await this.begin(session);
+        if (fresh) return { via: 'passkey', sync: await this.store.sync() };
+        void this.store.sync();
+        return { via: 'passkey', sync: null };
+      } finally {
+        wipe(prfOutput);
       }
-      const fresh = this.record === null;
-      await this.beginWithPasskey(login.vaultId, stored, prfOutput, fresh ? { vaultId: login.vaultId, recovery: null, credentials: [], cursor: null, origin: this.origin } : null);
-      if (fresh) return { via: 'passkey', sync: await this.store.sync() };
-      void this.store.sync();
-      return { via: 'passkey', sync: null };
     });
   }
 
   /**
    * Unlock with the recovery code. On a device that already holds the vault this works offline.
-   * On a fresh device it restores: params → auth token → session → wrapped DK → full sync.
-   * Typos are reported (as `RecoveryCodeError`) before any network call.
+   * Online, the device first checks the server's recovery version: if the code was replaced, its
+   * local copy of the old wrapping is deleted and the old code is refused. On a fresh device it
+   * restores: params → auth token → session → wrapped DK → full sync. Typos are reported (as
+   * `RecoveryCodeError`) before any network call.
    */
   unlockWithRecoveryCode(input: string): Promise<UnlockResult> {
+    // Taken now, not when the queued work starts: a lock() issued after this call must win.
+    const gen = this.lockGen;
     return this.exclusive(async () => {
       if (this.session !== null) return { via: this.session.via, sync: null };
       const code = await parseRecoveryCode(input);
+      let token: Bytes | null = null;
       try {
-        const local = this.record?.recovery ?? null;
+        const online = this.isOnline();
+        if (online) await this.flushLogout();
+        const params = online
+          ? await this.api.recoveryParams().catch((e: unknown) => {
+              if (e instanceof ApiError && e.kind === 'network') return null;
+              throw e instanceof ApiError && e.kind === 'not-found' ? new VaultError('no-vault', 'the server has no vault yet', { cause: e }) : mapApi(e);
+            })
+          : null;
+        if (this.record !== null && params !== null && params.vaultId !== this.record.vaultId) throw new VaultError('vault-mismatch');
+        let local = this.record?.recovery ?? null;
+        if (local !== null && params !== null && params.version > local.version) {
+          // Rotated elsewhere: the old wrapping must not keep opening this device.
+          await this.dropRecovery(params.version);
+          local = null;
+        }
+
         if (this.record !== null && local !== null) {
-          const salt = fromBase64Url(local.salt);
+          const salt = unb64(local.salt);
           const kek = await deriveRecoveryKek(code.secret, salt);
           const aad = wrapAad(this.record.vaultId, { type: 'recovery', version: local.version });
-          const wrapped = fromBase64Url(local.wrappedDk);
+          const wrapped = unb64(local.wrappedDk);
           const dk = await unwrapDataKey(wrapped, kek, aad).catch(() => null);
           if (dk !== null) {
-            if (this.isOnline()) {
-              const token = await deriveRecoveryAuthToken(code.secret, salt);
-              await this.api.recoveryLogin(b64(token)).catch(() => undefined);
-              wipe(token);
+            token = await deriveRecoveryAuthToken(code.secret, salt);
+            const keys = await this.epochKeys(this.record.vaultId, local.version, dk, this.record.histories[String(local.version)] ?? null);
+            if (params !== null) {
+              const ok = await this.api.recoveryLogin(b64(token)).then(
+                () => true,
+                (e: unknown) => {
+                  if (e instanceof ApiError && e.kind === 'unauthorized') throw new VaultError('wrong-recovery-code', undefined, { cause: e });
+                  return false;
+                },
+              );
+              if (ok) this.serverSession = 'recovery';
             }
-            await this.begin({ vaultId: this.record.vaultId, dk, rewrap: { kek, wrapped, aad }, via: 'recovery' });
+            this.assertGen(gen);
+            if (this.record.recoveryChanged) await this.updateRecord((r) => ({ ...r, recoveryChanged: false }));
+            await this.begin({ vaultId: this.record.vaultId, via: 'recovery', epoch: local.version, keys, current: { kek, wrapped, aad }, history: historyBytes(this.record.histories[String(local.version)]), credential: null, recoveryToken: token });
+            token = null; // owned by the session now
             void this.store.sync();
             return { via: 'recovery', sync: null };
           }
+          if (params === null) throw new VaultError('wrong-recovery-code');
         }
 
-        if (!this.isOnline()) throw new VaultError(this.record === null ? 'offline' : 'wrong-recovery-code');
-        const params = await this.api.recoveryParams().catch((e: unknown) => {
-          throw e instanceof ApiError && e.kind === 'not-found' ? new VaultError('no-vault', 'the server has no vault yet', { cause: e }) : mapApi(e);
-        });
-        if (this.record !== null && params.vaultId !== this.record.vaultId) throw new VaultError('vault-mismatch');
-        const salt = fromBase64Url(params.salt);
-        const token = await deriveRecoveryAuthToken(code.secret, salt);
+        if (params === null) throw new VaultError(this.record === null || local === null ? 'offline' : 'wrong-recovery-code');
+        const salt = unb64(params.salt);
+        token = await deriveRecoveryAuthToken(code.secret, salt);
         const login = await this.api.recoveryLogin(b64(token)).catch((e: unknown) => {
           throw e instanceof ApiError && e.kind === 'unauthorized' ? new VaultError('wrong-recovery-code', undefined, { cause: e }) : mapApi(e);
         });
-        wipe(token);
+        this.serverSession = 'recovery';
         const kek = await deriveRecoveryKek(code.secret, salt);
         const aad = wrapAad(params.vaultId, { type: 'recovery', version: login.version });
-        const wrapped = fromBase64Url(login.wrappedDk);
+        const wrapped = unb64(login.wrappedDk);
         const dk = await unwrapDataKey(wrapped, kek, aad).catch((e: unknown) => {
           throw new VaultError('wrong-recovery-code', undefined, { cause: e });
         });
+        const keys = await this.epochKeys(params.vaultId, login.version, dk, login.history);
+        this.assertGen(gen);
         const recovery: StoredRecovery = { version: login.version, salt: params.salt, wrappedDk: login.wrappedDk };
-        if (this.record === null) await this.putRecord({ vaultId: params.vaultId, recovery, credentials: [], cursor: null, origin: this.origin });
-        else await this.updateRecord((r) => ({ ...r, recovery }));
-        await this.begin({ vaultId: params.vaultId, dk, rewrap: { kek, wrapped, aad }, via: 'recovery' });
+        const histories = login.history === null ? {} : { [String(login.version)]: login.history };
+        if (this.record === null) await this.putRecord({ ...emptyRecord(params.vaultId, this.origin), recovery, histories, epoch: login.version });
+        else await this.updateRecord((r) => withEpoch({ ...r, recovery, recoveryChanged: false, histories: { ...r.histories, ...histories } }, login.version));
+        this.assertGen(gen);
+        await this.begin({ vaultId: params.vaultId, via: 'recovery', epoch: login.version, keys, current: { kek, wrapped, aad }, history: historyBytes(login.history), credential: null, recoveryToken: token });
+        token = null;
         return { via: 'recovery', sync: await this.store.sync() };
       } finally {
         wipe(code.secret);
+        wipe(token);
       }
     });
   }
@@ -368,32 +508,24 @@ export class Vault {
   connect(): Promise<SyncResult> {
     return this.exclusive(async () => {
       this.requireSession();
-      const creds = this.requireCredentials();
-      const known = this.knownCredentials();
-      if (known.length === 0) throw new VaultError('no-passkey');
-      const opts = await this.api.loginOptions().catch((e: unknown) => {
-        throw mapApi(e);
-      });
-      const a = await getAssertion(creds, opts.options, known).catch((e: unknown) => {
-        throw mapPasskey(e);
-      });
-      wipe(a.prfOutput);
-      const login = await this.api.loginVerify({ response: a.response, challengeToken: opts.challengeToken }).catch((e: unknown) => {
-        throw e instanceof ApiError && e.kind === 'unauthorized' ? new VaultError('passkey-rejected', undefined, { cause: e }) : mapApi(e);
-      });
-      if (login.vaultId !== this.record?.vaultId) throw new VaultError('vault-mismatch');
+      await this.passkeyLogin();
       return this.store.sync();
     });
   }
 
   // --- Changes while unlocked --------------------------------------------------------------------
 
-  /** Register another passkey (this device or a phone/key nearby) for this vault. Needs a session. */
+  /**
+   * Register another passkey (this device or a phone/key nearby) for this vault. Needs a session and
+   * a fresh proof: a passkey prompt (step-up), or, when unlocked with the recovery code, that code.
+   */
   addPasskey(): Promise<{ credentialId: string }> {
     return this.exclusive(async () => {
       const session = this.requireSession();
       const creds = this.requireCredentials();
       if ((await this.prfSupport()) === 'unsupported') throw new VaultError('prf-unavailable');
+      await this.flushLogout();
+      const stepUp: StepUp = session.recoveryToken !== null ? { authToken: b64(session.recoveryToken) } : await this.passkeyStepUp('register');
       const opts = await this.api.registerOptions(null).catch((e: unknown) => {
         throw mapApi(e);
       });
@@ -401,42 +533,125 @@ export class Vault {
       const pk = await createPasskey(creds, opts.options).catch((e: unknown) => {
         throw mapPasskey(e);
       });
-      // Created on the authenticator but useless for unlocking: don't register it.
-      if (pk.prfOutput === null) throw new VaultError('prf-unavailable');
-      const kek = await derivePasskeyKek(pk.prfOutput, prfSalt);
-      wipe(pk.prfOutput);
-      const wrapped = await this.wrapCopy(session, kek, wrapAad(session.vaultId, { type: 'passkey', credentialId: pk.credentialId }));
-      await this.api.registerVerify({ response: pk.response, challengeToken: opts.challengeToken, prfSalt: b64(prfSalt), wrappedDk: b64(wrapped) }).catch((e: unknown) => {
-        throw mapApi(e);
-      });
-      const cred: StoredCredential = { id: pk.credentialId, prfSalt: b64(prfSalt), wrappedDk: b64(wrapped) };
-      await this.updateRecord((r) => ({ ...r, credentials: [...r.credentials.filter((c) => c.id !== cred.id), cred] }));
-      return { credentialId: pk.credentialId };
+      let prfOutput = pk.prfOutput;
+      let raw: Bytes | null = null;
+      try {
+        // Created on the authenticator but useless for unlocking: don't register it.
+        if (prfOutput === null) throw new VaultError('prf-unavailable');
+        const kek = await derivePasskeyKek(prfOutput, prfSalt);
+        wipe(prfOutput);
+        prfOutput = null;
+        raw = await this.currentRaw(session);
+        const made = await makeCredentialKeys(session.vaultId, pk.credentialId, kek, raw, currentDk(session), session.epoch, prfSalt);
+        await this.api
+          .registerVerify({ response: pk.response, challengeToken: opts.challengeToken, prfSalt: b64(prfSalt), credentialKey: made.credentialKey, delivery: made.delivery, stepUp })
+          .catch((e: unknown) => {
+            throw mapApi(e);
+          });
+        this.serverSession = 'passkey';
+        await this.updateRecord((r) => ({ ...r, credentials: upsert(r.credentials, made.stored) }));
+        return { credentialId: pk.credentialId };
+      } finally {
+        wipe(prfOutput);
+        wipe(raw);
+      }
     });
   }
 
-  /** Replace the recovery code (after printing a new kit). The old code stops working. Returns the new code ONCE. */
+  /**
+   * Replace the recovery code (after printing a new kit). Starts a new data-key epoch: the new key
+   * goes to every registered passkey and under the new code, and the older keys are sealed under it.
+   * The old code then opens nothing written from now on, signs in nowhere, and is dropped by every
+   * device on its next sync. Needs a passkey on this device (one prompt). Returns the new code ONCE.
+   */
   rotateRecoveryCode(): Promise<{ recoveryCode: string }> {
     return this.exclusive(async () => {
       const session = this.requireSession();
+      this.requireCredentials();
+      if (this.knownCredentials().length === 0) throw new VaultError('no-passkey', 'add a passkey on this device before making a new recovery code');
+      await this.flushLogout();
+      // Rotation needs a passkey session; a recovery-code session can't rotate.
+      if (this.serverSession !== 'passkey') await this.passkeyLogin();
+      await this.refresh();
       const params = await this.api.recoveryParams().catch((e: unknown) => {
         throw mapApi(e);
       });
       if (params.vaultId !== session.vaultId) throw new VaultError('vault-mismatch');
-      const version = params.version + 1;
-      const code = await generateRecoveryCode();
-      const salt = randomBytes(SALT_BYTES);
-      const kek = await deriveRecoveryKek(code.secret, salt);
-      const token = await deriveRecoveryAuthToken(code.secret, salt);
-      wipe(code.secret);
-      const wrapped = await this.wrapCopy(session, kek, wrapAad(session.vaultId, { type: 'recovery', version }));
-      const res = await this.api.recoveryRotate({ version, salt: b64(salt), authVerifier: b64(await authVerifier(token)), wrappedDk: b64(wrapped) }).catch((e: unknown) => {
+      if (params.version !== session.epoch) throw new VaultError('server', `the server is at epoch ${params.version}, this device at ${session.epoch}`);
+      const stepUp = await this.passkeyStepUp('rotate');
+
+      // Only deliver the new key to passkeys a key holder registered (a planted record fails here).
+      const list = await this.api.credentials().catch((e: unknown) => {
         throw mapApi(e);
       });
-      wipe(token);
-      if (res.version !== version) throw new VaultError('server', `server stored recovery version ${res.version}, expected ${version}`);
-      await this.updateRecord((r) => ({ ...r, recovery: { version, salt: b64(salt), wrappedDk: b64(wrapped) } }));
-      return { recoveryCode: code.text };
+      for (const c of list) {
+        const dk = session.keys.get(c.epoch);
+        const ok = dk !== undefined && (await verifyCredentialBinding(dk, session.vaultId, c.id, c.epoch, unb64(c.publicKey), unb64(c.binding)));
+        if (!ok) throw new VaultError('server', 'a passkey record on the server failed its integrity check');
+      }
+
+      const version = session.epoch + 1;
+      const rawNew = newDataKeyBytes();
+      let rawCur: Bytes | null = null;
+      let rawOlder: Bytes | null = null;
+      let all: Bytes | null = null;
+      let secret: Bytes | null = null;
+      let token: Bytes | null = null;
+      try {
+        rawCur = await this.currentRaw(session);
+        rawOlder = session.history === null ? new Uint8Array(0) : await openHistoryBytes(session.history, currentDk(session), session.vaultId, session.epoch);
+        all = concatBytes(rawOlder, rawCur);
+        const newDk = await importDataKey(rawNew);
+        const history = await sealHistory(all, newDk, session.vaultId, version);
+        const deliveries: Record<string, { ephemeralPublicKey: string; wrappedDk: string }> = {};
+        for (const c of list) {
+          const d = await deliverDataKey(rawNew, unb64(c.publicKey), session.vaultId, version, c.id);
+          deliveries[c.id] = { ephemeralPublicKey: b64(d.ephemeralPublicKey), wrappedDk: b64(d.wrappedDk) };
+        }
+        const code = await generateRecoveryCode();
+        secret = code.secret;
+        const salt = randomBytes(SALT_BYTES);
+        const kek = await deriveRecoveryKek(secret, salt);
+        token = await deriveRecoveryAuthToken(secret, salt);
+        const aad = wrapAad(session.vaultId, { type: 'recovery', version });
+        const wrapped = await wrapDataKey(rawNew, kek, aad);
+        const res = await this.api
+          .recoveryRotate({ version, salt: b64(salt), authVerifier: b64(await authVerifier(token)), wrappedDk: b64(wrapped), history: b64(history), deliveries, stepUp })
+          .catch((e: unknown) => {
+            throw mapApi(e);
+          });
+        if (res.version !== version) throw new VaultError('server', `server stored recovery version ${res.version}, expected ${version}`);
+
+        const historyText = b64(history);
+        await this.updateRecord((r) => ({
+          ...r,
+          epoch: Math.max(r.epoch, version),
+          recovery: { version, salt: b64(salt), wrappedDk: b64(wrapped) },
+          recoveryChanged: false,
+          histories: { ...r.histories, [String(version)]: historyText },
+          credentials: r.credentials.map((c) => {
+            const d = deliveries[c.id];
+            return d === undefined ? c : { ...c, delivery: { epoch: version, ...d } };
+          }),
+        }));
+        if (this.session === session) {
+          session.keys.set(version, newDk);
+          session.epoch = version;
+          session.current = { kek, wrapped, aad };
+          session.history = history;
+          wipe(session.recoveryToken);
+          session.recoveryToken = null;
+          this.store.setKeys(storeKeys(session));
+        }
+        return { recoveryCode: code.text };
+      } finally {
+        wipe(rawNew);
+        wipe(rawCur);
+        wipe(rawOlder);
+        wipe(all);
+        wipe(secret);
+        wipe(token);
+      }
     });
   }
 
@@ -447,15 +662,21 @@ export class Vault {
 
   // --- Lock --------------------------------------------------------------------------------------
 
-  /** Drop the data key and every plaintext entry. Also ends the server session (best effort). */
+  /**
+   * Drop the data keys and every plaintext entry, and end the server session (revoked on the
+   * server; queued until the next time online if offline). A lock during an unlock wins.
+   */
   lock(reason: LockReason = 'user'): void {
+    this.lockGen++;
     if (this.session === null) return;
+    wipe(this.session.recoveryToken);
     this.session = null;
+    this.serverSession = null;
     this.store.stop();
     this.clearIdle();
     this.hiddenAt = null;
     this.lockReason = reason;
-    if (this.isOnline()) void this.api.logout().catch(() => undefined);
+    this.endServerSession();
     this.emit();
   }
 
@@ -476,6 +697,7 @@ export class Vault {
   /** Lock and delete everything this device stores (the server copy is untouched). */
   async forgetDevice(): Promise<void> {
     this.lock();
+    this.lockGen++;
     await this.db.clear();
     this.record = null;
     this.lockReason = null;
@@ -491,21 +713,214 @@ export class Vault {
     this.env?.window?.removeEventListener('online', this.onOnline);
   }
 
-  // --- Internals ---------------------------------------------------------------------------------
+  // --- Internals: keys ---------------------------------------------------------------------------
 
-  /** Unwrap with a passkey's PRF output and start. `freshRecord` is saved (with the credential) only once unwrapping worked. */
-  private async beginWithPasskey(vaultId: string, cred: StoredCredential, prfOutput: Bytes, freshRecord: VaultRecord | null): Promise<void> {
-    const kek = await derivePasskeyKek(prfOutput, fromBase64Url(cred.prfSalt));
-    wipe(prfOutput);
-    const aad = wrapAad(vaultId, { type: 'passkey', credentialId: cred.id });
-    const wrapped = fromBase64Url(cred.wrappedDk);
-    const dk = await unwrapDataKey(wrapped, kek, aad).catch((e: unknown) => {
+  /** Unwrap a passkey's ECDH key with its PRF output, open its newest delivery and that epoch's history. Wipes `prfOutput`. */
+  private async openWithPasskey(vaultId: string, cred: StoredCredential, prfOutput: Bytes, history: string | null): Promise<Session> {
+    let kek: CryptoKey;
+    try {
+      kek = await derivePasskeyKek(prfOutput, unb64(cred.prfSalt));
+    } finally {
+      wipe(prfOutput);
+    }
+    const rejected = (e: unknown) => {
       throw e instanceof KeyError ? new VaultError('passkey-rejected', 'this passkey does not open this vault', { cause: e }) : e;
-    });
-    if (freshRecord !== null) await this.putRecord({ ...freshRecord, credentials: [cred] });
-    else await this.updateRecord((r) => ({ ...r, credentials: [...r.credentials.filter((c) => c.id !== cred.id), cred] }));
-    await this.begin({ vaultId, dk, rewrap: { kek, wrapped, aad }, via: 'passkey' });
+    };
+    const publicKey = unb64(cred.publicKey);
+    const privateKey = await unwrapCredentialKey(unb64(cred.wrappedPrivateKey), kek, credentialKeyAad(vaultId, cred.id)).catch(rejected);
+    const { epoch } = cred.delivery;
+    const delivery = { ephemeralPublicKey: unb64(cred.delivery.ephemeralPublicKey), wrappedDk: unb64(cred.delivery.wrappedDk) };
+    const opened = await openDelivery(privateKey, publicKey, delivery, vaultId, epoch, cred.id).catch(rejected);
+    const dk = await unwrapDataKey(delivery.wrappedDk, opened.kek, opened.aad).catch(rejected);
+    const keys = await this.epochKeys(vaultId, epoch, dk, history);
+    return {
+      vaultId,
+      via: 'passkey',
+      epoch,
+      keys,
+      current: { kek: opened.kek, wrapped: delivery.wrappedDk, aad: opened.aad },
+      history: historyBytes(history),
+      credential: { id: cred.id, privateKey, publicKey },
+      recoveryToken: null,
+    };
   }
+
+  /** DK_epoch plus the older keys from its history. */
+  private async epochKeys(vaultId: string, epoch: number, dk: CryptoKey, history: string | null): Promise<Map<number, CryptoKey>> {
+    const keys = epoch > 1 && history !== null ? await openHistory(unb64(history), dk, vaultId, epoch).catch((e: unknown) => {
+      throw new VaultError('server', 'the key history does not open', { cause: e });
+    }) : new Map<number, CryptoKey>();
+    keys.set(epoch, dk);
+    return keys;
+  }
+
+  /** Raw bytes of the current DK, only to wrap a new copy. The caller must wipe them. */
+  private currentRaw(session: Session): Promise<Bytes> {
+    return unwrapDataKeyBytes(session.current.wrapped, session.current.kek, session.current.aad);
+  }
+
+  /**
+   * Before every sync: end a queued logout, check the server's recovery version and epoch. A newer
+   * version means the code was rotated elsewhere: drop the local recovery wrapping (and show
+   * `recoveryCodeChanged`), and, if this session holds a passkey key, fetch the new epoch's key.
+   */
+  private refresh(): Promise<void> {
+    this.refreshing ??= this.refreshOnce().finally(() => {
+      this.refreshing = null;
+    });
+    return this.refreshing;
+  }
+
+  private async refreshOnce(): Promise<void> {
+    const session = this.session;
+    if (session === null) return;
+    await this.flushLogout();
+    const params = await this.api.recoveryParams();
+    if (this.session !== session) return;
+    if (params.vaultId !== session.vaultId) throw new VaultError('vault-mismatch');
+    const rec = this.record?.recovery ?? null;
+    if (rec !== null && params.version > rec.version) await this.dropRecovery(params.version);
+    else if ((this.record?.epoch ?? 0) < params.version) await this.updateRecord((r) => withEpoch(r, params.version));
+    if (params.version <= session.epoch || session.credential === null || this.serverSession === 'recovery') return;
+
+    const cred = session.credential;
+    const k = await this.api.keys(cred.id);
+    if (this.session !== session || k.delivery === null || k.delivery.epoch <= session.epoch) return;
+    const d = { ephemeralPublicKey: unb64(k.delivery.ephemeralPublicKey), wrappedDk: unb64(k.delivery.wrappedDk) };
+    const opened = await openDelivery(cred.privateKey, cred.publicKey, d, session.vaultId, k.delivery.epoch, cred.id);
+    const dk = await unwrapDataKey(d.wrappedDk, opened.kek, opened.aad);
+    const keys = await this.epochKeys(session.vaultId, k.delivery.epoch, dk, k.history);
+    // Other passkeys on this device: keep their newest deliveries, so they too unlock offline.
+    const others: Record<string, DeliveryJSON> = {};
+    for (const c of this.record?.credentials ?? []) {
+      if (c.id === cred.id) continue;
+      const o = await this.api.keys(c.id).catch(() => null);
+      if (o?.delivery) others[c.id] = o.delivery;
+    }
+    if (this.session !== session) return;
+    const fresh = { ...k.delivery };
+    await this.updateRecord((r) =>
+      withEpoch(
+        {
+          ...r,
+          histories: k.history === null ? r.histories : { ...r.histories, [String(fresh.epoch)]: k.history },
+          credentials: r.credentials.map((c) => {
+            const nd = c.id === cred.id ? fresh : others[c.id];
+            return nd === undefined || nd.epoch <= c.delivery.epoch ? c : { ...c, delivery: nd };
+          }),
+        },
+        k.epoch,
+      ),
+    );
+    if (this.session !== session) return;
+    for (const [e, key] of keys) session.keys.set(e, key);
+    session.epoch = fresh.epoch;
+    session.current = { kek: opened.kek, wrapped: d.wrappedDk, aad: opened.aad };
+    session.history = historyBytes(k.history);
+    this.store.setKeys(storeKeys(session));
+  }
+
+  /** The recovery code was rotated elsewhere: forget the outdated local wrapping and raise the notice. */
+  private async dropRecovery(version: number): Promise<void> {
+    await this.updateRecord((r) => withEpoch({ ...r, recovery: null, recoveryChanged: true }, version));
+  }
+
+  // --- Internals: server session -----------------------------------------------------------------
+
+  /** Passkey sign-in while unlocked (one prompt): a passkey server session. */
+  private async passkeyLogin(): Promise<void> {
+    const creds = this.requireCredentials();
+    const known = this.knownCredentials();
+    if (known.length === 0) throw new VaultError('no-passkey');
+    await this.flushLogout();
+    const opts = await this.api.loginOptions().catch((e: unknown) => {
+      throw mapApi(e);
+    });
+    const a = await getAssertion(creds, opts.options, known).catch((e: unknown) => {
+      throw mapPasskey(e);
+    });
+    let prfOutput = a.prfOutput;
+    try {
+      const login = await this.api.loginVerify({ response: a.response, challengeToken: opts.challengeToken }).catch((e: unknown) => {
+        throw e instanceof ApiError && e.kind === 'unauthorized' ? new VaultError('passkey-rejected', undefined, { cause: e }) : mapApi(e);
+      });
+      this.serverSession = 'passkey';
+      if (login.vaultId !== this.record?.vaultId) throw new VaultError('vault-mismatch');
+      // Unlocked with the recovery code: take this passkey's key too, so newer epochs reach this session.
+      const session = this.session;
+      const local = this.record.credentials.find((c) => c.id === a.credentialId);
+      if (session !== null && session.credential === null && prfOutput !== null && local !== undefined) {
+        const stored: StoredCredential = { ...local, delivery: newestDelivery(local.delivery, login.keys.delivery) };
+        const history = stored.delivery === local.delivery ? (this.record.histories[String(stored.delivery.epoch)] ?? null) : login.keys.history;
+        const opened = await this.openWithPasskey(login.vaultId, stored, prfOutput, history).catch(() => null);
+        prfOutput = null;
+        if (opened !== null && this.session === session) {
+          session.credential = opened.credential;
+          for (const [e, k] of opened.keys) if (!session.keys.has(e)) session.keys.set(e, k);
+          if (opened.epoch > session.epoch) {
+            session.epoch = opened.epoch;
+            session.current = opened.current;
+            session.history = opened.history;
+          }
+          await this.updateRecord((r) => withEpoch({ ...r, credentials: upsert(r.credentials, stored), histories: history === null ? r.histories : { ...r.histories, [String(stored.delivery.epoch)]: history } }, login.keys.epoch));
+          this.store.setKeys(storeKeys(session));
+        }
+      }
+    } finally {
+      wipe(prfOutput);
+    }
+  }
+
+  /** A fresh passkey assertion over a step-up challenge for `purpose` (one prompt). */
+  private async passkeyStepUp(purpose: 'register' | 'rotate'): Promise<StepUp> {
+    const creds = this.requireCredentials();
+    const known = this.knownCredentials();
+    if (known.length === 0) throw new VaultError('no-passkey');
+    if (this.serverSession !== 'passkey') await this.passkeyLogin();
+    const opts = await this.api.stepUpOptions(purpose).catch((e: unknown) => {
+      throw mapApi(e);
+    });
+    const a = await getAssertion(creds, opts.options, known).catch((e: unknown) => {
+      throw mapPasskey(e);
+    });
+    wipe(a.prfOutput);
+    return { response: a.response, challengeToken: opts.challengeToken };
+  }
+
+  /** End the server session: now if online, else queued (and remembered across reloads). */
+  private endServerSession(): void {
+    if (!this.isOnline()) {
+      this.markLogoutPending(true);
+      return;
+    }
+    this.logoutInFlight = this.api
+      .logout()
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.kind === 'network') this.markLogoutPending(true);
+      })
+      .finally(() => {
+        this.logoutInFlight = null;
+      });
+  }
+
+  /** Send a queued logout before anything else talks to the server (so it can't end a newer session). */
+  private async flushLogout(): Promise<void> {
+    if (this.logoutInFlight !== null) await this.logoutInFlight;
+    if (!this.logoutPending || !this.isOnline()) return;
+    try {
+      await this.api.logout();
+    } catch (e) {
+      if (e instanceof ApiError && e.kind === 'network') return;
+    }
+    this.markLogoutPending(false);
+  }
+
+  private markLogoutPending(pending: boolean): void {
+    this.logoutPending = pending;
+    if (this.record !== null && this.record.logoutPending !== pending) void this.updateRecord((r) => ({ ...r, logoutPending: pending })).catch(() => undefined);
+  }
+
+  // --- Internals: state --------------------------------------------------------------------------
 
   private async begin(session: Session): Promise<void> {
     this.session = session;
@@ -514,17 +929,11 @@ export class Vault {
     this.touch();
     this.scheduleIdle();
     this.emit();
-    await this.store.start({ vaultId: session.vaultId, dk: session.dk });
+    await this.store.start(storeKeys(session));
   }
 
-  /** Wrap a new DK copy under `kek`; the raw DK exists only inside this call. */
-  private async wrapCopy(session: Session, kek: CryptoKey, aad: Bytes): Promise<Bytes> {
-    const raw = await unwrapDataKeyBytes(session.rewrap.wrapped, session.rewrap.kek, session.rewrap.aad);
-    try {
-      return await wrapDataKey(raw, kek, aad);
-    } finally {
-      wipe(raw);
-    }
+  private assertGen(gen: number): void {
+    if (gen !== this.lockGen) throw new VaultError('locked', 'the vault was locked while unlocking');
   }
 
   private knownCredentials(): string[] {
@@ -613,7 +1022,59 @@ export class Vault {
 
   private readonly onOnline = () => {
     if (this.session !== null) void this.store.sync();
+    else void this.flushLogout();
   };
+}
+
+/** New ECDH key pair for a passkey: wrapped private key, delivery of the current DK, binding, and the session's non-extractable copy. */
+async function makeCredentialKeys(vaultId: string, credentialId: string, kek: CryptoKey, rawDk: Bytes, dk: CryptoKey, epoch: number, prfSalt: Bytes) {
+  const { privateKey: exportable, publicKey } = await generateCredentialKey();
+  const aad = credentialKeyAad(vaultId, credentialId);
+  const wrappedPrivateKey = await wrapCredentialKey(exportable, kek, aad);
+  const privateKey = await unwrapCredentialKey(wrappedPrivateKey, kek, aad);
+  const d = await deliverDataKey(rawDk, publicKey, vaultId, epoch, credentialId);
+  const binding = await bindCredential(dk, vaultId, credentialId, epoch, publicKey);
+  const delivery: StoredDelivery = { epoch, ephemeralPublicKey: b64(d.ephemeralPublicKey), wrappedDk: b64(d.wrappedDk) };
+  return {
+    privateKey,
+    publicKey,
+    credentialKey: { publicKey: b64(publicKey), wrappedPrivateKey: b64(wrappedPrivateKey), epoch, binding: b64(binding) },
+    delivery,
+    stored: { id: credentialId, prfSalt: b64(prfSalt), wrappedPrivateKey: b64(wrappedPrivateKey), publicKey: b64(publicKey), delivery } satisfies StoredCredential,
+  };
+}
+
+function emptyRecord(vaultId: string, origin: string): VaultRecord {
+  return { format: RECORD_FORMAT, vaultId, recovery: null, credentials: [], epoch: 1, histories: {}, recoveryChanged: false, logoutPending: false, cursor: null, origin };
+}
+
+/** Raise the known epoch; a recovery wrapping older than it is outdated and dropped (with the notice). */
+function withEpoch(r: VaultRecord, epoch: number): VaultRecord {
+  const e = Math.max(r.epoch, epoch);
+  if (r.recovery !== null && r.recovery.version < e) return { ...r, epoch: e, recovery: null, recoveryChanged: true };
+  return { ...r, epoch: e };
+}
+
+function upsert(list: readonly StoredCredential[], cred: StoredCredential): StoredCredential[] {
+  return [...list.filter((c) => c.id !== cred.id), cred];
+}
+
+function newestDelivery(local: StoredDelivery | undefined, server: DeliveryJSON): StoredDelivery {
+  return local !== undefined && local.epoch >= server.epoch ? local : { epoch: server.epoch, ephemeralPublicKey: server.ephemeralPublicKey, wrappedDk: server.wrappedDk };
+}
+
+function historyBytes(h: string | null | undefined): Bytes | null {
+  return h === null || h === undefined ? null : unb64(h);
+}
+
+function currentDk(session: Session): CryptoKey {
+  const dk = session.keys.get(session.epoch);
+  if (dk === undefined) throw new VaultError('locked', 'no key for the current epoch');
+  return dk;
+}
+
+function storeKeys(session: Session) {
+  return { vaultId: session.vaultId, epoch: session.epoch, keys: session.keys };
 }
 
 function mapApi(e: unknown): unknown {

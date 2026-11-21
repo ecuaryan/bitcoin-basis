@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 const file = process.env.MOCK_STATE;
-const state = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : { buckets: [], locks: [], secrets: [], calls: [] };
+const state = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : { buckets: [], locks: [], lifecycle: [], secrets: [], calls: [] };
 const args = process.argv.slice(2);
 let stdin = "";
 if (args[0] === "secret" && args[1] === "put") stdin = readFileSync(0, "utf8");
@@ -20,6 +20,12 @@ else if (cmd === "r2 bucket" && args[2] === "lock" && args[3] === "add") {
     console.error("unknown command");
     code = 1;
   } else state.locks.push(args[5]);
+} else if (cmd === "r2 bucket" && args[2] === "lifecycle" && args[3] === "list") console.log((state.lifecycle ?? []).map((l) => `name: ${l.name}`).join("\n") || "No lifecycle rules");
+else if (cmd === "r2 bucket" && args[2] === "lifecycle" && args[3] === "add") {
+  if (process.env.MOCK_NO_LIFECYCLE) {
+    console.error("unknown command");
+    code = 1;
+  } else (state.lifecycle ??= []).push({ bucket: args[4], name: args[5], prefix: args[6], days: args[args.indexOf("--expire-days") + 1] });
 } else if (cmd === "secret list") console.log(JSON.stringify(state.secrets.map((name) => ({ name, type: "secret_text" }))));
 else if (cmd === "secret put") state.secrets.push(args[2]);
 save();
