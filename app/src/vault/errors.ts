@@ -25,6 +25,11 @@ export type VaultErrorCode =
   | 'offline'
   /** The server needs a fresh sign-in (call `connect()`). */
   | 'needs-session'
+  /**
+   * The recovery code was replaced on another device and this device was unlocked with the old one:
+   * it can still read, but can't write until unlocked with the new code or a passkey.
+   */
+  | 'recovery-code-changed'
   /** Stored entries can't be removed: the ledger is append-only. */
   | 'append-only'
   /** The server answered with something the protocol doesn't allow. */

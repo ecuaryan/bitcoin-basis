@@ -44,7 +44,8 @@ export interface Claimed { vaultId: string; claimedAt: string }
 export interface CredentialKey { publicKey: string; wrappedPrivateKey: string; epoch: number; binding: string }
 export interface Credential { publicKey: string; transports: string[]; createdAt: string; prfSalt: string; credentialKey: CredentialKey }
 export interface Recovery { salt: string; authVerifier: string; wrappedDk: string; createdAt: string }
-export interface Delivery { ephemeralPublicKey: string; wrappedDk: string; createdAt: string }
+/** `binding` (rotations only): the credential re-bound under this epoch's data key by the rotating device. */
+export interface Delivery { ephemeralPublicKey: string; wrappedDk: string; binding?: string; createdAt: string }
 
 const six = (n: number) => String(n).padStart(6, '0');
 export const recoveryKey = (version: number): string => `recovery/${six(version)}`;

@@ -90,7 +90,7 @@ export function fakeRotation(version: number, credIds: string[]) {
       version,
       ...next.recovery,
       history: rand(12 + 32 * (version - 1) + 16),
-      deliveries: Object.fromEntries(credIds.map((id) => [id, { ephemeralPublicKey: fakeEcKey(), wrappedDk: rand(60) }])),
+      deliveries: Object.fromEntries(credIds.map((id) => [id, { ephemeralPublicKey: fakeEcKey(), wrappedDk: rand(60), binding: rand(28) }])),
     },
   };
 }

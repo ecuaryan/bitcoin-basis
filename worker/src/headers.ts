@@ -13,8 +13,10 @@ export const CSP = [
   "base-uri 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  // DOM XSS sinks (innerHTML, script src, …) only accept Trusted Types; the app uses none.
+  // DOM XSS sinks (innerHTML, script src, …) only accept Trusted Types. The app's only policy is
+  // `sw` (app/src/register-sw.ts), which allows exactly /sw.js for the service worker.
   "require-trusted-types-for 'script'",
+  'trusted-types sw',
   'upgrade-insecure-requests',
 ].join('; ');
 

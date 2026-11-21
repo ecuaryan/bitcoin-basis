@@ -62,6 +62,11 @@ export function deliveryInput(v: unknown): { ephemeralPublicKey: string; wrapped
   return { ephemeralPublicKey: ecPublicKey(r.ephemeralPublicKey), wrappedDk: wrappedDk(r.wrappedDk) };
 }
 
+/** A rotation's delivery to one credential, plus that credential's binding re-made under the new data key. */
+export function rotationDeliveryInput(v: unknown): { ephemeralPublicKey: string; wrappedDk: string; binding: string } {
+  return { ...deliveryInput(v), binding: b64u(obj(v).binding, IV + TAG) };
+}
+
 export const CREDENTIAL_ID_BYTES: [number, number] = [16, 512];
 
 /** A credential id: unpadded base64url of 16–512 bytes (so `epoch/000000/cred/<id>` stays well inside R2's key limit). */

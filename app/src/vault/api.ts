@@ -105,8 +105,8 @@ export interface RotateBody extends RecoveryRecordInput {
   readonly version: number;
   /** The new epoch's history: every older DK sealed under the new one. */
   readonly history: string;
-  /** The new DK for every registered passkey, by credential id. */
-  readonly deliveries: Readonly<Record<string, DeliveryInput>>;
+  /** The new DK for every registered passkey, by credential id, with the passkey re-bound under the new DK. */
+  readonly deliveries: Readonly<Record<string, DeliveryInput & { readonly binding: string }>>;
   readonly stepUp: StepUp;
 }
 

@@ -95,7 +95,7 @@ describe('claiming and adding passkeys', () => {
     expect(bad.status).toBe(400);
     const wrongEpoch = await c.register(new SoftAuthenticator(), { claim: { vaultId: vault.vaultId, recovery: vault.recovery } }, { setupCode: SETUP_CODE }, 2);
     expect(wrongEpoch.status).toBe(409);
-    const badKey = await c.register(new SoftAuthenticator(), { claim: { vaultId: vault.vaultId, recovery: vault.recovery }, credentialKey: { ...fakeCredentialKeys().credentialKey, publicKey: b64u(randomBytes(65)).replace(/^./, 'B') } }, { setupCode: SETUP_CODE });
+    const badKey = await c.register(new SoftAuthenticator(), { claim: { vaultId: vault.vaultId, recovery: vault.recovery }, credentialKey: { ...fakeCredentialKeys().credentialKey, publicKey: b64u(Buffer.concat([Buffer.from([5]), randomBytes(64)])) } }, { setupCode: SETUP_CODE });
     expect(badKey.status).toBe(400);
     expect((await c.get('/api/status')).data).toEqual({ claimed: false });
     expect(await keysUnder('')).toEqual([]);
@@ -428,6 +428,9 @@ describe('recovery and epochs', () => {
     expect((await client.post('/api/recovery/rotate', { ...body, wrappedDk: 'x', stepUp: await client.stepUp(auth, 'rotate') })).status).toBe(400);
     expect((await client.post('/api/recovery/rotate', { ...body, history: b64u(randomBytes(92)), stepUp: await client.stepUp(auth, 'rotate') })).status).toBe(400);
     expect((await client.post('/api/recovery/rotate', { ...fakeRotation(2, [auth.id]).body, stepUp: await client.stepUp(auth, 'rotate') })).status).toBe(409);
+    const noBinding = fakeRotation(2, ids).body;
+    delete (noBinding.deliveries[auth.id] as { binding?: string }).binding;
+    expect((await client.post('/api/recovery/rotate', { ...noBinding, stepUp: await client.stepUp(auth, 'rotate') })).status).toBe(400);
     expect((await client.post('/api/recovery/rotate', { ...fakeRotation(2, [...ids, b64u(randomBytes(32))]).body, stepUp: await client.stepUp(auth, 'rotate') })).status).toBe(409);
     expect(await keysUnder('epoch/000002/')).toEqual([]);
 
@@ -443,7 +446,10 @@ describe('recovery and epochs', () => {
 
     // Passkeys get the newest delivery and its history; blobs must now be sealed under epoch 2.
     const login = await new Client(server).login(second);
-    expect(login.data.keys).toEqual({ epoch: 2, delivery: { epoch: 2, ...body.deliveries[second.id] }, history: body.history });
+    const { ephemeralPublicKey, wrappedDk, binding } = body.deliveries[second.id] as { ephemeralPublicKey: string; wrappedDk: string; binding: string };
+    expect(login.data.keys).toEqual({ epoch: 2, delivery: { epoch: 2, ephemeralPublicKey, wrappedDk }, history: body.history });
+    // The credential list now carries each passkey's binding re-made under the epoch-2 key.
+    expect((await client.get('/api/credentials')).data.credentials).toContainEqual({ id: second.id, publicKey: expect.any(String), epoch: 2, binding });
     expect((await client.post('/api/blobs', fakeBlob(1, 1))).status).toBe(409);
     expect((await client.post('/api/blobs', fakeBlob(1, 2))).status).toBe(201);
     // New passkeys must come with keys for the current epoch.

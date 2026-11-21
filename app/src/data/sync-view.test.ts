@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SyncStatus } from '../vault/index.ts';
 import { ago, describeSync } from './sync-view.ts';
 
-const base: SyncStatus = { phase: 'idle', pending: 0, lastSyncedAt: 1_000_000, rejected: 0, conflicts: 0, missingOnServer: 0, error: null };
+const base: SyncStatus = { phase: 'idle', pending: 0, lastSyncedAt: 1_000_000, rejected: 0, conflicts: 0, missingOnServer: 0, staleEpoch: 0, error: null };
 
 describe('describeSync', () => {
   it('synced, syncing, offline, signed out', () => {

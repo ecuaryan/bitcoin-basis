@@ -4,10 +4,10 @@ import type { Entry } from '@bitcoin-basis/engine';
 import { describe, expect, test } from 'vitest';
 import { buildDemoBook } from '../demo/demo-data.ts';
 import { fromBase64Url, toBase64Url } from './bytes.ts';
-import { deriveRecoveryKek, openHistory, unwrapDataKey, wrapAad } from './keys.ts';
+import { bindCredential, deriveRecoveryKek, generateCredentialKey, openHistory, unwrapDataKey, wrapAad } from './keys.ts';
 import { RECORD_KEY, parseRecord } from './record.ts';
 import { parseRecoveryCode } from './recovery-code.ts';
-import { blobEpoch, openBlob } from './seal.ts';
+import { blobEpoch, openBlob, sealEntries } from './seal.ts';
 import { FakeAuthenticator } from './test/fake-authenticator.ts';
 import { FakeServer } from './test/fake-server.ts';
 import { makeDevice, settle } from './test/harness.ts';
@@ -178,6 +178,46 @@ describe('recovery rotation revokes the old code', () => {
   });
 });
 
+describe('an old recovery code plus storage write access cannot get a later key', () => {
+  /** The attacker's view: the leaked OLD code yields DK_1 from the server copy; they can write records directly. */
+  async function attackerPlants(server: FakeServer, oldCode: string, claimEpoch: number) {
+    const vaultId = (server.claimed as { vaultId: string }).vaultId;
+    const keys = await keysFromOldCode(server, oldCode);
+    const dk1 = keys.get(1);
+    if (dk1 === undefined) throw new Error('old code should open epoch 1');
+    const evil = await generateCredentialKey();
+    const evilId = toBase64Url(new Uint8Array(32).fill(0xee));
+    const binding = await bindCredential(dk1, vaultId, evilId, claimEpoch, evil.publicKey);
+    const real = [...server.creds.values()][0];
+    if (real === undefined) throw new Error('no credential');
+    server.creds.set(evilId, { ...real, credentialKey: { publicKey: toBase64Url(evil.publicKey), wrappedPrivateKey: real.credentialKey.wrappedPrivateKey, epoch: claimEpoch, binding: toBase64Url(binding) } });
+    return evilId;
+  }
+
+  test.each([
+    ['its true epoch (1)', 1],
+    ['the current epoch (2), bound with the old key', 2],
+  ])('a passkey record planted after a rotation with a binding under the old key, claiming %s, gets nothing at the next rotation', async (_label, claimEpoch) => {
+    const { server, a, oldCode } = await twoDevices();
+    expect(server.epoch()).toBe(2);
+    const evilId = await attackerPlants(server, oldCode, claimEpoch);
+    await expect(a.vault.rotateRecoveryCode()).rejects.toMatchObject({ code: 'server' });
+    expect(server.epoch()).toBe(2);
+    expect([...server.deliveries.keys()].some((k) => k.endsWith(`/${evilId}`))).toBe(false);
+  });
+
+  test('legitimate passkeys are re-bound at every rotation, so rotations keep working', async () => {
+    const { server, phone, a } = await twoDevices();
+    const c = await makeDevice(server, phone);
+    await c.vault.unlockWithPasskey();
+    await c.vault.addPasskey(); // registered in epoch 2, bound under DK_2
+    await a.vault.rotateRecoveryCode(); // epoch 3: re-binds both under DK_3
+    await a.vault.rotateRecoveryCode(); // epoch 4: accepts only DK_3 bindings
+    expect(server.epoch()).toBe(4);
+    for (const id of server.creds.keys()) expect(server.deliveries.get(`4/${id}`)?.binding).toBeDefined();
+  });
+});
+
 describe('sessions end on lock', () => {
   test('lock revokes the server session; offline, the logout is queued until back online', async () => {
     const server = new FakeServer(SETUP);
@@ -252,5 +292,102 @@ describe('lock requests during an in-flight unlock', () => {
     await expect(pending).rejects.toMatchObject({ code: 'locked' });
     expect(b.vault.status.state).toBe('empty');
     expect(await b.db.get('vault', RECORD_KEY)).toBeUndefined();
+  });
+});
+
+describe('old-epoch blobs and writes after a rotation', () => {
+  test('a blob sealed with an old key and planted after the device learned of a newer epoch is refused and counted', async () => {
+    const { server, a, oldCode } = await twoDevices();
+    await a.vault.sync(); // A knows epoch 2 from its own rotation
+    const vaultId = (server.claimed as { vaultId: string }).vaultId;
+    const dk1 = (await keysFromOldCode(server, oldCode)).get(1) as CryptoKey;
+    const forged = { ...(BOOK[9] as Entry), note: 'forged with the old key' } as Entry;
+    const [sealed] = await sealEntries(dk1, vaultId, 1, [forged]);
+    const later = String(a.scheduler.now() + 20 * 60_000).padStart(13, '0');
+    server.blobs.set(`e/${later}-0000000000000000`, (sealed as NonNullable<typeof sealed>).blob);
+    expect((await a.vault.sync()).ok).toBe(true);
+    expect(a.vault.status.sync.staleEpoch).toBe(1);
+    expect((await a.vault.store.list()).some((e) => e.id === forged.id && e.note === 'forged with the old key')).toBe(false);
+  });
+
+  test('old-epoch blobs uploaded before the rotation still arrive on a device that learns of it later', async () => {
+    const server = new FakeServer(SETUP);
+    const phone = new FakeAuthenticator('phone');
+    const a = await makeDevice(server, phone);
+    await a.vault.create({ setupCode: SETUP });
+    const d = await makeDevice(server, phone);
+    await d.vault.unlockWithPasskey();
+    await a.vault.store.append(BOOK.slice(0, 2)); // epoch 1, D hasn't pulled them
+    await a.vault.sync();
+    await a.vault.rotateRecoveryCode();
+    await a.vault.store.append(BOOK.slice(2, 3)); // epoch 2
+    await a.vault.sync();
+    expect((await d.vault.sync()).ok).toBe(true); // learns epoch 2, then pulls both epochs
+    expect(d.vault.status.sync).toMatchObject({ staleEpoch: 0, rejected: 0 });
+    expect(await d.vault.store.list()).toEqual(BOOK.slice(0, 3));
+  });
+
+  test('a device unlocked with the old code cannot write once it knows the code was replaced', async () => {
+    const server = new FakeServer(SETUP);
+    const a = await makeDevice(server, new FakeAuthenticator('phone'));
+    const { recoveryCode } = await a.vault.create({ setupCode: SETUP });
+    const b = await makeDevice(server, null);
+    await b.vault.unlockWithRecoveryCode(recoveryCode);
+    await a.vault.rotateRecoveryCode();
+    await b.vault.sync(); // learns epoch 2 (signed out: its old-code session is dead)
+    await expect(b.vault.store.append(BOOK.slice(0, 1))).rejects.toMatchObject({ code: 'recovery-code-changed' });
+    expect(await b.db.keys('outbox')).toEqual([]);
+  });
+
+  test('a passkey device behind a rotation fetches the newer key before sealing, or asks to sign in', async () => {
+    const { server, phone, a } = await twoDevices();
+    const c = await makeDevice(server, phone);
+    await c.vault.unlockWithPasskey();
+    c.client.expireSession();
+    await a.vault.rotateRecoveryCode(); // epoch 3
+    expect(await c.vault.sync()).toMatchObject({ ok: false, reason: 'signed-out' }); // C now knows epoch 3, no key
+    await expect(c.vault.store.append(BOOK.slice(4, 5))).rejects.toMatchObject({ code: 'needs-session' });
+    expect(await c.db.keys('outbox')).toEqual([]);
+    await c.vault.connect();
+    await c.vault.store.append(BOOK.slice(4, 5));
+    const [sealed] = (await c.db.entries('outbox')).map(([, v]) => v as Uint8Array);
+    expect(sealed === undefined ? 3 : blobEpoch(sealed)).toBe(3);
+    await c.vault.sync();
+    expect(blobEpoch(server.blobs.get(server.keys().at(-1) as string) as Uint8Array)).toBe(3);
+  });
+});
+
+describe('logout is queued on any failure', () => {
+  test('a 5xx or 429 on logout keeps it queued until it goes through', async () => {
+    const server = new FakeServer(SETUP);
+    const a = await makeDevice(server, new FakeAuthenticator('phone'));
+    await a.vault.create({ setupCode: SETUP });
+    for (const status of [503, 429]) {
+      const cookie = a.client.cookie as string;
+      server.failing.set('/api/logout', status);
+      a.vault.lock();
+      await settle();
+      expect(server.revoked.has(cookie)).toBe(false);
+      expect(parseRecord(await a.db.get('vault', RECORD_KEY))?.logoutPending).toBe(true);
+      server.failing.delete('/api/logout');
+      await a.vault.unlockWithPasskey(); // sends the queued logout first
+      expect(server.revoked.has(cookie)).toBe(true);
+      expect(parseRecord(await a.db.get('vault', RECORD_KEY))?.logoutPending).toBe(false);
+    }
+  });
+
+  test('a logout that still fails is dropped once a new sign-in replaces the cookie (it must not end the new session)', async () => {
+    const server = new FakeServer(SETUP);
+    const a = await makeDevice(server, new FakeAuthenticator('phone'));
+    await a.vault.create({ setupCode: SETUP });
+    server.failing.set('/api/logout', 503);
+    a.vault.lock();
+    await settle();
+    await a.vault.unlockWithPasskey();
+    server.failing.delete('/api/logout');
+    const fresh = a.client.cookie as string;
+    expect(parseRecord(await a.db.get('vault', RECORD_KEY))?.logoutPending).toBe(false);
+    expect((await a.vault.sync()).ok).toBe(true);
+    expect(server.revoked.has(fresh)).toBe(false);
   });
 });

@@ -195,6 +195,7 @@ export class Vault {
       channel: options.channel === undefined ? defaultChannel() : options.channel,
       onStatus: () => this.emit(),
       beforeSync: () => this.refresh(),
+      beforeSeal: () => this.ensureNewestKey(),
     });
     for (const t of ACTIVITY_EVENTS) this.env?.document?.addEventListener(t, this.onActivity, { passive: true });
     this.env?.document?.addEventListener('visibilitychange', this.onVisibility);
@@ -302,11 +303,11 @@ export class Vault {
           .catch((e: unknown) => {
             throw e instanceof ApiError && e.kind === 'conflict' ? new VaultError('already-claimed', undefined, { cause: e }) : mapApi(e);
           });
-        this.serverSession = 'passkey';
+        this.sessionStarted('passkey');
 
         // The server is claimed: save the record before anything else can fail.
         await this.putRecord({
-          ...emptyRecord(vaultId, this.origin),
+          ...emptyRecord(vaultId, this.origin, this.scheduler.now()),
           recovery: { version: 1, salt: b64(salt), wrappedDk: b64(recWrapped) },
           credentials: [made.stored],
         });
@@ -373,7 +374,7 @@ export class Vault {
         const login = await this.api.loginVerify({ response: assertion.response, challengeToken: online.challengeToken }).catch((e: unknown) => {
           throw e instanceof ApiError && (e.kind === 'unauthorized' || e.kind === 'not-found') ? new VaultError('passkey-rejected', undefined, { cause: e }) : mapApi(e);
         });
-        this.serverSession = 'passkey';
+        this.sessionStarted('passkey');
         if (this.record !== null && login.vaultId !== this.record.vaultId) throw new VaultError('vault-mismatch');
         const local = this.record?.credentials.find((c) => c.id === assertion.credentialId);
         const server = login.credential;
@@ -396,13 +397,14 @@ export class Vault {
         prfOutput = null;
         this.assertGen(gen);
         const fresh = this.record === null;
-        const base = this.record ?? emptyRecord(login.vaultId, this.origin);
+        const base = this.record ?? emptyRecord(login.vaultId, this.origin, this.scheduler.now());
         const next = withEpoch(
           { ...base, credentials: upsert(base.credentials, stored), histories: history === null ? base.histories : { ...base.histories, [String(stored.delivery.epoch)]: history } },
           login.keys.epoch,
+          this.scheduler.now(),
         );
         if (fresh) await this.putRecord(next);
-        else await this.updateRecord((r) => withEpoch({ ...r, credentials: upsert(r.credentials, stored), histories: next.histories }, login.keys.epoch));
+        else await this.updateRecord((r) => withEpoch({ ...r, credentials: upsert(r.credentials, stored), histories: next.histories }, login.keys.epoch, this.scheduler.now()));
         this.assertGen(gen);
         await this.begin(session);
         if (fresh) return { via: 'passkey', sync: await this.store.sync() };
@@ -462,7 +464,7 @@ export class Vault {
                   return false;
                 },
               );
-              if (ok) this.serverSession = 'recovery';
+              if (ok) this.sessionStarted('recovery');
             }
             this.assertGen(gen);
             if (this.record.recoveryChanged) await this.updateRecord((r) => ({ ...r, recoveryChanged: false }));
@@ -480,7 +482,7 @@ export class Vault {
         const login = await this.api.recoveryLogin(b64(token)).catch((e: unknown) => {
           throw e instanceof ApiError && e.kind === 'unauthorized' ? new VaultError('wrong-recovery-code', undefined, { cause: e }) : mapApi(e);
         });
-        this.serverSession = 'recovery';
+        this.sessionStarted('recovery');
         const kek = await deriveRecoveryKek(code.secret, salt);
         const aad = wrapAad(params.vaultId, { type: 'recovery', version: login.version });
         const wrapped = unb64(login.wrappedDk);
@@ -491,8 +493,8 @@ export class Vault {
         this.assertGen(gen);
         const recovery: StoredRecovery = { version: login.version, salt: params.salt, wrappedDk: login.wrappedDk };
         const histories = login.history === null ? {} : { [String(login.version)]: login.history };
-        if (this.record === null) await this.putRecord({ ...emptyRecord(params.vaultId, this.origin), recovery, histories, epoch: login.version });
-        else await this.updateRecord((r) => withEpoch({ ...r, recovery, recoveryChanged: false, histories: { ...r.histories, ...histories } }, login.version));
+        if (this.record === null) await this.putRecord({ ...emptyRecord(params.vaultId, this.origin, this.scheduler.now(), login.version), recovery, histories });
+        else await this.updateRecord((r) => withEpoch({ ...r, recovery, recoveryChanged: false, histories: { ...r.histories, ...histories } }, login.version, this.scheduler.now()));
         this.assertGen(gen);
         await this.begin({ vaultId: params.vaultId, via: 'recovery', epoch: login.version, keys, current: { kek, wrapped, aad }, history: historyBytes(login.history), credential: null, recoveryToken: token });
         token = null;
@@ -548,7 +550,7 @@ export class Vault {
           .catch((e: unknown) => {
             throw mapApi(e);
           });
-        this.serverSession = 'passkey';
+        this.sessionStarted('passkey');
         await this.updateRecord((r) => ({ ...r, credentials: upsert(r.credentials, made.stored) }));
         return { credentialId: pk.credentialId };
       } finally {
@@ -580,14 +582,16 @@ export class Vault {
       if (params.version !== session.epoch) throw new VaultError('server', `the server is at epoch ${params.version}, this device at ${session.epoch}`);
       const stepUp = await this.passkeyStepUp('rotate');
 
-      // Only deliver the new key to passkeys a key holder registered (a planted record fails here).
+      // Only deliver the new key to passkeys vouched for under the CURRENT key: registered in this
+      // epoch, or re-bound by the rotation that started it. An old key (which an old recovery code
+      // yields) can't vouch for anything any more, so a record planted with one fails here.
       const list = await this.api.credentials().catch((e: unknown) => {
         throw mapApi(e);
       });
+      const current = currentDk(session);
       for (const c of list) {
-        const dk = session.keys.get(c.epoch);
-        const ok = dk !== undefined && (await verifyCredentialBinding(dk, session.vaultId, c.id, c.epoch, unb64(c.publicKey), unb64(c.binding)));
-        if (!ok) throw new VaultError('server', 'a passkey record on the server failed its integrity check');
+        const ok = c.epoch === session.epoch && (await verifyCredentialBinding(current, session.vaultId, c.id, c.epoch, unb64(c.publicKey), unb64(c.binding)));
+        if (!ok) throw new VaultError('server', 'a passkey record on the server is not vouched for by the current key; it may have been planted');
       }
 
       const version = session.epoch + 1;
@@ -603,10 +607,13 @@ export class Vault {
         all = concatBytes(rawOlder, rawCur);
         const newDk = await importDataKey(rawNew);
         const history = await sealHistory(all, newDk, session.vaultId, version);
-        const deliveries: Record<string, { ephemeralPublicKey: string; wrappedDk: string }> = {};
+        const deliveries: Record<string, { ephemeralPublicKey: string; wrappedDk: string; binding: string }> = {};
         for (const c of list) {
-          const d = await deliverDataKey(rawNew, unb64(c.publicKey), session.vaultId, version, c.id);
-          deliveries[c.id] = { ephemeralPublicKey: b64(d.ephemeralPublicKey), wrappedDk: b64(d.wrappedDk) };
+          const pub = unb64(c.publicKey);
+          const d = await deliverDataKey(rawNew, pub, session.vaultId, version, c.id);
+          // Re-bind under the new key: only this vouches for the passkey at the next rotation.
+          const binding = await bindCredential(newDk, session.vaultId, c.id, version, pub);
+          deliveries[c.id] = { ephemeralPublicKey: b64(d.ephemeralPublicKey), wrappedDk: b64(d.wrappedDk), binding: b64(binding) };
         }
         const code = await generateRecoveryCode();
         secret = code.secret;
@@ -624,14 +631,13 @@ export class Vault {
 
         const historyText = b64(history);
         await this.updateRecord((r) => ({
-          ...r,
-          epoch: Math.max(r.epoch, version),
+          ...withEpoch(r, version, this.scheduler.now()),
           recovery: { version, salt: b64(salt), wrappedDk: b64(wrapped) },
           recoveryChanged: false,
           histories: { ...r.histories, [String(version)]: historyText },
           credentials: r.credentials.map((c) => {
             const d = deliveries[c.id];
-            return d === undefined ? c : { ...c, delivery: { epoch: version, ...d } };
+            return d === undefined ? c : { ...c, delivery: { epoch: version, ephemeralPublicKey: d.ephemeralPublicKey, wrappedDk: d.wrappedDk } };
           }),
         }));
         if (this.session === session) {
@@ -780,7 +786,7 @@ export class Vault {
     if (params.vaultId !== session.vaultId) throw new VaultError('vault-mismatch');
     const rec = this.record?.recovery ?? null;
     if (rec !== null && params.version > rec.version) await this.dropRecovery(params.version);
-    else if ((this.record?.epoch ?? 0) < params.version) await this.updateRecord((r) => withEpoch(r, params.version));
+    else if ((this.record?.epoch ?? 0) < params.version) await this.updateRecord((r) => withEpoch(r, params.version, this.scheduler.now()));
     if (params.version <= session.epoch || session.credential === null || this.serverSession === 'recovery') return;
 
     const cred = session.credential;
@@ -810,6 +816,7 @@ export class Vault {
           }),
         },
         k.epoch,
+        this.scheduler.now(),
       ),
     );
     if (this.session !== session) return;
@@ -822,7 +829,7 @@ export class Vault {
 
   /** The recovery code was rotated elsewhere: forget the outdated local wrapping and raise the notice. */
   private async dropRecovery(version: number): Promise<void> {
-    await this.updateRecord((r) => withEpoch({ ...r, recovery: null, recoveryChanged: true }, version));
+    await this.updateRecord((r) => withEpoch({ ...r, recovery: null, recoveryChanged: true }, version, this.scheduler.now()));
   }
 
   // --- Internals: server session -----------------------------------------------------------------
@@ -844,7 +851,7 @@ export class Vault {
       const login = await this.api.loginVerify({ response: a.response, challengeToken: opts.challengeToken }).catch((e: unknown) => {
         throw e instanceof ApiError && e.kind === 'unauthorized' ? new VaultError('passkey-rejected', undefined, { cause: e }) : mapApi(e);
       });
-      this.serverSession = 'passkey';
+      this.sessionStarted('passkey');
       if (login.vaultId !== this.record?.vaultId) throw new VaultError('vault-mismatch');
       // Unlocked with the recovery code: take this passkey's key too, so newer epochs reach this session.
       const session = this.session;
@@ -862,7 +869,7 @@ export class Vault {
             session.current = opened.current;
             session.history = opened.history;
           }
-          await this.updateRecord((r) => withEpoch({ ...r, credentials: upsert(r.credentials, stored), histories: history === null ? r.histories : { ...r.histories, [String(stored.delivery.epoch)]: history } }, login.keys.epoch));
+          await this.updateRecord((r) => withEpoch({ ...r, credentials: upsert(r.credentials, stored), histories: history === null ? r.histories : { ...r.histories, [String(stored.delivery.epoch)]: history } }, login.keys.epoch, this.scheduler.now()));
           this.store.setKeys(storeKeys(session));
         }
       }
@@ -887,7 +894,10 @@ export class Vault {
     return { response: a.response, challengeToken: opts.challengeToken };
   }
 
-  /** End the server session: now if online, else queued (and remembered across reloads). */
+  /**
+   * End the server session: now if online, else queued (and remembered across reloads). Any failure
+   * (offline, 5xx, 429, …) queues it too, until it succeeds or a new sign-in replaces the cookie.
+   */
   private endServerSession(): void {
     if (!this.isOnline()) {
       this.markLogoutPending(true);
@@ -895,24 +905,46 @@ export class Vault {
     }
     this.logoutInFlight = this.api
       .logout()
-      .catch((e: unknown) => {
-        if (e instanceof ApiError && e.kind === 'network') this.markLogoutPending(true);
-      })
+      .catch(() => this.markLogoutPending(true))
       .finally(() => {
         this.logoutInFlight = null;
       });
   }
 
-  /** Send a queued logout before anything else talks to the server (so it can't end a newer session). */
+  /** Send a queued logout before anything else talks to the server. A failure keeps it queued. */
   private async flushLogout(): Promise<void> {
     if (this.logoutInFlight !== null) await this.logoutInFlight;
     if (!this.logoutPending || !this.isOnline()) return;
     try {
       await this.api.logout();
-    } catch (e) {
-      if (e instanceof ApiError && e.kind === 'network') return;
+    } catch {
+      return;
     }
     this.markLogoutPending(false);
+  }
+
+  /**
+   * A sign-in set a new session cookie. The old cookie is gone from the browser, so a still-queued
+   * logout could now only end the NEW session: drop it.
+   */
+  private sessionStarted(kind: 'passkey' | 'recovery'): void {
+    this.serverSession = kind;
+    if (this.logoutPending) this.markLogoutPending(false);
+  }
+
+  /**
+   * Before sealing: never seal under an older epoch than the newest the device knows (that key may
+   * be one a leaked old code opens). Fetch the newer key first, or refuse the write.
+   */
+  private async ensureNewestKey(): Promise<void> {
+    const session = this.session;
+    if (session === null || session.epoch >= (this.record?.epoch ?? 0)) return;
+    if (this.isOnline()) await this.refresh().catch(() => undefined);
+    if (this.session !== session || session.epoch >= (this.record?.epoch ?? 0)) return;
+    throw new VaultError(
+      session.credential !== null || this.knownCredentials().length > 0 ? 'needs-session' : 'recovery-code-changed',
+      'a newer data key exists; sign in again (or unlock with the new recovery code) before writing',
+    );
   }
 
   private markLogoutPending(pending: boolean): void {
@@ -1044,15 +1076,21 @@ async function makeCredentialKeys(vaultId: string, credentialId: string, kek: Cr
   };
 }
 
-function emptyRecord(vaultId: string, origin: string): VaultRecord {
-  return { format: RECORD_FORMAT, vaultId, recovery: null, credentials: [], epoch: 1, histories: {}, recoveryChanged: false, logoutPending: false, cursor: null, origin };
+function emptyRecord(vaultId: string, origin: string, now: number, epoch = 1): VaultRecord {
+  return { format: RECORD_FORMAT, vaultId, recovery: null, credentials: [], epoch, histories: {}, learned: { [String(epoch)]: now }, recoveryChanged: false, logoutPending: false, cursor: null, origin };
 }
 
-/** Raise the known epoch; a recovery wrapping older than it is outdated and dropped (with the notice). */
-function withEpoch(r: VaultRecord, epoch: number): VaultRecord {
+/**
+ * Raise the known epoch (noting when each new one was first heard of); a recovery wrapping older
+ * than it is outdated and dropped (with the notice).
+ */
+function withEpoch(r: VaultRecord, epoch: number, now: number): VaultRecord {
   const e = Math.max(r.epoch, epoch);
-  if (r.recovery !== null && r.recovery.version < e) return { ...r, epoch: e, recovery: null, recoveryChanged: true };
-  return { ...r, epoch: e };
+  const learned = { ...r.learned };
+  for (let n = r.epoch + 1; n <= e; n++) learned[String(n)] ??= now;
+  const out = { ...r, epoch: e, learned };
+  if (r.recovery !== null && r.recovery.version < e) return { ...out, recovery: null, recoveryChanged: true };
+  return out;
 }
 
 function upsert(list: readonly StoredCredential[], cred: StoredCredential): StoredCredential[] {

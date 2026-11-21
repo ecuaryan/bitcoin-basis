@@ -40,6 +40,13 @@ export interface VaultRecord {
   readonly epoch: number;
   /** Epoch → that epoch's history (older data keys sealed under its key), as on the server. */
   readonly histories: Readonly<Record<string, string>>;
+  /**
+   * Epoch → device time (ms) when this device first heard of it. A blob of an older epoch whose
+   * server key is stamped well after that moment can't come from an honest server (uploads under
+   * an older epoch are refused once a newer one exists), so it is refused as a possible forgery
+   * with a revoked key.
+   */
+  readonly learned: Readonly<Record<string, number>>;
   /** The recovery code was replaced on another device; this device dropped its copy of the old wrapping. */
   readonly recoveryChanged: boolean;
   /** A lock happened offline: end the server session the next time we are online. */
@@ -71,6 +78,10 @@ export function parseRecord(v: unknown): VaultRecord | null {
       ? [{ id: o.id, prfSalt: o.prfSalt, wrappedPrivateKey: o.wrappedPrivateKey, publicKey: o.publicKey, delivery }]
       : [];
   });
+  const learned: Record<string, number> = {};
+  if (typeof r.learned === 'object' && r.learned !== null) {
+    for (const [k, t] of Object.entries(r.learned as Record<string, unknown>)) if (/^[1-9]\d*$/.test(k) && typeof t === 'number' && Number.isFinite(t)) learned[k] = t;
+  }
   const histories: Record<string, string> = {};
   if (typeof r.histories === 'object' && r.histories !== null) {
     for (const [k, h] of Object.entries(r.histories as Record<string, unknown>)) if (/^[1-9]\d*$/.test(k) && str(h)) histories[k] = h;
@@ -82,6 +93,7 @@ export function parseRecord(v: unknown): VaultRecord | null {
     credentials,
     epoch: r.epoch,
     histories,
+    learned,
     recoveryChanged: r.recoveryChanged === true,
     logoutPending: r.logoutPending === true,
     cursor: str(r.cursor) ? r.cursor : null,

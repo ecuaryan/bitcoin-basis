@@ -210,3 +210,81 @@ describe('deployment configuration', () => {
     expect(configOk({ ORIGIN: 'ftp://basis.example.test', RP_ID, SESSION_SECRET: secret, DEV_ALLOW_HTTP: '1' })).toBe(false);
   });
 });
+
+describe('step-up binding', () => {
+  it('a step-up is bound to its purpose, its session, and is single use', async () => {
+    const { client, auth } = await claimVault(server);
+    // purpose: a "register" step-up cannot rotate; a "rotate" step-up cannot register.
+    const reg = await client.stepUp(auth, 'register');
+    expect((await client.post('/api/recovery/rotate', { ...fakeRotation(2, [auth.id]).body, stepUp: reg })).status).toBe(401);
+    const rot = await client.stepUp(auth, 'rotate');
+    expect((await client.register(new SoftAuthenticator(), { stepUp: rot })).status).toBe(401);
+    // session: a step-up minted in session A is refused in session B (same passkey).
+    const b = new Client(server);
+    expect((await b.login(auth)).status).toBe(200);
+    const fromA = await client.stepUp(auth, 'rotate');
+    expect((await b.post('/api/recovery/rotate', { ...fakeRotation(2, [auth.id]).body, stepUp: fromA })).status).toBe(401);
+    // single use: the same step-up cannot rotate twice (second attempt is 401, not a second epoch).
+    const once = await client.stepUp(auth, 'rotate');
+    expect((await client.post('/api/recovery/rotate', { ...fakeRotation(2, [auth.id]).body, stepUp: once })).status).toBe(201);
+    expect((await client.post('/api/recovery/rotate', { ...fakeRotation(3, [auth.id]).body, stepUp: once })).status).toBe(401);
+  });
+});
+
+describe('revoked and outdated sessions die on every route', () => {
+  it('a revoked passkey session is 401 everywhere', async () => {
+    const { client, auth } = await claimVault(server);
+    const stepUp = await client.stepUp(auth, 'register');
+    const stolen = client.cookie as string;
+    await client.post('/api/logout');
+    const t = new Client(server);
+    t.cookie = stolen;
+    const res = [
+      await t.post('/api/register/options'),
+      await t.register(new SoftAuthenticator(), { stepUp }),
+      await t.post('/api/stepup/options', { purpose: 'rotate' }),
+      await t.get('/api/credentials'),
+      await t.get(`/api/keys?credential=${auth.id}`),
+      await t.post('/api/recovery/rotate', { ...fakeRotation(2, [auth.id]).body, stepUp }),
+      await t.get('/api/blobs'),
+      await t.post('/api/blobs', fakeBlob()),
+    ];
+    expect(res.map((r) => r.status)).toEqual(res.map(() => 401));
+  });
+
+  it('a recovery session cannot escalate, and is dead on every route once the code is rotated', async () => {
+    const { client, auth, vault } = await claimVault(server);
+    const rec = new Client(server);
+    expect((await rec.post('/api/recovery/login', { authToken: vault.authToken })).status).toBe(200);
+    for (const r of [
+      await rec.post('/api/stepup/options', { purpose: 'register' }),
+      await rec.get('/api/credentials'),
+      await rec.get(`/api/keys?credential=${auth.id}`),
+      await rec.post('/api/recovery/rotate', { ...fakeRotation(2, [auth.id]).body, stepUp: { authToken: vault.authToken } }),
+    ]) expect(r.status).toBe(401);
+    // Owner rotates.
+    expect((await client.post('/api/recovery/rotate', { ...fakeRotation(2, [auth.id]).body, stepUp: await client.stepUp(auth, 'rotate') })).status).toBe(201);
+    for (const r of [
+      await rec.get('/api/blobs'),
+      await rec.post('/api/blobs', fakeBlob(1, 2)),
+      await rec.post('/api/register/options'),
+      await rec.register(new SoftAuthenticator(), { stepUp: { authToken: vault.authToken } }, {}, 2),
+      await rec.post('/api/recovery/login', { authToken: vault.authToken }),
+    ]) expect(r.status).toBe(401);
+    // The old token is no step-up proof for a live passkey session either.
+    expect((await client.register(new SoftAuthenticator(), { stepUp: { authToken: vault.authToken } }, {}, 2)).status).toBe(401);
+  });
+});
+
+describe('credential bindings are served for the current epoch only', () => {
+  it('a passkey record planted in storage after a rotation keeps its old binding (and the app refuses it)', async () => {
+    const { client, auth } = await claimVault(server);
+    expect((await client.post('/api/recovery/rotate', { ...fakeRotation(2, [auth.id]).body, stepUp: await client.stepUp(auth, 'rotate') })).status).toBe(201);
+    const planted = b64u(randomBytes(32));
+    const own = await (await (await env()).DATA.get(`cred/${auth.id}`))?.json<Record<string, unknown>>();
+    await (await env()).DATA.put(`cred/${planted}`, JSON.stringify({ ...own, credentialKey: { ...(own?.credentialKey as object), epoch: 1 } }));
+    const list = (await client.get('/api/credentials')).data.credentials as { id: string; epoch: number }[];
+    expect(list.find((c) => c.id === auth.id)?.epoch).toBe(2);
+    expect(list.find((c) => c.id === planted)?.epoch).toBe(1);
+  });
+});

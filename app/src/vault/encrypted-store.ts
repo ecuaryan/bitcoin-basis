@@ -48,6 +48,12 @@ export interface SyncStatus {
   readonly conflicts: number;
   /** Blobs this device holds that the server no longer lists (found by the last full compare). */
   readonly missingOnServer: number;
+  /**
+   * Blobs sealed under an older data key that the server listed only after this device had learned
+   * of a newer one (stamped more than ten minutes later). An honest server refuses such uploads, so
+   * they are refused here as possible forgeries by someone holding a revoked key (an old recovery code).
+   */
+  readonly staleEpoch: number;
   readonly error: string | null;
 }
 
@@ -64,11 +70,16 @@ export interface EncryptedStoreDeps {
   readonly onStatus: (status: SyncStatus) => void;
   /** Runs at the start of every online sync, before any upload (the vault checks the epoch and recovery version). */
   readonly beforeSync?: () => Promise<void>;
+  /**
+   * Runs before sealing new entries: never seal under an older epoch than the newest one the device
+   * knows. The vault fetches the newer key (calling `setKeys`) or throws.
+   */
+  readonly beforeSeal?: () => Promise<void>;
 }
 
 const EMPTY: readonly Entry[] = Object.freeze([]);
 const MAX_BACKOFF_MS = 5 * 60_000;
-const OFF: SyncStatus = { phase: 'off', pending: 0, lastSyncedAt: null, rejected: 0, conflicts: 0, missingOnServer: 0, error: null };
+const OFF: SyncStatus = { phase: 'off', pending: 0, lastSyncedAt: null, rejected: 0, conflicts: 0, missingOnServer: 0, staleEpoch: 0, error: null };
 /** Overlap when listing: uploads are stamped when they start, so a slow one can land behind a listed key. */
 export const LIST_OVERLAP_MS = 10 * 60_000;
 /** A full compare (list from the start) on the first sync after unlock and at least this often. */
@@ -99,6 +110,8 @@ export class EncryptedLedgerStore implements LedgerStore {
   private readonly rejectedKeys = new Set<string>();
   /** Local blobs and outbox items that could not be opened with the keys held (retried after `setKeys`). */
   private readonly unreadable = new Set<string>();
+  /** Server keys refused as old-epoch blobs listed after a newer epoch was known (see `SyncStatus.staleEpoch`). */
+  private readonly staleKeys = new Set<string>();
   /** One retry per run after the server refused an upload for its epoch (409). */
   private conflictRetried = false;
   private view: readonly Entry[] = EMPTY;
@@ -125,8 +138,11 @@ export class EncryptedLedgerStore implements LedgerStore {
   }
 
   async append(add: readonly Entry[]): Promise<void> {
-    const keys = this.requireKeys();
+    this.requireKeys();
     const gen = this.gen;
+    await this.deps.beforeSeal?.();
+    if (gen !== this.gen) throw new VaultError('locked');
+    const keys = this.requireKeys();
     const have = new Set(this.view.map((e) => e.id));
     const fresh: Entry[] = [];
     for (const e of add) {
@@ -199,6 +215,7 @@ export class EncryptedLedgerStore implements LedgerStore {
     this.outboxEntries.clear();
     this.rejectedKeys.clear();
     this.unreadable.clear();
+    this.staleKeys.clear();
     this.running = null;
     this.again = false;
     this.attempt = 0;
@@ -336,7 +353,8 @@ export class EncryptedLedgerStore implements LedgerStore {
   }
 
   private async pull(gen: number): Promise<number> {
-    const stored = parseRecord(await this.deps.db.get('vault', RECORD_KEY))?.cursor ?? null;
+    const record = parseRecord(await this.deps.db.get('vault', RECORD_KEY));
+    const stored = record?.cursor ?? null;
     const now = this.deps.scheduler.now();
     const full = this.lastFullCompare === null || now - this.lastFullCompare >= FULL_COMPARE_MS;
     let after = full ? null : listAfter(stored);
@@ -351,6 +369,11 @@ export class EncryptedLedgerStore implements LedgerStore {
       for (const b of page.blobs) {
         listed.add(b.key);
         if (this.blobEntries.has(b.key) || this.rejectedKeys.has(b.key)) continue;
+        if (isValidBlobSize(b.data.length) && staleEpoch(record, blobEpoch(b.data), b.key)) {
+          this.rejectedKeys.add(b.key);
+          this.staleKeys.add(b.key);
+          continue;
+        }
         const entries = isValidBlobSize(b.data.length) ? await this.tryOpen(b.data) : null;
         if (entries === null) {
           this.rejectedKeys.add(b.key);
@@ -378,6 +401,7 @@ export class EncryptedLedgerStore implements LedgerStore {
       for (const [k, v] of fresh) this.blobEntries.set(k, v);
       pulled += fresh.length;
       if (rejected > 0) this.setStatus({ ...this.current, rejected: this.current.rejected + rejected });
+      if (this.staleKeys.size !== this.current.staleEpoch) this.setStatus({ ...this.current, staleEpoch: this.staleKeys.size });
       if (fresh.length > 0) {
         this.changed();
         this.deps.channel?.postMessage({ type: 'changed' });
@@ -509,6 +533,20 @@ export class EncryptedLedgerStore implements LedgerStore {
   private notify(): void {
     for (const l of [...this.listeners]) l();
   }
+}
+
+/**
+ * True for a blob of an epoch older than the newest one the device knows, stamped (server key time)
+ * more than the listing overlap after the device first heard of a newer epoch. Uploads under an
+ * older epoch are refused by an honest server once a newer one exists, so such a blob was written
+ * into storage directly, by someone holding an old key.
+ */
+function staleEpoch(record: VaultRecord | null, epoch: number | null, key: string): boolean {
+  if (record === null || epoch === null || epoch >= record.epoch) return false;
+  const times = Object.entries(record.learned).filter(([e]) => Number(e) > epoch).map(([, t]) => t);
+  const ms = /^e\/(\d{13})/.exec(key)?.[1];
+  if (times.length === 0 || ms === undefined) return false;
+  return Number(ms) > Math.min(...times) + LIST_OVERLAP_MS;
 }
 
 function currentKey(keys: Keys): CryptoKey {

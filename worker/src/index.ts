@@ -6,14 +6,14 @@ import { fromB64u, randomBytes, sameSecret, sha256, toB64u } from './crypto.ts';
 import { errorResponse, fail, finish, guard, HttpError, json, readBytes, readJson } from './http.ts';
 import {
   backup, currentEpoch, currentRecovery, deliveryKey, getJson, history, historyKey, listAll, newestDelivery, putNew, recoveryKey,
-  type Claimed, type Credential, type Env,
+  type Claimed, type Credential, type Delivery, type Env,
 } from './store.ts';
 import {
   burnChallenge, clearedCookie, newChallenge, readChallenge, requireSession, revoke, sessionCookie,
   type Session, type StepUpPurpose,
 } from './session.ts';
 import {
-  b64u, credentialId, credentialKeyInput, credentialResponse, deliveryInput, historyCt, obj, posInt, recoveryInput, stepUpInput, vaultId,
+  b64u, credentialId, credentialKeyInput, credentialResponse, deliveryInput, historyCt, obj, posInt, recoveryInput, rotationDeliveryInput, stepUpInput, vaultId,
   type StepUpInput,
 } from './validate.ts';
 import { loginOptions, registrationOptions, verifyLogin, verifyRegistration } from './webauthn.ts';
@@ -162,9 +162,17 @@ const routes: Record<string, (c: Ctx) => Promise<Response>> = {
 
   'GET /api/credentials': async (c) => {
     await requireSession(c.req, c.env, 'passkey');
+    const current = await currentEpoch(c.env.DATA);
+    // Each passkey's binding under the CURRENT data key: from its registration in this epoch, or from
+    // the rotation that started it. A passkey with neither is returned with its old binding, and the
+    // app refuses to rotate (only key holders of the current epoch can vouch for a passkey).
     const credentials = await Promise.all((await credIds(c.env)).map(async (id) => {
       const cred = (await getJson<Credential>(c.env.DATA, `cred/${id}`)) ?? fail(500);
       const { publicKey, epoch, binding } = cred.credentialKey;
+      if (epoch !== current) {
+        const rebound = (await getJson<Delivery>(c.env.DATA, deliveryKey(current, id)))?.binding;
+        if (rebound !== undefined) return { id, publicKey, epoch: current, binding: rebound };
+      }
       return { id, publicKey, epoch, binding };
     }));
     return json({ credentials });
@@ -208,7 +216,7 @@ const routes: Record<string, (c: Ctx) => Promise<Response>> = {
     const ids = await credIds(env);
     // Every registered passkey gets the new data key, or the rotation is refused.
     if (Object.keys(given).length !== ids.length || !ids.every((id) => Object.hasOwn(given, id))) fail(409);
-    const deliveries = ids.map((id) => [id, deliveryInput(given[id])] as const);
+    const deliveries = ids.map((id) => [id, rotationDeliveryInput(given[id])] as const);
     if (body.stepUp === undefined) fail(401);
     const stepUp = stepUpInput(body.stepUp);
     if ('authToken' in stepUp) fail(401);

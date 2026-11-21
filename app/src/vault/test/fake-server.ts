@@ -21,6 +21,8 @@ export interface StoredRecovery {
 export interface StoredDelivery {
   ephemeralPublicKey: string;
   wrappedDk: string;
+  /** Rotations only: the credential re-bound under that epoch's key. */
+  binding?: string;
 }
 
 export interface FakeClient {
@@ -58,6 +60,8 @@ export class FakeServer {
   readonly requests: { path: string; body: string | Bytes }[] = [];
   /** Page size cap (the real server allows up to 200). */
   maxPage = 200;
+  /** Answer requests to these paths with this status (e.g. 503) until removed. */
+  readonly failing = new Map<string, number>();
   /** Server clock for blob keys (ms). Tests may move it to model a slow upload. */
   clock = 1_800_000_000_000;
   private readonly sessions = new Map<string, Session>();
@@ -130,6 +134,8 @@ export class FakeServer {
     const url = new URL(input, 'https://basis.example');
     const method = init.method ?? 'GET';
     const headers = (init.headers ?? {}) as Record<string, string>;
+    const failure = this.failing.get(url.pathname);
+    if (failure !== undefined) return { status: failure, json: { error: 'injected' } };
     const session = this.live(cookie);
     let body: unknown = null;
     if (method !== 'GET') {
@@ -241,7 +247,16 @@ export class FakeServer {
       }
       case 'GET /api/credentials': {
         if (session?.kind !== 'passkey') return { status: 401 };
-        return { status: 200, json: { credentials: [...this.creds].map(([id, c]) => ({ id, publicKey: c.credentialKey.publicKey, epoch: c.credentialKey.epoch, binding: c.credentialKey.binding })) } };
+        const current = this.epoch();
+        return {
+          status: 200,
+          json: {
+            credentials: [...this.creds].map(([id, c]) => {
+              const rebound = c.credentialKey.epoch === current ? undefined : this.deliveries.get(`${current}/${id}`)?.binding;
+              return rebound === undefined ? { id, publicKey: c.credentialKey.publicKey, epoch: c.credentialKey.epoch, binding: c.credentialKey.binding } : { id, publicKey: c.credentialKey.publicKey, epoch: current, binding: rebound };
+            }),
+          },
+        };
       }
       case 'GET /api/keys': {
         if (session?.kind !== 'passkey') return { status: 401 };
@@ -267,6 +282,7 @@ export class FakeServer {
         const deliveries = b.deliveries as Record<string, StoredDelivery>;
         const ids = [...this.creds.keys()];
         if (Object.keys(deliveries).length !== ids.length || !ids.every((id) => Object.hasOwn(deliveries, id))) return { status: 409 };
+        if (!ids.every((id) => isB64u(deliveries[id]?.binding, 28))) return { status: 400 };
         const stepUp = b.stepUp as { challengeToken?: string; response?: { id: string; response: { clientDataJSON: string } } } | undefined;
         if (!stepUp || !this.peekChallenge(stepUp.challengeToken, stepUp.response?.response.clientDataJSON ?? '', 'get', 'rotate', cookie)) return { status: 401 };
         if (!this.creds.has(stepUp.response?.id ?? '')) return { status: 401 };

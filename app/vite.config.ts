@@ -19,6 +19,8 @@ const CSP = [
   "base-uri 'none'",
   "frame-ancestors 'none'",
   "require-trusted-types-for 'script'",
+  // The only Trusted Types policy: `sw` in src/register-sw.ts (allows exactly /sw.js).
+  'trusted-types sw',
 ].join('; ');
 
 function cspMeta(): Plugin {
