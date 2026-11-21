@@ -30,7 +30,7 @@ export function EntriesView({ autoFocusSearch = false }: { autoFocusSearch?: boo
   const filtered = deferred.text.trim() !== '' || deferred.wallet !== '' || deferred.group !== '' || deferred.year !== '';
   return (
     <div className="flex flex-col gap-3">
-      <Field label="Search entries" type="search" value={filter.text} onChange={(e) => set({ text: e.target.value })} placeholder="Wallet, note, kind…" autoFocus={autoFocusSearch} />
+      <Field label="Search entries" type="search" className="lg:max-w-[480px]" value={filter.text} onChange={(e) => set({ text: e.target.value })} placeholder="Wallet, note, kind…" autoFocus={autoFocusSearch} />
       <div className="grid grid-cols-3 gap-2">
         <SelectBox label="Wallet" value={filter.wallet} onChange={(e) => set({ wallet: e.target.value })}>
           <option value="">All</option>

@@ -275,14 +275,16 @@ function ImportJson() {
     <Card as="section" aria-label="Restore from a backup" className="flex flex-col gap-3 !rounded-[18px] !p-4">
       <h2 className="m-0 text-[15px] font-semibold">Restore from a backup file</h2>
       <p className="m-0 text-[13px] leading-[1.45] text-muted">A backup made here. What you already have is skipped.</p>
-      <FilePicker
-        label="Choose a backup file"
-        accept=".json,application/json"
-        onText={(t, n) => {
-          setName(n);
-          setPreview(previewJson(t, have));
-        }}
-      />
+      <div className="flex">
+        <FilePicker
+          label="Choose a backup file"
+          accept=".json,application/json"
+          onText={(t, n) => {
+            setName(n);
+            setPreview(previewJson(t, have));
+          }}
+        />
+      </div>
       {preview && (
         <div role="status" className="flex flex-col gap-2 rounded-2xl border border-line bg-bg p-3 text-sm">
           <span className="text-xs text-muted">{name}</span>
