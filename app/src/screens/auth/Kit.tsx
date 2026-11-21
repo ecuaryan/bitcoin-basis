@@ -4,12 +4,11 @@ import { appAddress, shortAddress } from '../../data/app-url.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { kitHandoff } from '../../data/recovery-handoff.ts';
 import { usePendingKit } from '../../data/vault-provider.tsx';
-import { recoveryLink } from '../../vault/index.ts';
 import { PrinterIcon } from '../../ui/auth-icons.tsx';
 import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
 import { QrCode } from '../../ui/QrCode.tsx';
 import { cx } from '../../lib/cx.ts';
-import { kitSteps, kitWalletRows, longDate, oneYearLater } from './kit-logic.ts';
+import { KIT_STEPS, kitWalletRows, longDate } from './kit-logic.ts';
 import { SaveCode } from './SaveCode.tsx';
 import { useTitle } from '../../ui/use-title.ts';
 
@@ -30,7 +29,6 @@ export function Kit() {
   const wallets = kitWalletRows(state.wallets);
   const hasRetirement = state.wallets.some((w) => !w.archived && w.type === 'retirement');
   const slots = code?.split('-') ?? Array.from({ length: 6 }, () => '');
-  const link = code === null ? address : recoveryLink(address, code);
 
   return (
     <main className="kit-print min-h-dvh bg-bg print:bg-white">
@@ -134,7 +132,7 @@ export function Kit() {
         <section aria-label="Steps" className="flex flex-col gap-2.5">
           <h2 className="m-0 text-lg font-bold">Steps</h2>
           <ol className="m-0 flex list-none flex-col gap-2.5 p-0 print:gap-1.5">
-            {kitSteps(code !== null).map((text, i) => (
+            {KIT_STEPS.map((text, i) => (
               <li key={i} className="flex items-start gap-3.5">
                 <span aria-hidden="true" className="flex size-[26px] flex-none items-center justify-center rounded-full bg-accent text-[13px] font-bold text-[#161514]">
                   {i + 1}
@@ -161,8 +159,8 @@ export function Kit() {
             </span>
           </div>
           <div className="flex w-[150px] flex-none flex-col items-center gap-1.5 self-center sm:self-auto">
-            <QrCode text={link} size={150} label={code === null ? 'QR code that opens the app address' : 'QR code that opens the app and fills in the recovery code'} className="rounded-[10px] border border-[#d9d5cf]" />
-            <span className="text-center text-xs text-[#595550]">{code === null ? 'Opens the app' : "Scan with the phone's camera"}</span>
+            <QrCode text={address} size={150} label="QR code that opens the app address" className="rounded-[10px] border border-[#d9d5cf]" />
+            <span className="text-center text-xs text-[#595550]">Opens the app</span>
           </div>
         </section>
 
@@ -188,14 +186,11 @@ export function Kit() {
             <span className="break-all text-[15px] font-semibold">{shortAddress(address)}</span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs font-bold tracking-[0.06em] text-[#595550]">PRINTED · TEST IT AGAIN BY</span>
+            <span className="text-xs font-bold tracking-[0.06em] text-[#595550]">PRINTED</span>
             <span className="text-[15px] font-semibold">
-              {longDate(today)} · {longDate(oneYearLater(today))}
+              {longDate(today)}
             </span>
           </div>
-          <p className="m-0 text-[13px] leading-normal sm:col-span-2">
-            <strong>Test it once a year.</strong> On a computer, open the app address in a private window, choose “I already use Bitcoin Basis” and type the code. At “Records restored”, tap “Not now” and close the window. Tested on: __________
-          </p>
         </section>
 
         <section className="flex flex-col gap-1 rounded-xl bg-[#fff4e5] px-[18px] py-3.5">

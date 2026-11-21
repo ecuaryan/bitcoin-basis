@@ -54,7 +54,7 @@ No slow KDF is used for the recovery code: it carries 128 bits of entropy, so br
 - Written as 30 characters in six groups of five, `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`, in Crockford base32: `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (32 symbols). The letters `I L O U` are not in the alphabet, so no two symbols look alike.
 - Input is forgiving: case-insensitive, spaces and dashes ignored, `O` read as `0` and `I`/`L` read as `1`. A failed check means a typo, reported before any network call.
 - Labeled everywhere: **This is NOT a Bitcoin seed phrase.**
-- QR form: `https://<app>/#recover=<code>`. The code lives in the URL fragment, which browsers never send to the server. `takeRecoveryCodeFromUrl()` runs in `main.tsx` before the first render: it returns the code and synchronously removes the whole fragment from the address bar and the history entry (`history.replaceState`), even a malformed one.
+- Link form (printed on older kits; still accepted, new kits' QR holds only the app address): `https://<app>/#recover=<code>`. The code lives in the URL fragment, which browsers never send to the server. `takeRecoveryCodeFromUrl()` runs in `main.tsx` before the first render: it returns the code and synchronously removes the whole fragment from the address bar and the history entry (`history.replaceState`), even a malformed one.
 
 ### Padding
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kitWalletRows, longDate, oneYearLater } from './kit-logic.ts';
+import { kitWalletRows, longDate } from './kit-logic.ts';
 import { checkCompleteCode, describeRecoveryInput } from './recovery-input-logic.ts';
 import { matchesGroup, normalizeSetupCode } from './setup-logic.ts';
 import { recoveryCodeFromSecret } from '../../vault/recovery-code.ts';
@@ -67,7 +67,5 @@ describe('kit', () => {
   });
   it('dates', () => {
     expect(longDate('2026-11-20')).toBe('Nov 20, 2026');
-    expect(oneYearLater('2026-11-20')).toBe('2027-11-20');
-    expect(oneYearLater('2028-02-29')).toBe('2029-02-28');
   });
 });

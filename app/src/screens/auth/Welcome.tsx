@@ -500,11 +500,10 @@ function RestoreStep({
           </div>
           <div role="separator" aria-hidden="true" className="my-5 flex items-center gap-3 text-xs text-muted">
             <span className="h-px flex-1 bg-line" />
-            or type your recovery code
+            or use your recovery code
             <span className="h-px flex-1 bg-line" />
           </div>
           {form}
-          <p className="m-0 mt-3 text-center text-xs text-muted">Or scan the square code on your kit with the camera.</p>
         </>
       )}
     </Frame>

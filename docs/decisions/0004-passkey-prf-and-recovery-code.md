@@ -6,7 +6,7 @@ Keys must be strong, easy to use every day, and recoverable when every device is
 ## Decision
 - Day to day: a passkey on each device. The WebAuthn PRF extension gives a secret that unwraps that passkey's ECDH private key. Setup stops if PRF is missing.
 - Recovery: a 128-bit code with a check, written as 30 Crockford base32 characters, labeled "This is NOT a Bitcoin seed phrase". It wraps the data key and derives a separate sign-in token; the server stores only its hash. No slow KDF, because the entropy is already 128 bits.
-- A printable emergency kit holds the code and a QR to a URL fragment the server never receives.
+- A printable emergency kit holds the code and a QR to a URL fragment the server never receives. (Later changed: the QR now opens only the app address and the code is typed, so it never lands in browser history.)
 
 ## Consequences
 - No password to forget or phish; user verification is required for every unlock.

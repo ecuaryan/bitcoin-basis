@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CODE_LABEL, saveToPasswordManager } from './save-code.ts';
+import { CODE_LABEL, canFillFromPasswordManager, fillFromPasswordManager, saveToPasswordManager } from './save-code.ts';
 
 const CODE = 'ABCDE-FGHJK-MNPQR-STVWX-YZ234-56789';
 const g = globalThis as { PasswordCredential?: unknown };
@@ -58,5 +58,31 @@ describe('a prompt that stays open', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(await result).toBe('credential');
     vi.useRealTimers();
+  });
+});
+
+describe('fillFromPasswordManager', () => {
+  function withGet(get: () => Promise<unknown>) {
+    g.PasswordCredential = function () {};
+    Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
+  }
+  it('returns the saved recovery code the person picks', async () => {
+    const get = vi.fn(() => Promise.resolve({ id: CODE_LABEL, password: CODE }));
+    withGet(get);
+    expect(canFillFromPasswordManager()).toBe(true);
+    expect(await fillFromPasswordManager()).toBe(CODE);
+    expect(get).toHaveBeenCalledWith({ password: true, mediation: 'required' });
+  });
+  it('ignores other saved passwords, a dismissed chooser and errors', async () => {
+    withGet(() => Promise.resolve({ id: 'someone@example.com', password: 'hunter2' }));
+    expect(await fillFromPasswordManager()).toBeNull();
+    withGet(() => Promise.resolve(null));
+    expect(await fillFromPasswordManager()).toBeNull();
+    withGet(() => Promise.reject(new Error('nope')));
+    expect(await fillFromPasswordManager()).toBeNull();
+  });
+  it('is not offered without the Credential Management API', async () => {
+    expect(canFillFromPasswordManager()).toBe(false);
+    expect(await fillFromPasswordManager()).toBeNull();
   });
 });

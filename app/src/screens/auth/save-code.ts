@@ -34,3 +34,24 @@ export async function saveToPasswordManager(code: string, form: HTMLFormElement 
     return 'failed';
   }
 }
+
+/** True where the browser can hand back a saved code on request (Chromium's Credential Management API). */
+export function canFillFromPasswordManager(): boolean {
+  return (globalThis as { PasswordCredential?: unknown }).PasswordCredential !== undefined && typeof navigator !== 'undefined' && typeof navigator.credentials?.get === 'function';
+}
+
+/**
+ * Ask the browser's password manager for the saved recovery code: it shows its own chooser and only
+ * offers what was saved for this site. Returns the code, or `null` when nothing was picked or it isn't
+ * the recovery code. Nothing goes over the network.
+ */
+export async function fillFromPasswordManager(): Promise<string | null> {
+  if (!canFillFromPasswordManager()) return null;
+  try {
+    const c = (await navigator.credentials.get({ password: true, mediation: 'required' } as CredentialRequestOptions)) as { id?: string; password?: string } | null;
+    if (c === null || typeof c.password !== 'string' || c.password === '') return null;
+    return c.id === undefined || c.id === CODE_LABEL ? c.password : null;
+  } catch {
+    return null;
+  }
+}

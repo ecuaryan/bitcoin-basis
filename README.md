@@ -34,7 +34,7 @@ All screenshots use the built-in synthetic demo data.
 - **Settings** (the gear at the top, or Settings in the sidebar): taxes, security and devices, the emergency kit, and app options.
 - **Frozen or failed platform:** close-out with the loss, and later payouts as recovery gains.
 - **Retirement accounts:** log what an IRA bought to see each purchase's cost, worth now and gain, plus an All Bitcoin total (taxable and retirement together). Retirement coins never enter tax math.
-- **Emergency kit:** a printable page with a recovery code and QR that opens your records on a new device, plus a yearly reminder to test it.
+- **Emergency kit:** a printable page with a recovery code and a QR that opens the app on a new device, plus a reminder in the app to test it yearly.
 - **Hide amounts** (your choice, off by default), installable on a phone, offline after the first load.
 - **Try the demo:** on the first screen, "Try the demo" loads synthetic data. Made-up data, kept only in memory and gone when you close it. Import and restore are off.
 

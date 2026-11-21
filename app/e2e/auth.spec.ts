@@ -147,7 +147,7 @@ test('"Use my passkey" on a new device: nothing here, so it points to the recove
   await expectNoViolations(page);
 });
 
-test('opened from the kit QR code: restore, add the passkey, then make a new recovery code', async ({ page }) => {
+test('opened from an older kit\'s QR link: restore, add the passkey, then make a new recovery code', async ({ page }) => {
   await page.goto(`${FAKE_URL}/?fake=kit-link`);
   // The code from the link is filled in.
   await expect(page.getByRole('button', { name: 'Restore my records' })).toBeEnabled();
@@ -165,7 +165,7 @@ test('opened from the kit QR code: restore, add the passkey, then make a new rec
   expect(await page.evaluate(() => window.__bbFake?.server.epoch())).toBe(2);
 });
 
-test('opened from the kit QR code, passkey skipped: the new-code offer waits, and the sheet adds a passkey first', async ({ page }) => {
+test('opened from an older kit\'s QR link, passkey skipped: the new-code offer waits, and the sheet adds a passkey first', async ({ page }) => {
   await page.goto(`${FAKE_URL}/?fake=kit-link`);
   await page.getByRole('button', { name: 'Restore my records' }).click();
   await page.getByRole('button', { name: 'Not now' }).click();
@@ -219,12 +219,14 @@ test('the emergency kit prints right after setup, then only without the code', a
   await page.getByRole('link', { name: 'Print the emergency kit' }).click();
   const paper = page.getByRole('article', { name: 'Emergency kit' });
   await expect(paper).toContainText('This app holds records, not Bitcoin.');
-  await expect(paper).toContainText('Test it once a year');
+  // The square code only opens the app; the recovery code is never in a link.
+  await expect(paper.getByRole('img', { name: 'QR code that opens the app address' })).toBeVisible();
+  await expect(paper).not.toContainText('Test it once a year');
   await expect(paper).toContainText('NOT a Bitcoin seed phrase');
   await expect(paper).toContainText((code.split('-')[0] ?? ''));
   await page.getByLabel(/Your name, printed at the top/).fill('Alex Example');
   await expect(paper.getByRole('heading', { level: 1 })).toContainText('Alex Example');
-  await expect(paper.getByRole('img', { name: /fills in the recovery code/ })).toBeVisible();
+  await expect(paper.getByRole('img', { name: 'QR code that opens the app address' })).toBeVisible();
   await expectNoViolations(page);
   await page.getByRole('button', { name: 'Print', exact: true }).click();
   expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(1);

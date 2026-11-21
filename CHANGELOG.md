@@ -13,7 +13,8 @@
 
 ### Fixed
 
-- **Emergency kit**: stays on one letter page with many wallets (a print test checks six wallets, a long name and a code). The yearly test now says to stop at “Records restored” (no passkey, no new code), and the steps match what scanning the square code actually does. A note for the tax preparer appears when there are retirement wallets. Toasts no longer print.
+- **Recovery code from your password manager**: where the browser supports it (Chrome, Edge, Android), “Fill in from my password manager” puts in the saved recovery code, so you don't type 30 characters. The field still works with ordinary autofill elsewhere.
+- **Emergency kit**: stays on one letter page with many wallets (a print test checks six wallets, a long name and a code). The square code now only opens the app (the recovery code is typed), so using the kit no longer puts the code in browser history or asks for a new code and a new kit. The yearly test instructions moved off the paper; the app still reminds you. A note for the tax preparer appears when there are retirement wallets. Toasts no longer print.
 - **Adding a device whose passkey already syncs there**: "Add a passkey on this device" no longer fails when the passkey from your other device is already on this one (Google Password Manager, iCloud Keychain, a password manager). The app uses that passkey instead of making a second one, after checking that it opens these records. If it can't unlock records on this device, the app says so.
 - **Make a new recovery code without a passkey on the device**: the sheet now says a passkey is needed first, offers to add one there, then makes the code. Errors show inside the sheet instead of behind it.
 - After opening your records from the kit's QR code, the offer to make a new recovery code waits until this device has a passkey.

@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { cleanRecoveryCodeInput, formatRecoveryCode } from '../../vault/index.ts';
 import { cx } from '../../lib/cx.ts';
-import { CODE_LABEL } from './save-code.ts';
+import { CODE_LABEL, canFillFromPasswordManager, fillFromPasswordManager } from './save-code.ts';
 import { checkCompleteCode, describeRecoveryInput, type RecoveryInputView } from './recovery-input-logic.ts';
 
 /**
@@ -43,6 +43,16 @@ export function RecoveryInput({
     onValid?.(valid);
   }, [valid, onValid]);
 
+  const [canFill] = useState(canFillFromPasswordManager);
+  // Shown until the field changes.
+  const [fillNote, setFillNote] = useState<{ for: string; text: string } | null>(null);
+  const fill = async () => {
+    setFillNote(null);
+    const code = await fillFromPasswordManager();
+    if (code === null) setFillNote({ for: value, text: 'No saved recovery code was picked. Type it instead.' });
+    else onChange(formatRecoveryCode(cleanRecoveryCodeInput(code).chars));
+  };
+
   const tone = view.state === 'ok' ? 'text-amber' : view.state === 'bad' || view.state === 'typo' ? 'text-loss' : 'text-muted';
   return (
     <div className="flex flex-col gap-1.5">
@@ -76,8 +86,13 @@ export function RecoveryInput({
         )}
       />
       <p id={`${id}-status`} role="status" aria-live="polite" className={cx('m-0 min-h-5 text-xs', tone)}>
-        {view.message}
+        {fillNote?.for === value ? fillNote.text : view.message}
       </p>
+      {canFill && (
+        <button type="button" onClick={() => void fill()} className="flex min-h-11 w-fit items-center bg-transparent px-1 text-sm font-semibold text-amber underline-offset-2 hover:underline">
+          Fill in from my password manager
+        </button>
+      )}
     </div>
   );
 }
