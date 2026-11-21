@@ -18,7 +18,7 @@ Do not put real ledger data in the repository. The app keeps your data in encryp
 ### 1. Fork and clone
 
 ```sh
-gh repo fork <owner>/bitcoin-basis --clone
+gh repo fork ecuaryan/bitcoin-basis --clone
 cd bitcoin-basis
 gh repo set-default            # choose your fork if asked
 ```

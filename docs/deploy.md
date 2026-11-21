@@ -73,7 +73,7 @@ Actions -> Deploy -> Run workflow -> `ref` = an earlier tag (for example `v0.9.0
 Anyone can check that a live site matches the published source:
 
 ```sh
-git clone https://github.com/<owner>/bitcoin-basis && cd bitcoin-basis
+git clone https://github.com/ecuaryan/bitcoin-basis && cd bitcoin-basis
 git checkout v1.0.0
 npm ci --ignore-scripts
 npm run build                          # also runs tools/sri.mjs
