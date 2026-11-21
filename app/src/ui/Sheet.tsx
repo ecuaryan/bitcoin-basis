@@ -1,8 +1,10 @@
-import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cx } from '../lib/cx.ts';
 import { CloseIcon } from './icons.tsx';
 import { ChevronLeftIcon } from './more-icons.tsx';
+import { prefersReducedMotion } from './motion.ts';
+import { backdropOpacity, dragOffset, releaseVelocity, shouldCloseOnRelease } from './sheet-drag.ts';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -14,6 +16,8 @@ function focusables(root: HTMLElement): HTMLElement[] {
  * A slide-up sheet (a centered panel on wide screens). Focus moves inside when it opens,
  * stays inside (Tab wraps), Esc or the close button or the backdrop closes it,
  * and focus goes back to whatever opened it. The rest of the page is inert while it is open.
+ * On a phone it can also be dragged down to close: from the grab handle or title row, or from the body
+ * when that is scrolled to the top. The grab handle is decoration; the Close button is the accessible way.
  */
 export function Sheet({
   open,
@@ -38,8 +42,30 @@ export function Sheet({
     onCloseRef.current = onClose;
   });
 
+  const backdrop = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const gesture = useRef<Gesture | null>(null);
+  const timers = useRef<number[]>([]);
+
+  // A drag in the body must stop the browser from scrolling or pulling to refresh, which only a non-passive touchmove can do.
+  useEffect(() => {
+    const el = panel.current;
+    if (!open || !el) return;
+    const onTouchMove = (e: TouchEvent) => {
+      const g = gesture.current;
+      const t = e.touches[0];
+      if (!g || !t || g.zone !== 'body' || g.blocked) return;
+      if (g.active || (t.clientY - g.y0 > 0 && body.current !== null && body.current.scrollTop <= 0)) {
+        if (e.cancelable) e.preventDefault();
+      }
+    };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
+    const pending = timers.current;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const app = document.getElementById('root');
     app?.setAttribute('inert', '');
@@ -48,6 +74,9 @@ export function Sheet({
     const el = panel.current;
     if (el) (focusables(el)[0] ?? el).focus();
     return () => {
+      for (const id of pending) window.clearTimeout(id);
+      pending.length = 0;
+      gesture.current = null;
       app?.removeAttribute('inert');
       document.body.style.overflow = overflow;
       // Back to where the person was, once the sheet is gone.
@@ -56,6 +85,132 @@ export function Sheet({
   }, [open]);
 
   if (!open) return null;
+
+  function setPosition(offset: number, animate: boolean) {
+    const el = panel.current;
+    if (!el) return;
+    el.style.transition = animate ? 'transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1)' : 'none';
+    el.style.transform = offset === 0 && animate ? '' : `translateY(${offset}px)`;
+    if (backdrop.current) {
+      backdrop.current.style.transition = animate ? 'opacity 200ms ease-out' : 'none';
+      backdrop.current.style.opacity = String(backdropOpacity(offset, el.offsetHeight));
+    }
+  }
+
+  function springBack() {
+    const el = panel.current;
+    if (!el) return;
+    if (prefersReducedMotion()) {
+      el.style.transition = 'none';
+      el.style.transform = '';
+      if (backdrop.current) {
+        backdrop.current.style.transition = 'none';
+        backdrop.current.style.opacity = '';
+      }
+      return;
+    }
+    setPosition(0, true);
+    if (backdrop.current) backdrop.current.style.opacity = '';
+  }
+
+  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    gesture.current = null;
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (window.matchMedia('(min-width: 640px)').matches) return;
+    const target = e.target as HTMLElement;
+    const inHeader = target.closest('[data-sheet-grip]') !== null;
+    if (inHeader) {
+      if (target.closest('button, a, input, select, textarea')) return;
+    } else {
+      // The body: only a finger or pen (a mouse there is selecting text), never on a control that drags itself.
+      if (e.pointerType === 'mouse') return;
+      if (target.closest('input, textarea, select, [role="slider"], [contenteditable]')) return;
+    }
+    let blocked = false;
+    if (!inHeader) {
+      if (body.current === null || body.current.scrollTop > 0) blocked = true;
+      // Something scrollable inside the body that is not at its top keeps its own scroll.
+      for (let n: HTMLElement | null = target; n && n !== body.current && !blocked; n = n.parentElement) {
+        if (n.scrollTop > 0) blocked = true;
+      }
+    }
+    gesture.current = {
+      zone: inHeader ? 'grip' : 'body',
+      id: e.pointerId,
+      x0: e.clientX,
+      y0: e.clientY,
+      active: false,
+      blocked,
+      samples: [{ t: e.timeStamp, y: e.clientY }],
+    };
+  }
+
+  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const g = gesture.current;
+    if (!g || g.id !== e.pointerId || g.blocked) return;
+    const dy = e.clientY - g.y0;
+    const dx = e.clientX - g.x0;
+    if (!g.active) {
+      const vertical = Math.abs(dy) > Math.abs(dx);
+      if (g.zone === 'body') {
+        if (dy < -4) g.blocked = true;
+        else if (dy > 6 && vertical && body.current !== null && body.current.scrollTop <= 0) activate(e, g);
+      } else if (Math.abs(dy) > 4 && vertical) {
+        activate(e, g);
+      }
+      return;
+    }
+    g.samples.push({ t: e.timeStamp, y: e.clientY });
+    if (g.samples.length > 12) g.samples.shift();
+    setPosition(dragOffset(dy), false);
+  }
+
+  function activate(e: ReactPointerEvent<HTMLDivElement>, g: Gesture) {
+    g.active = true;
+    try {
+      panel.current?.setPointerCapture(e.pointerId);
+    } catch {
+      // The pointer is already gone; the release handler cleans up.
+    }
+    // Text under the finger should not get selected while the sheet moves.
+    window.getSelection()?.removeAllRanges();
+  }
+
+  function endDrag(e: ReactPointerEvent<HTMLDivElement>, cancelled: boolean) {
+    const g = gesture.current;
+    if (!g || g.id !== e.pointerId) return;
+    gesture.current = null;
+    if (!g.active) return;
+    const el = panel.current;
+    if (el?.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    if (!el) return;
+    const dy = e.clientY - g.y0;
+    g.samples.push({ t: e.timeStamp, y: e.clientY });
+    if (cancelled || !shouldCloseOnRelease(dy, el.offsetHeight, releaseVelocity(g.samples))) {
+      springBack();
+      return;
+    }
+    // Close through the same path as the Close button (it may ask first); if it stays open, settle back.
+    const settle = () => {
+      timers.current.push(
+        window.setTimeout(() => {
+          if (panel.current) springBack();
+        }, 60),
+      );
+    };
+    if (prefersReducedMotion()) {
+      onCloseRef.current();
+      settle();
+      return;
+    }
+    setPosition(el.offsetHeight, true);
+    timers.current.push(
+      window.setTimeout(() => {
+        onCloseRef.current();
+        settle();
+      }, 190),
+    );
+  }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key === 'Escape') {
@@ -81,35 +236,53 @@ export function Sheet({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" onKeyDown={onKeyDown}>
-      <div className="absolute inset-0 animate-fade-in bg-black/60" onClick={onClose} aria-hidden="true" />
+      <div ref={backdrop} className="absolute inset-0 animate-fade-in bg-black/60" onClick={onClose} aria-hidden="true" />
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(e) => endDrag(e, false)}
+        onPointerCancel={(e) => endDrag(e, true)}
         className={cx(
           'relative flex max-h-[88dvh] w-full animate-sheet-in flex-col rounded-t-[28px] border border-b-0 border-line bg-surface pb-[max(20px,env(safe-area-inset-bottom))] outline-none sm:max-w-lg sm:rounded-[28px] sm:border-b',
           className,
         )}
       >
-        <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-line sm:hidden" aria-hidden="true" />
-        <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-3">
-          {onBack ? (
-            <button type="button" onClick={onBack} aria-label="Back" className="-ml-2 flex size-11 flex-none items-center justify-center rounded-xl text-soft hover:text-text">
-              <ChevronLeftIcon size={20} />
+        <div data-sheet-grip className="touch-none sm:touch-auto">
+          <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-line sm:hidden" aria-hidden="true" />
+          <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-3">
+            {onBack ? (
+              <button type="button" onClick={onBack} aria-label="Back" className="-ml-2 flex size-11 flex-none items-center justify-center rounded-xl text-soft hover:text-text">
+                <ChevronLeftIcon size={20} />
+              </button>
+            ) : null}
+            <h2 id={titleId} className="min-w-0 flex-1 font-display text-xl font-semibold tracking-tight">
+              {title}
+            </h2>
+            <button type="button" onClick={onClose} aria-label="Close" className="flex size-11 items-center justify-center rounded-xl border border-line bg-bg text-soft hover:text-text">
+              <CloseIcon />
             </button>
-          ) : null}
-          <h2 id={titleId} className="min-w-0 flex-1 font-display text-xl font-semibold tracking-tight">
-            {title}
-          </h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="flex size-11 items-center justify-center rounded-xl border border-line bg-bg text-soft hover:text-text">
-            <CloseIcon />
-          </button>
+          </div>
         </div>
-        <div className="overflow-y-auto px-5 pb-2">{children}</div>
+        <div ref={body} className="overflow-y-auto px-5 pb-2">
+          {children}
+        </div>
       </div>
     </div>,
     document.body,
   );
 }
+
+type Gesture = {
+  zone: 'grip' | 'body';
+  id: number;
+  x0: number;
+  y0: number;
+  active: boolean;
+  blocked: boolean;
+  samples: { t: number; y: number }[];
+};
