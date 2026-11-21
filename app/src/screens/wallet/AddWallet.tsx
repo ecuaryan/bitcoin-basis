@@ -1,3 +1,4 @@
+import { cx } from '../../lib/cx.ts';
 import { uuidv7, type WalletEntry, type WalletType } from '@bitcoin-basis/engine';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useState } from 'react';
@@ -113,14 +114,28 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
 }
 
 /** A standalone "Add a wallet" button that opens the sheet. */
-export function AddWalletButton({ className }: { className?: string }) {
+export function AddWalletButton({ className, row = false }: { className?: string; /** A full-width row that sits with wallet cards. */ row?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="secondary" onClick={() => setOpen(true)} {...(className === undefined ? {} : { className })}>
-        <PlusIcon size={16} />
-        Add a wallet
-      </Button>
+      {row ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={cx(
+            'press-soft flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line bg-transparent text-sm font-semibold text-soft hover:border-accent/60 hover:text-text active:bg-surface',
+            className,
+          )}
+        >
+          <PlusIcon size={16} />
+          Add a wallet
+        </button>
+      ) : (
+        <Button variant="secondary" onClick={() => setOpen(true)} {...(className === undefined ? {} : { className })}>
+          <PlusIcon size={16} />
+          Add a wallet
+        </Button>
+      )}
       <AddWalletSheet open={open} onClose={() => setOpen(false)} />
     </>
   );

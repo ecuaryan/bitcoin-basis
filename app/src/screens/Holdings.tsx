@@ -159,7 +159,7 @@ function WalletReady({ view }: { view: HoldingsView }) {
         {view.wallets.map((w) => (
           <WalletLinkCard key={w.id} w={w} />
         ))}
-        <AddWalletButton className="mt-1 self-start" />
+        <AddWalletButton row className="mt-1" />
       </section>
     </DesktopCenter>
   );
@@ -240,7 +240,7 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
         {view.wallets.map((w) => (
           <WalletLinkCard key={w.id} w={w} />
         ))}
-        <AddWalletButton className="self-start" />
+        <AddWalletButton row />
       </section>
 
       <MoneyCard view={view} />
