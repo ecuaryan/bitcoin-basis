@@ -19,3 +19,8 @@ dist-types/
 playwright-report/
 dist-hashes.txt
 dist-fake/
+
+# Stryker mutation testing
+.stryker-tmp/
+engine/.stryker-incremental.json
+engine/reports/
