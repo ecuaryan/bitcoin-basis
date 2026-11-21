@@ -1,0 +1,6 @@
+wallet,acquired_utc,btc,sats,cost_usd,cost_per_btc,tier,origin
+Strike,2023-03-15 15:00:00,0.01000000,1000000,250.00,25000.00,Documented,Synthetic receipt A
+strike ,2023-04-15 15:00:00,0.01000000,1000000,260.00,26000.00,Documented,Synthetic receipt B
+Cold storage (multisig),2022-06-10 15:00:00,0.50000000,50000000,10000.00,20000.00,Reconstructed,Synthetic statement C
+Cold storage (multisig),2022-08-10 15:00:00,0.25000000,25000000,5500.00,22000.00,Estimated,Synthetic note D
+River,2024-01-20 15:00:00,0.00500000,500000,215.00,43000.00,Documented,Synthetic receipt E

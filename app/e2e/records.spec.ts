@@ -18,6 +18,37 @@ test('Records: entries with filters and history', async ({ page }) => {
   await expectNoViolations(page);
 });
 
+const NEW_WALLETS = new URL('./fixtures/opening-lots-new-wallets.csv', import.meta.url).pathname;
+
+test('Records: import creates the new wallets, then adds the coins', async ({ page }) => {
+  await setUp(page);
+  await page.getByRole('link', { name: 'Records', exact: true }).click();
+  await page.getByRole('link', { name: /^Wallets/ }).click();
+  await page.getByRole('button', { name: 'Add a wallet' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Add a wallet' });
+  await sheet.getByLabel('Name').fill('Strike');
+  await sheet.getByRole('button', { name: 'Add wallet' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Records', exact: true }).click();
+  await page.getByRole('link', { name: /^Import and/ }).click();
+  await page.getByLabel('Choose a spreadsheet (CSV)').setInputFiles(NEW_WALLETS);
+  const status = page.getByRole('status').filter({ hasText: 'will be created' });
+  await expect(status).toContainText('2 wallets will be created');
+  const made = page.getByRole('list', { name: 'New wallets' });
+  await expect(made).toContainText('Cold storage (multisig)');
+  await expect(made).toContainText('2 coins');
+  await expect(made).toContainText('River');
+  await expect(page.getByRole('radio', { name: 'Self-custody', checked: true })).toHaveCount(1);
+  await expect(status).toContainText('“strike” in the file is your wallet Strike.');
+  await expect(status).toContainText('5 coins · 0.7750 BTC · $16,225 cost');
+  await expect(status).toContainText('Documented');
+  await expectNoViolations(page);
+  await page.getByRole('button', { name: 'Create wallets and add 5 coins' }).click();
+  await expect(page.getByText('Added 5 coins and 2 wallets.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
+  await expect(page.getByText('Cold storage (multisig)').first()).toBeVisible();
+});
+
 test('Records: import opening lots with one bad row (a real book; the demo has no import)', async ({ page }) => {
   await setUp(page);
   await page.getByRole('link', { name: 'Records', exact: true }).click();
@@ -31,11 +62,11 @@ test('Records: import opening lots with one bad row (a real book; the demo has n
   await page.getByRole('link', { name: /^Import and/ }).click();
   await page.getByLabel('Choose a spreadsheet (CSV)').setInputFiles(FIXTURE);
   const problems = page.getByRole('list', { name: 'Problems' });
-  await expect(problems).toContainText('Row 3');
-  await expect(problems).toContainText('no wallet named "Nowhere"');
+  await expect(problems).toContainText('Row 4');
+  await expect(problems).toContainText('sats "abc"');
   await expectNoViolations(page);
-  await page.getByRole('button', { name: /Add the 2 good rows only/ }).click();
-  await expect(page.getByText('Added 2 lots.')).toBeVisible();
+  await page.getByRole('button', { name: /Create wallet and add the 3 coins/ }).click();
+  await expect(page.getByText('Added 3 coins and 1 wallet.')).toBeVisible();
 });
 
 test('Records: the demo has no import or restore, and says so', async ({ page }) => {

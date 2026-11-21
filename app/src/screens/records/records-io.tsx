@@ -1,5 +1,9 @@
-import { exportEntriesJson, exportOpeningLotsCsv, form8949Csv, yearOf } from '@bitcoin-basis/engine';
+import { exportEntriesJson, exportOpeningLotsCsv, form8949Csv, TIERS, yearOf, type WalletType } from '@bitcoin-basis/engine';
 import { useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
+import { TIER_LABEL } from '../../lib/origin.ts';
+import { Segmented } from '../../ui/Segmented.tsx';
+import { nowInstant } from '../log/model.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
@@ -10,7 +14,7 @@ import { DownloadIcon } from '../../ui/more-icons.tsx';
 import { newIdGenerator } from '../../ui/new-entry.ts';
 import { useToast } from '../../ui/Toast.tsx';
 import { yearsAvailable } from '../tax/tax-logic.ts';
-import { lotsTemplateCsv, previewJson, previewLots, withoutBadRows, type JsonPreview, type LotsPreview } from './io-logic.ts';
+import { chunk, lotsTemplateCsv, previewImport, previewJson, walletEntries, withoutBadRows, type ImportPreview, type JsonPreview } from './io-logic.ts';
 
 function FilePicker({ label, accept, onText }: { label: string; accept: string; onText(text: string, name: string): void }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -44,24 +48,52 @@ function NotInDemo({ title, label }: { title: string; label: string }) {
   );
 }
 
+const KIND_OPTIONS: readonly { value: WalletType; label: string }[] = [
+  { value: 'exchange', label: 'Exchange' },
+  { value: 'self-custody', label: 'Self-custody' },
+];
+const BATCH = 200;
+
 function ImportLots() {
   const { entries, state, append } = useLedger();
   const toast = useToast();
+  const navigate = useNavigate();
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
-  const [preview, setPreview] = useState<LotsPreview | null>(null);
+  const [types, setTypes] = useState<Record<string, WalletType>>({});
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [failed, setFailed] = useState(false);
+  const tz = state.settings.timeZone;
+  const run = (text: string) => previewImport(text, state.wallets, tz, newIdGenerator(entries), state.closedYears);
+  const preview = useMemo(() => (file ? run(file.text) : null), [file, state.wallets, state.closedYears]); // eslint-disable-line react-hooks/exhaustive-deps
+  const goodOnly = useMemo(() => (preview && preview.problems.length > 0 && preview.goodRows > 0 ? run(withoutBadRows(preview.text, preview.problems)) : null), [preview]); // eslint-disable-line react-hooks/exhaustive-deps
   const read = (text: string, name: string) => {
+    setTypes({});
+    setFailed(false);
     setFile({ name, text });
-    setPreview(previewLots(text, state.wallets, state.settings.timeZone, newIdGenerator(entries)));
   };
-  async function add(p: LotsPreview) {
-    await append(p.entries);
-    toast.show(`Added ${p.entries.length} ${p.entries.length === 1 ? 'lot' : 'lots'}.`);
+  async function add(p: ImportPreview) {
+    const batches = [...chunk(walletEntries(p.newWallets, types, nowInstant(Date.now()), tz), BATCH), ...chunk(p.entries, BATCH)];
+    const total = batches.reduce((s, b) => s + b.length, 0);
+    let done = 0;
+    setFailed(false);
+    setProgress({ done, total });
+    try {
+      for (const b of batches) {
+        await append(b);
+        done += b.length;
+        setProgress({ done, total });
+      }
+    } catch {
+      setFailed(true);
+      setProgress(null);
+      return;
+    }
+    const n = p.entries.length;
+    toast.show(`Added ${n} ${n === 1 ? 'coin' : 'coins'}${p.newWallets.length > 0 ? ` and ${p.newWallets.length} ${p.newWallets.length === 1 ? 'wallet' : 'wallets'}` : ''}.`);
     setFile(null);
-    setPreview(null);
+    setProgress(null);
+    navigate('/');
   }
-  const goodOnly = file && preview && preview.problems.length > 0 && preview.goodRows > 0 ? previewLots(withoutBadRows(file.text, preview.problems), state.wallets, state.settings.timeZone, newIdGenerator(entries)) : null;
-  const sats = preview?.entries.reduce((s, e) => s + e.sats, 0) ?? 0;
-  const cost = preview?.entries.reduce((s, e) => s + e.costCents, 0) ?? 0;
   return (
     <Card as="section" aria-label="Bring in your coins" className="flex flex-col gap-3 !rounded-[18px] !p-4">
       <h2 className="m-0 text-[15px] font-semibold">Bring in your coins from a spreadsheet</h2>
@@ -70,35 +102,23 @@ function ImportLots() {
         <button
           type="button"
           className="flex min-h-11 items-center gap-1.5 bg-transparent text-sm font-semibold text-amber underline-offset-2 hover:underline"
-          onClick={() => downloadText('bitcoin-basis-template.csv', lotsTemplateCsv(state.wallets.find((w) => !w.archived)?.name ?? 'My exchange', state.settings.timeZone))}
+          onClick={() => downloadText('bitcoin-basis-template.csv', lotsTemplateCsv(state.wallets.find((w) => !w.archived)?.name ?? 'My exchange', tz))}
         >
           <DownloadIcon size={16} /> Download a blank template
         </button>
       </div>
-      <p className="m-0 text-[13px] leading-[1.45] text-muted">One row per purchase. Wallet names must match yours. You&apos;ll see a preview before anything is added.</p>
+      <p className="m-0 text-[13px] leading-[1.45] text-muted">One row per purchase. A wallet name that is new gets created for you. You&apos;ll see a preview before anything is added.</p>
       <details className="text-[13px] text-muted">
         <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-soft">What columns?</summary>
         <p className="m-0 pb-1 leading-[1.5]">
-          wallet, acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked.
+          wallet (a name you have, or a new one), acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked.
         </p>
       </details>
       {file && preview && (
-        <div role="status" className="flex flex-col gap-2 rounded-2xl border border-line bg-bg p-3 text-sm">
+        <div role="status" className="flex flex-col gap-3 rounded-2xl border border-line bg-bg p-3 text-sm">
           <span className="text-xs text-muted">{file.name}</span>
           {preview.problems.length === 0 ? (
-            <>
-              <span className="font-semibold">
-                {preview.entries.length} {preview.entries.length === 1 ? 'lot' : 'lots'} ready: <Amount sats={sats} showUnit interactive={false} />, cost <Money cents={cost} />
-              </span>
-              {preview.warnings.map((w) => (
-                <span key={`${w.row}-${w.message}`} className="text-xs text-amber">
-                  Row {w.row}: {w.message}
-                </span>
-              ))}
-              <Button variant="primary" className="self-start" onClick={() => void add(preview)}>
-                Add {preview.entries.length} {preview.entries.length === 1 ? 'purchase' : 'purchases'}
-              </Button>
-            </>
+            <ReadyBlock p={preview} types={types} setTypes={setTypes} progress={progress} failed={failed} onAdd={() => void add(preview)} />
           ) : (
             <>
               <span className="font-semibold text-loss">
@@ -112,9 +132,7 @@ function ImportLots() {
                 ))}
               </ul>
               {goodOnly && goodOnly.problems.length === 0 && goodOnly.entries.length > 0 ? (
-                <Button variant="primary" className="self-start" onClick={() => void add(goodOnly)}>
-                  Add the {goodOnly.entries.length} good {goodOnly.entries.length === 1 ? 'row' : 'rows'} only
-                </Button>
+                <ReadyBlock p={goodOnly} types={types} setTypes={setTypes} progress={progress} failed={failed} onAdd={() => void add(goodOnly)} goodOnly />
               ) : (
                 <span className="text-xs text-muted">Fix the file and choose it again.</span>
               )}
@@ -123,6 +141,61 @@ function ImportLots() {
         </div>
       )}
     </Card>
+  );
+}
+
+function ReadyBlock({ p, types, setTypes, progress, failed, onAdd, goodOnly = false }: { p: ImportPreview; types: Record<string, WalletType>; setTypes(t: Record<string, WalletType>): void; progress: { done: number; total: number } | null; failed: boolean; onAdd(): void; goodOnly?: boolean }) {
+  const n = p.entries.length;
+  const coins = (k: number) => `${k.toLocaleString('en-US')} ${k === 1 ? 'coin' : 'coins'}`;
+  const mix = TIERS.filter((t) => (p.tiers[t] ?? 0) > 0).map((t) => `${TIER_LABEL[t]} ${Math.max(1, Math.round(((p.tiers[t] ?? 0) * 100) / p.sats))}%`);
+  const busy = progress !== null;
+  const make = p.newWallets.length > 0;
+  return (
+    <>
+      {make && (
+        <div className="flex flex-col gap-2">
+          <span className="font-semibold">
+            {p.newWallets.length} {p.newWallets.length === 1 ? 'wallet' : 'wallets'} will be created
+          </span>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="New wallets">
+            {p.newWallets.map((w) => (
+              <li key={w.entryId} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                <span className="min-w-0 break-words">
+                  {w.name} <span className="text-muted">· {coins(w.coins)}</span>
+                </span>
+                <Segmented<WalletType> label={`What kind of wallet is ${w.name}`} value={types[w.name] ?? w.guessedType} onChange={(v) => setTypes({ ...types, [w.name]: v })} options={KIND_OPTIONS} className="w-full sm:w-auto [&_button]:flex-1 [&_button]:whitespace-nowrap" />
+              </li>
+            ))}
+          </ul>
+          <span className="text-xs text-muted">Receipts for new wallets start as &ldquo;Email receipt&rdquo;. You can change that later.</span>
+        </div>
+      )}
+      {p.matched.map((m) => (
+        <span key={m.from} className="text-xs text-muted">
+          &ldquo;{m.from}&rdquo; in the file is your wallet {m.to}.
+        </span>
+      ))}
+      <div className="flex flex-col gap-0.5">
+        <span className="font-semibold">
+          {coins(n)} · <Amount sats={p.sats} showUnit short interactive={false} /> · <Money cents={p.costCents} precision="dollars" /> cost
+        </span>
+        <span className="text-xs text-muted">{mix.join(' · ')}</span>
+      </div>
+      {p.closedYears.length > 0 && (
+        <span className="text-xs text-amber">
+          Coins from {p.closedYears.join(' and ')} land in {p.closedYears.length === 1 ? 'a year you closed' : 'years you closed'}. That is allowed for imported coins.
+        </span>
+      )}
+      {p.warnings.map((w) => (
+        <span key={`${w.row}-${w.message}`} className="text-xs text-amber">
+          Row {w.row}: {w.message}
+        </span>
+      ))}
+      {failed && <span className="text-xs text-loss">Something went wrong. Nothing more was added. Try again; coins already added are skipped.</span>}
+      <Button variant="primary" className="self-start" disabled={busy} onClick={onAdd}>
+        {busy ? `Adding ${progress.done.toLocaleString('en-US')} of ${progress.total.toLocaleString('en-US')}…` : make ? `Create ${p.newWallets.length === 1 ? 'wallet' : 'wallets'} and add ${goodOnly ? 'the ' : ''}${coins(n)}` : `Add ${goodOnly ? 'the ' : ''}${coins(n)}`}
+      </Button>
+    </>
   );
 }
 

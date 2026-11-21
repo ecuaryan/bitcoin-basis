@@ -1,5 +1,5 @@
 wallet,acquired_utc,btc,sats,cost_usd,cost_per_btc,tier,origin
 Strike,2023-03-15 15:00:00,0.01000000,1000000,250.00,25000.00,Documented,Synthetic receipt A
 River,2023-06-10 15:00:00,0.02000000,2000000,560.00,28000.00,Reconstructed,Synthetic statement B
-Nowhere,2023-09-01 15:00:00,0.01000000,1000000,270.00,27000.00,Documented,Synthetic receipt C
+Strike,2023-09-01 15:00:00,0.01000000,abc,270.00,27000.00,Documented,Synthetic receipt C
 Strike,2024-01-20 15:00:00,0.00500000,500000,215.00,43000.00,Estimated,Synthetic note D
