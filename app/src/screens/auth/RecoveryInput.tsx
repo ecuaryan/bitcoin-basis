@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { cleanRecoveryCodeInput, formatRecoveryCode } from '../../vault/index.ts';
 import { cx } from '../../lib/cx.ts';
+import { CODE_LABEL } from './save-code.ts';
 import { checkCompleteCode, describeRecoveryInput, type RecoveryInputView } from './recovery-input-logic.ts';
 
 /**
@@ -48,6 +49,8 @@ export function RecoveryInput({
       <label htmlFor={id} className="text-[13px] text-soft">
         {label}
       </label>
+      {/* Lets a password manager match the saved code (it is stored under this name) and fill it in. */}
+      <input type="text" name="username" tabIndex={-1} aria-hidden="true" autoComplete="username" value={CODE_LABEL} readOnly className="sr-only" />
       <input
         id={id}
         value={value}
@@ -59,7 +62,8 @@ export function RecoveryInput({
         }}
         autoFocus={autoFocus}
         autoCapitalize="characters"
-        autoComplete="off"
+        autoComplete="current-password"
+        name="password"
         autoCorrect="off"
         spellCheck={false}
         inputMode="text"

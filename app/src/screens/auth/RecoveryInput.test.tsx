@@ -26,6 +26,15 @@ async function mount(start: string) {
 }
 
 describe('RecoveryInput states', () => {
+  it('exposes a username and current-password pair for password managers', async () => {
+    await mount('');
+    expect(app?.container.querySelector('input[autocomplete="username"]')?.getAttribute('value')).toBe('Bitcoin Basis recovery code');
+    expect(app?.container.querySelector('input[autocomplete="current-password"]')).not.toBeNull();
+  });
+  it('an autofilled code with dashes is accepted', async () => {
+    await mount((await recoveryCodeFromSecret(new Uint8Array(16).fill(7))).text);
+    expect(valid).toBe(true);
+  });
   it('empty shows nothing', async () => {
     await mount('');
     expect(status()).toBe('');
@@ -38,7 +47,7 @@ describe('RecoveryInput states', () => {
   it('a wrong character is named', async () => {
     await mount('7F3U');
     expect(status()).toContain('"U" is not used');
-    expect(app?.container.querySelector('input')?.getAttribute('aria-invalid')).toBe('true');
+    expect(app?.container.querySelector('input[name="password"]')?.getAttribute('aria-invalid')).toBe('true');
   });
   it('a complete code with a typo is flagged, a good one is accepted', async () => {
     const good = (await recoveryCodeFromSecret(new Uint8Array(16).fill(9))).text;

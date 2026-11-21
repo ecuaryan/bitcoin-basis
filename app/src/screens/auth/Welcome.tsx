@@ -9,6 +9,7 @@ import { PrinterIcon } from '../../ui/auth-icons.tsx';
 import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
 import { BigButton, BigLink, CodeGroups, ErrorLine, Frame, LogoMark, NotSeedPhrase, TextButton } from './parts.tsx';
 import { RecoveryInput } from './RecoveryInput.tsx';
+import { SaveCode } from './SaveCode.tsx';
 import { matchesGroup, normalizeSetupCode } from './setup-logic.ts';
 import { useTitle } from '../../ui/use-title.ts';
 
@@ -219,6 +220,7 @@ function CodeStep({ code, onNext }: { code: string; onNext(): void }) {
         <CodeGroups code={code} />
         <NotSeedPhrase className="border-t border-line pt-3" />
       </section>
+      <SaveCode code={code} className="mt-4" />
       <div className="min-h-6 flex-1 lg:min-h-10 lg:flex-none" />
       <div className="flex flex-col gap-2.5">
         <BigLink to="/kit">

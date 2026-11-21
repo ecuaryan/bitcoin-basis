@@ -10,6 +10,7 @@ import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
 import { QrCode } from '../../ui/QrCode.tsx';
 import { cx } from '../../lib/cx.ts';
 import { KIT_STEPS, kitWalletRows, longDate, oneYearLater } from './kit-logic.ts';
+import { SaveCode } from './SaveCode.tsx';
 import { useTitle } from '../../ui/use-title.ts';
 
 /**
@@ -103,6 +104,7 @@ export function Kit() {
               I saved it. Remove the code from this screen
             </button>
             )}
+            <SaveCode code={code} className="mt-1" />
           </div>
         )}
       </div>
