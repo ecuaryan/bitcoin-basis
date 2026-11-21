@@ -62,3 +62,18 @@ test('Records: changing settings changes the Sell tax', async ({ page }) => {
   expect(await oldest.innerText()).not.toBe(before);
   await expect(oldest).not.toContainText('Tax this adds$0.00'.replace('$', '\n$'));
 });
+
+test('Records: test the emergency kit sheet, then the reminder hides', async ({ page }) => {
+  await openDemo(page);
+  await page.goto('/records');
+  await page.getByRole('region', { name: 'Needs attention' }).getByRole('button', { name: 'Test' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Test your emergency kit' });
+  await expect(dialog.getByRole('listitem')).toHaveCount(3);
+  await expectNoViolations(page);
+  await dialog.getByRole('button', { name: "I can't find my code" }).click();
+  await expect(dialog).toContainText('the old code stops working');
+  await expectNoViolations(page);
+  await dialog.getByRole('button', { name: 'It worked' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Needs attention' })).toHaveCount(0);
+});

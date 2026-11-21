@@ -6,7 +6,7 @@ import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
 import type { LockReason } from '../../vault/index.ts';
 import { FaceIdIcon, FingerprintIcon, KeyIcon } from '../../ui/auth-icons.tsx';
 import { ShieldIcon } from '../../ui/more-icons.tsx';
-import { BigButton, ErrorLine, Frame, LogoMark, NotSeedPhrase, TextButton } from './parts.tsx';
+import { BigButton, ErrorLine, Frame, Glow, LogoMark, NotSeedPhrase, TextButton } from './parts.tsx';
 import { RecoveryInput } from './RecoveryInput.tsx';
 
 /** A gentle line about why the app locked itself (nothing when the person pressed Lock). */
@@ -48,9 +48,13 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
   };
 
   return (
-    <Frame glowTop={140} className="items-center pb-9">
+    <Frame glowTop={null} className="items-center pb-9">
       <div className="relative flex flex-1 flex-col items-center justify-center gap-[22px] pt-10">
-        <LogoMark size={96} />
+        <div className="relative">
+          {/* The glow follows the logo, which is centered vertically at every screen height. */}
+          <Glow className="top-1/2 -translate-y-1/2" />
+          <LogoMark size={96} />
+        </div>
         <h1 className="m-0 font-display text-[30px] font-semibold tracking-[-0.02em]">Bitcoin Basis</h1>
         <p className="m-0 max-w-[280px] text-center text-[15px] leading-normal text-soft">Your records are encrypted on this device. Only you can open them.</p>
         {reason !== null && <p className="m-0 text-center text-[13px] text-muted">{reason}</p>}

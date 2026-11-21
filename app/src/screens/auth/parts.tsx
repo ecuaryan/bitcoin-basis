@@ -1,19 +1,27 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from 'react';
 import { Link, type LinkProps } from 'react-router';
 import { cx } from '../../lib/cx.ts';
 import { InfoIcon } from '../../ui/more-icons.tsx';
 
 /** Full-screen frame for first run and unlock: dark page, soft orange glow, no tabs. */
-export function Frame({ children, glowTop = 60, className }: { children: ReactNode; glowTop?: number; className?: string }) {
+/** `glowTop: null` turns the page glow off (for screens that center a glow behind their own content). */
+export function Frame({ children, glowTop = 60, className }: { children: ReactNode; glowTop?: number | null; className?: string }) {
   return (
     <div className="relative min-h-dvh overflow-x-clip bg-bg text-text">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 h-[420px] w-[520px] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(247_147_26/0.22),rgb(247_147_26/0))]"
-        style={{ top: glowTop }}
-      />
+      {glowTop !== null && <Glow style={{ top: glowTop }} />}
       <main className={cx('relative mx-auto flex min-h-dvh w-full max-w-[440px] flex-col px-6 pb-8', className)}>{children}</main>
     </div>
+  );
+}
+
+/** Soft orange glow, 520×420, horizontally centered. */
+export function Glow({ style, className }: { style?: CSSProperties; className?: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cx('pointer-events-none absolute left-1/2 h-[420px] w-[520px] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(247_147_26/0.22),rgb(247_147_26/0))]', className)}
+      {...(style ? { style } : {})}
+    />
   );
 }
 

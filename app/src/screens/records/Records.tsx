@@ -5,13 +5,13 @@ import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { formatMoney } from '../../lib/format.ts';
 import { useIsWide } from '../../ui/AppShell.tsx';
-import { buttonClasses } from '../../ui/Button.tsx';
-import { ChevronLeftIcon, SearchIcon, ShieldIcon } from '../../ui/more-icons.tsx';
+import { ChevronLeftIcon, SearchIcon } from '../../ui/more-icons.tsx';
 import { PageHeader } from '../../ui/PageHeader.tsx';
 import { EntriesView, EntryRow, EntrySheet } from './records-entries.tsx';
 import { GivingView } from './records-giving.tsx';
 import { ImportExportView } from './records-io.tsx';
 import { ClosedYearsView, WalletsView } from './records-misc.tsx';
+import { KitCard } from './records-kit.tsx';
 import { SecurityView } from './records-security.tsx';
 import { SettingsView } from './records-settings.tsx';
 import { useVaultStatusOptional } from '../../data/vault-provider.tsx';
@@ -35,23 +35,6 @@ function Tile({ to, title, sub, hot, active, className }: { to: string; title: s
       <span className="text-[13px] font-semibold leading-tight">{title}</span>
       <span className={cx('text-xs', hot ? 'font-semibold text-amber' : 'text-muted')}>{sub}</span>
     </Link>
-  );
-}
-
-function KitCard() {
-  return (
-    <section aria-label="Needs attention" className="flex items-center gap-3 rounded-[18px] border-[1.5px] border-accent bg-[linear-gradient(180deg,rgb(247_147_26/0.16),rgb(247_147_26/0.04))] px-4 py-3.5">
-      <span className="flex size-10 flex-none items-center justify-center rounded-xl bg-accent text-bg">
-        <ShieldIcon size={20} />
-      </span>
-      <div className="flex flex-1 flex-col gap-0.5">
-        <span className="text-[15px] font-semibold">Test your emergency kit</span>
-        <span className="text-xs leading-[1.4] text-soft">Takes two minutes in a private window.</span>
-      </div>
-      <Link to="/kit" className={buttonClasses('primary', 'flex-none text-sm text-bg no-underline hover:text-bg')}>
-        Test
-      </Link>
-    </section>
   );
 }
 
@@ -133,7 +116,7 @@ export function Records() {
           <h1 className="m-0 font-display text-xl font-semibold">Records</h1>
         </div>
       )}
-      {(wide || view === null) && <KitCard />}
+      {(wide || view === null) && <KitCard today={today} />}
       {(wide || view === null) && tiles}
       {view === null && recent}
       {body}
