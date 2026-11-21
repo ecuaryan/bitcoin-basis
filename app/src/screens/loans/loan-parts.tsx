@@ -205,7 +205,7 @@ export function LoanNudge() {
   const [snoozed, setSnoozed] = useState<string | null>(null);
   if (nudge === null || snoozed === nudge.cycleEnd || loanNudgeSnoozed(nudge.cycleEnd)) return null;
   return (
-    <section aria-label="Loan payment reminder" className="flex items-center gap-1 rounded-2xl border border-line bg-surface pl-3.5">
+    <section aria-label="Loan payment reminder" className="flex w-full items-center gap-1 rounded-2xl border border-line bg-surface pl-3.5 lg:max-w-[640px]">
       <Link to={`/loans/${nudge.loanId}?pay=1`} className="flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-0.5 py-2 text-text no-underline hover:text-text">
         <span className="flex items-center gap-1 text-sm font-semibold">
           Log your {nudge.name} payment

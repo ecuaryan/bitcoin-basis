@@ -17,6 +17,10 @@
 
 ### Fixed
 
+- **Choosing Idaho (or Single) now saves.** A first choice equal to the built-in default was dropped as "no change" while the screen said Saved; it is now recorded, and Saved only shows when something was written.
+- Holdings shows the **average cost of all your Bitcoin** (taxable and retirement) under the total, when every cost is known.
+- **Money in and out** says what each number counts, and when imported coins are not counted, says so and links to where to add money put in before.
+- Reminder banners on Holdings no longer stretch across wide screens.
 - The fingerprint on the Unlock button is a clearer, filled glyph (Material Design, Apache 2.0; see THIRD-PARTY-NOTICES.md).
 - **Newest first**: a wallet's coins, a retirement wallet's purchases, a loan's purchases, a year's coins, income on Tax season, and the giving lists now show the latest at the top, like entries and payments already did. The coin picker for a sale keeps oldest first, the order coins are used.
 - **Every date shows its year** (Oct 23, 2026), everywhere, and lines with a date wrap instead of cutting it off.

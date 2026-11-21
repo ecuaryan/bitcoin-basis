@@ -115,3 +115,17 @@ test('Settings › App shows the version and build, linked to the commit', async
   }
   await expect(page.getByRole('link', { name: 'Verify this build' })).toHaveAttribute('href', /docs\/deploy\.md#verifying-a-deployment$/);
 });
+
+test('choosing the default state (Idaho) or filing status (Single) is saved, and stays after leaving Settings', async ({ page }) => {
+  await setUp(page);
+  await go(page, '/settings');
+  await page.getByLabel('State').selectOption('ID');
+  await expect(page.getByText('Saved ✓')).toBeVisible();
+  await page.getByLabel('Filing status').selectOption('single');
+  await expect(page.getByText('Saved ✓')).toBeVisible();
+  await page.waitForTimeout(1800);
+  await go(page, '/');
+  await go(page, '/settings');
+  await expect(page.getByLabel('State')).toHaveValue('ID');
+  await expect(page.getByLabel('Filing status')).toHaveValue('single');
+});

@@ -1,10 +1,11 @@
 import { mulDivRoundHalfUp, SATS_PER_BTC, type Lot, type Tier, type Worth } from '@bitcoin-basis/engine';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { dayChangeTenthsPercent, type PriceQuote } from '../data/price.ts';
 import { cx } from '../lib/cx.ts';
 import { countOf, formatMoney, shortDate } from '../lib/format.ts';
 import type { HoldingsView, StackYear, WalletCard } from '../lib/holdings-view.ts';
+import { buildItems } from '../lib/entry-list.ts';
 import { describeOrigin, TIER_HELP, TIER_LABEL } from '../lib/origin.ts';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { Amount, Money } from '../ui/Amount.tsx';
@@ -307,19 +308,40 @@ export function DocumentationCard({ view }: { view: HoldingsView }) {
   );
 }
 
+/** What the imported coins (opening lots, not removed) cost in all. Money in counts only purchases logged here. */
+function importedCostCents(entries: Parameters<typeof buildItems>[0]): number {
+  return buildItems(entries).reduce((sum, i) => (!i.deleted && i.current.kind === 'opening-lot' ? sum + i.current.costCents : sum), 0);
+}
+
 export function MoneyCard({ view }: { view: HoldingsView }) {
-  const help = useHelp('What do these mean?', 'In is what you paid for coins. Out is what sales, spending and fees paid in BTC brought in.');
+  const { entries, state } = useLedger();
+  const imported = useMemo(() => importedCostCents(entries), [entries]);
+  const earlier = state.settings.earlierMoneyInCents;
+  const help = useHelp(
+    'What do these mean?',
+    'Put in: dollars you paid for purchases logged in this app, plus anything you entered in Settings for before you started. Taken out: dollars your sales and spending brought in. Not used in tax math.',
+  );
   return (
     <Card as="section" aria-label="Money in and out" className="flex flex-col gap-3">
       <h2 className="m-0 flex items-baseline gap-1 text-[15px] font-semibold">
         Money in and out
         {help.button}
       </h2>
+      {help.panel}
       <dl className="m-0 grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-0.5">
           <dt className="text-xs text-muted">Put in</dt>
           <dd className="m-0 text-xl font-semibold">
             <Money cents={view.moneyInCents} precision="dollars" />
+          </dd>
+          <dd className="m-0 text-xs text-muted">
+            {earlier > 0 ? (
+              <>
+                Purchases here, plus <Money cents={earlier} precision="dollars" /> from before
+              </>
+            ) : (
+              'Purchases logged here'
+            )}
           </dd>
         </div>
         <div className="flex flex-col gap-0.5">
@@ -327,9 +349,19 @@ export function MoneyCard({ view }: { view: HoldingsView }) {
           <dd className="m-0 text-xl font-semibold">
             <Money cents={view.moneyOutCents} precision="dollars" />
           </dd>
+          <dd className="m-0 text-xs text-muted">From sales and spending</dd>
         </div>
       </dl>
-      {help.panel}
+      {imported > 0 && earlier === 0 ? (
+        <p className="m-0 text-xs leading-[1.45] text-soft">
+          Your imported coins (cost <Money cents={imported} precision="dollars" />) are not counted here. To count money you put in before
+          using this app, enter it in{' '}
+          <Link to="/settings#taxes" className="font-semibold text-amber">
+            Settings, under Your records
+          </Link>
+          .
+        </p>
+      ) : null}
     </Card>
   );
 }
@@ -435,6 +467,20 @@ export function HeroGainLine({ view, className }: { view: HoldingsView; classNam
   return (
     <span className={className}>
       <GainWords worth={total} precision="dollars" className="font-semibold" /> <span className="text-muted">unrealized</span>
+    </span>
+  );
+}
+
+/**
+ * `Average cost $43,450.12 per BTC` for all your Bitcoin (taxable and retirement), under the all-Bitcoin hero. Shown only
+ * when every coin's cost is known, so it never mixes in coins without a cost.
+ */
+export function HeroAverageLine({ view, className }: { view: HoldingsView; className?: string }) {
+  const total = view.all?.total;
+  if (total === undefined || total.sats <= 0 || total.unknownCostSats > 0) return null;
+  return (
+    <span className={cx('text-muted', className)}>
+      Average cost <Money cents={mulDivRoundHalfUp(total.costCents, SATS_PER_BTC, total.sats)} className="font-semibold text-soft" /> per BTC
     </span>
   );
 }

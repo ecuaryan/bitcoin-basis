@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { setUp } from './fake.ts';
-import { go } from './helpers.ts';
+import { go, openDemo } from './helpers.ts';
 
 /** Open the app with the demo book, amounts shown. Network calls to mempool.space are never made (demo uses a fixed price). */
 export async function openHoldingsWithDemo(page: Page): Promise<void> {
@@ -126,4 +126,9 @@ test('Holdings without a retirement account looks as before: the hero is taxable
   await expect(page.getByRole('region', { name: 'Taxable and retirement' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Taxable', exact: true })).toHaveCount(0);
   await expect(page.getByText(/^Unrealized gain/)).toBeVisible();
+});
+
+test('the all-Bitcoin hero shows the average cost of all your Bitcoin', async ({ page }) => {
+  await openDemo(page);
+  await expect(page.getByText(/Average cost \$[\d,]+\.\d\d per BTC/).first()).toBeVisible();
 });

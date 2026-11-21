@@ -76,7 +76,11 @@ export function SettingsView() {
       const shown = draftFrom({ ...s, carryforwardByYear: { ...s.carryforwardByYear, [String(thisYear)]: copied } }, thisYear);
       setDraft((cur) => ({ ...cur, carryforwardSt: shown.carryforwardSt, carryforwardLt: shown.carryforwardLt }));
     }
-    await write({ kind: 'settings', patch });
+    // A first choice of filing status or state is saved even when it equals the built-in default.
+    const firstChoice = (!set.filing && 'filingStatus' in patch) || (!set.state && 'state' in patch);
+    const written = await write({ kind: 'settings', patch }, { evenIfSame: firstChoice });
+    // Never say "Saved" for something that was not written.
+    if (written === null) return;
     setSavedKey(relabelYear ? 'carryforwardLt' : key);
     toast.show('Saved.', { success: true });
   }
@@ -189,7 +193,7 @@ export function SettingsView() {
 
       <Group title="Your records">
         <SavedMark show={saved('earlierMoneyIn')}>
-          <MoneyInput label="Dollars you put in before using this app" value={draft.earlierMoneyIn} {...num('earlierMoneyIn')} error={err('earlierMoneyIn')} hint="Shown in Holdings. Never used in tax math." />
+          <MoneyInput label="Dollars you put in before using this app" value={draft.earlierMoneyIn} {...num('earlierMoneyIn')} error={err('earlierMoneyIn')} hint="Shown in Holdings, under Money in and out. Never used in tax math." />
         </SavedMark>
         <SavedMark show={saved('timeZone')}>
           <SelectBox label="Time zone" value={draft.timeZone} onChange={(e) => pick('timeZone', e.target.value)}>

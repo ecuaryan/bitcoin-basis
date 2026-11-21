@@ -23,6 +23,7 @@ import { PriceChart } from '../ui/PriceChart.tsx';
 import {
   DocumentationCard,
   GainText,
+  HeroAverageLine,
   HeroGainLine,
   heroFigures,
   MoneyCard,
@@ -244,6 +245,7 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
             <PriceLine quote={quote} status={status} error={error} className="text-[13px]" />
           </span>
           <HeroGainLine view={view} className="text-[13px]" />
+          <HeroAverageLine view={view} className="text-[13px]" />
         </div>
       </section>
 
@@ -331,6 +333,7 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
             <PriceLine quote={quote} status={status} error={error} className="text-sm" />
           </div>
           <HeroGainLine view={view} className="text-sm" />
+          <HeroAverageLine view={view} className="text-sm" />
         </section>
         <div className="flex items-center gap-2.5">
           <SyncIndicator />
