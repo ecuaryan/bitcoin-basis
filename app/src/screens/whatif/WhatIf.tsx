@@ -19,7 +19,7 @@ export function WhatIf() {
         label="What if"
         value={mode}
         onChange={setMode}
-        className="max-w-sm lg:max-w-xs"
+        className="w-full lg:max-w-xs"
         options={[
           { value: 'sell', label: 'Sell' },
           { value: 'borrow', label: 'Borrow' },
