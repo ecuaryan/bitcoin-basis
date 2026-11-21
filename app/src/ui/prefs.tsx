@@ -5,7 +5,7 @@ export type Unit = 'btc' | 'sats' | 'usd';
 const UNITS: readonly Unit[] = ['btc', 'sats', 'usd'];
 
 export interface Prefs {
-  /** Amounts are hidden (on by default). */
+  /** Amounts are hidden (off by default; only the user turns it on). */
   hidden: boolean;
   /** Hidden amounts are showing right now because someone is holding. */
   peeking: boolean;
@@ -40,7 +40,7 @@ function write(key: string, value: string): void {
 const PrefsContext = createContext<Prefs | null>(null);
 
 export function PrefsProvider({ children, initialHidden }: { children: ReactNode; initialHidden?: boolean }) {
-  const [hidden, setHiddenState] = useState<boolean>(() => initialHidden ?? read(HIDDEN_KEY) !== '0');
+  const [hidden, setHiddenState] = useState<boolean>(() => initialHidden ?? read(HIDDEN_KEY) === '1');
   const [peeking, setPeeking] = useState(false);
   const [unit, setUnit] = useState<Unit>(() => {
     const saved = read(UNIT_KEY);

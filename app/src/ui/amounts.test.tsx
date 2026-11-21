@@ -71,7 +71,7 @@ describe('hide amounts', () => {
     expect(text()).not.toMatch(/\d/);
   });
 
-  it('is on by default for a first visit', async () => {
+  it('is off by default for a first visit; only the user turns it on', async () => {
     app = await renderApp(<Both />, {});
     // renderApp passes hidden=false; mount without the override to see the real default
     app.unmount();
@@ -84,7 +84,7 @@ describe('hide amounts', () => {
       return <span>{usePrefs().hidden ? 'hidden' : 'shown'}</span>;
     }
     await act(async () => root.render(<PrefsProvider><Probe /></PrefsProvider>));
-    expect(document.body.textContent).toBe('hidden');
+    expect(document.body.textContent).toBe('shown');
     act(() => root.unmount());
   });
 

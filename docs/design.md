@@ -8,7 +8,7 @@ For agents building the remaining screens. The approved mockups are the source o
 2. Every number is tabular (`font-variant-numeric: tabular-nums` is set globally). Big numbers use `font-display` (Space Grotesk); everything else Inter.
 3. Money is cents, BTC is sats, integers only. Format with `lib/format.ts`; show them with `<Money>` and `<Amount>` so hide-amounts works. Never print a raw number that is the user's money.
 4. Whole-dollar display rounds toward zero (never overstates a gain).
-5. Hide amounts is ON by default. Anything showing the user's balances, cost, gain or income must go through `Money`/`Amount` (or `maskDigits`). Market price is public and may be shown plainly.
+5. Hide amounts is OFF by default; only the user turns it on (the choice is remembered on that device). Anything showing the user's balances, cost, gain or income must go through `Money`/`Amount` (or `maskDigits`). Market price is public and may be shown plainly.
 6. Motion: only CSS (`animate-*` tokens) or `useCountUp`; both honor `prefers-reduced-motion` (CSS has a global override, the hook jumps to the end value). No animation libraries.
 7. Touch targets 44px (`min-h-11`); dense list rows at least 24px. Interactive elements never nest (no `Amount` button inside a link: use `interactive={false}`).
 8. Plain language, no jargon, no emoji. Estimates are labeled as estimates.
