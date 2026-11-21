@@ -13,19 +13,28 @@
 
 ### Changed
 
+- **A price chart with every day in it**: the Holdings chart now draws one point per day for the last three years (it had about 13 quarterly points, so peaks went missing), and marks the highest price with a dot and its date ("High $126,073 · Oct 6, 2025"; Hide amounts masks the dollars). The line is gently smoothed at phone width without hiding the high; scrubbing steps day by day (Page Up/Down jump about a month). The history comes from a new Worker route, `GET /api/price/series?days=`, which asks mempool once for its whole history, keeps each day's last and highest price in integer cents, and caches the result an hour; the app keeps a copy for the hour (`bb.price-series.v1`). With an older server, the chart falls back to the quarterly lookups. The demo and the test build have a made-up daily series.
 - **A calmer price line**: the red "Price may be out of date" is gone. Holdings shows a small refresh button beside the price (it spins while it loads). When the price shown is more than 5 minutes old, or is a kept price the server sent, its time follows it quietly ("· as of 3:12 PM", amber after 30 minutes); a current price shows no time. Sell shows the same time beside its price. A failed refresh keeps the price it had, and the app tries again after 15 s, 30 s and 60 s, then every minute (it used to back off up to 15 minutes).
 - **The live price rides out a flaky source**: the Worker asks mempool once more after a failure, then Coinbase's public spot price (`COINBASE_URL`, `off` to skip it), and keeps the last good price for 6 hours. With all of them down it answers that price marked `stale` with the time it is from, and a 502 only when it has none. `/api/price` now also says when the price is from (`asOf`) and where (`source`). Historical prices still come from mempool alone.
 - A purchase logged "now" uses the live price only while it is recent; a kept price from hours ago is no longer taken as the price now, and the note names Coinbase when the price came from there.
 - **"Unrealized" instead of "on paper"**: Holdings' gain card is now "Unrealized gain", with a "?" that says what it means (what you would gain if you sold today; no tax is due until you sell), and wallet pages say "unrealized" too.
 
+- **"Lots" instead of "coins"** wherever a row is Bitcoin acquired at one time for one cost: the wallet page ("Lots, newest first"), the year sheet ("2023 lots"), the sale picker ("Pick lots", "Tick the lots to sell. The last one is trimmed to fit.", "184 lots ticked"), Sell ("Lots used", "Lots you picked"), the Log forms ("Which lots", "Pick lots"), Review, entry details and the import preview ("5 lots", "1 lot paid with a loan"). One "?" says what a lot is where lots first appear: "A lot is Bitcoin you got at one time for one cost, usually one purchase. Taxes are worked out lot by lot."
+- **Loan page: Bought and Still held.** "Bought" is now everything the loan's purchases bought (new `loanSummary().boughtSats`); when some has left or is frozen, "Still held" follows with a note saying how the rest left ("0.0037 6981 BTC later given away, sold, spent or paid as network fees", only the ways that apply). The break-even and "If you paid it off today" "?" say they use the Bitcoin still held, and what interest is in them.
+- **Back goes back.** The back button on a wallet, a loan and a Records view now goes back in history when the app brought you there, so you return to the page you came from at the place you left it (as the browser's and phone's back already did); opened directly, it still goes to Holdings (or Records).
+
+### Removed
+
+- **Money in and out** is gone from Holdings, and with it the Settings field "Dollars you put in before using this app". The time zone stays under Your records.
+- **Giving** is gone: the Settings group, the Records tile and page, and the "Giving on this sale" line on Sell. Logging Bitcoin you gave away (the Gave tab) is unchanged. Records written by older versions (giving settings, giving payments, dollars put in before) still restore from a backup and replay without errors; they are kept, ignored and not listed. The engine no longer has `givingDue`, `givingOnSale`, `SalePlan.givingCents`, `holdings().moneyPutInCents`, `yearSummary().givingPaidCents` or `LedgerState.buyCostCents`/`givingPaid`.
+
 ### Fixed
 
 - **Choosing Idaho (or Single) now saves.** A first choice equal to the built-in default was dropped as "no change" while the screen said Saved; it is now recorded, and Saved only shows when something was written.
 - Holdings shows the **average cost of all your Bitcoin** (taxable and retirement) under the total, when every cost is known.
-- **Money in and out** says what each number counts, and when imported coins are not counted, says so and links to where to add money put in before.
 - Reminder banners on Holdings no longer stretch across wide screens.
 - The fingerprint on the Unlock button is a clearer, filled glyph (Material Design, Apache 2.0; see THIRD-PARTY-NOTICES.md).
-- **Newest first**: a wallet's coins, a retirement wallet's purchases, a loan's purchases, a year's coins, income on Tax season, and the giving lists now show the latest at the top, like entries and payments already did. The coin picker for a sale keeps oldest first, the order coins are used.
+- **Newest first**: a wallet's coins, a retirement wallet's purchases, a loan's purchases, a year's coins, and income on Tax season now show the latest at the top, like entries and payments already did. The coin picker for a sale keeps oldest first, the order coins are used.
 - **Every date shows its year** (Oct 23, 2026), everywhere, and lines with a date wrap instead of cutting it off.
 - **Icons where they help**: the desktop Hide amounts and Lock buttons, Records tiles, Settings sections, the entries search, and actions with a clear symbol (add, import, download, print, passkey, edit, remove, check now, forget this device). One style and size throughout; see docs/design.md.
 - The desktop sidebar has icons, matching the phone's tabs, so Settings (the gear, at the bottom) is easy to spot.

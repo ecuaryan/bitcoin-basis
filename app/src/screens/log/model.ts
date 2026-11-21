@@ -191,7 +191,7 @@ export function friendlyProblem(code: string, message: string): string {
     case 'picks-sum-mismatch':
     case 'duplicate-pick':
     case 'invalid-amount':
-      return 'The coins chosen no longer fit. Choose them again.';
+      return 'The lots picked no longer fit. Pick them again.';
     case 'wallet-frozen':
       return 'That wallet is frozen. Coins cannot go in or out until it is closed out.';
     case 'retirement-wallet':

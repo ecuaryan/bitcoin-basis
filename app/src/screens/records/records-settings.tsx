@@ -7,7 +7,7 @@ import { useHelp } from '../../ui/Help.tsx';
 import { LOSSES_HELP, LOSSES_TITLE, staleLosses } from '../../lib/losses.ts';
 import { Card } from '../../ui/Card.tsx';
 import { MoneyInput, PercentInput } from '../../ui/formatted-inputs.tsx';
-import { Field, SelectBox, Toggle } from '../../ui/Field.tsx';
+import { SelectBox } from '../../ui/Field.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { useWriter } from '../../ui/use-writer.ts';
 import { draftFrom, FILING_LABELS, needsOwnRate, NO_STATE_TAX, OTHER_STATE, patchFrom, stateOptionLabel, taxProfileSet, timeZoneChoices, type SettingsDraft } from './settings-logic.ts';
@@ -91,11 +91,6 @@ export function SettingsView() {
     setDraft(next);
     later({ d: next, key });
   };
-  /** A typed field: update while typing, save on leaving the field. */
-  const type = <K extends keyof SettingsDraft>(key: K) => ({
-    onChange: (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [key]: e.target.value })),
-    onBlur: () => later({ d: draft, key }),
-  });
   const num = <K extends keyof SettingsDraft>(key: K) => ({
     onChange: (v: string) => setDraft((d) => ({ ...d, [key]: v })),
     onBlur: () => later({ d: draft, key }),
@@ -169,32 +164,7 @@ export function SettingsView() {
         </div>
       </Group>
 
-      <Group title="Giving">
-        <Toggle label="Set aside a share of gains" hint={saved('givingEnabled') ? 'Saved ✓' : 'Off unless you want it'} checked={draft.givingEnabled} onChange={(v) => pick('givingEnabled', v)} />
-        {draft.givingEnabled && (
-          <>
-            <SavedMark show={saved('givingName')}>
-              <Field label="What to call it" value={draft.givingName} {...type('givingName')} hint={err('givingName')} />
-            </SavedMark>
-            <div className="grid grid-cols-2 gap-2.5">
-              <SavedMark show={saved('givingPercent')}>
-                <PercentInput label="Share of gains" value={draft.givingPercent} {...num('givingPercent')} error={err('givingPercent')} />
-              </SavedMark>
-              <SavedMark show={saved('givingMode')}>
-                <SelectBox label="Counted" value={draft.givingMode} onChange={(e) => pick('givingMode', e.target.value as SettingsDraft['givingMode'])}>
-                  <option value="before-tax">Before tax</option>
-                  <option value="after-tax">After tax</option>
-                </SelectBox>
-              </SavedMark>
-            </div>
-          </>
-        )}
-      </Group>
-
       <Group title="Your records">
-        <SavedMark show={saved('earlierMoneyIn')}>
-          <MoneyInput label="Dollars you put in before using this app" value={draft.earlierMoneyIn} {...num('earlierMoneyIn')} error={err('earlierMoneyIn')} hint="Shown in Holdings, under Money in and out. Never used in tax math." />
-        </SavedMark>
         <SavedMark show={saved('timeZone')}>
           <SelectBox label="Time zone" value={draft.timeZone} onChange={(e) => pick('timeZone', e.target.value)}>
             {zones.map((z) => (

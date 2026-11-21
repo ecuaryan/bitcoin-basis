@@ -1,6 +1,6 @@
 /**
  * Bitcoin price (USD only), in integer cents per BTC. The app asks its own Worker (`/api/price`,
- * `/api/price/history`), which fetches mempool.space server-side (the live price from Coinbase when mempool
+ * `/api/price/history`, `/api/price/series`), which fetches mempool.space server-side (the live price from Coinbase when mempool
  * fails): the browser never contacts a third party, so they never see your IP address or when you open the
  * app. The CSP allows only 'self'.
  */
@@ -37,6 +37,18 @@ export interface PriceService {
   current(signal?: AbortSignal): Promise<PriceQuote>;
   /** Cents per BTC at a Unix timestamp (seconds). The server rounds it down to the hour. */
   historical(unixSeconds: number, signal?: AbortSignal): Promise<number>;
+  /** One point per UTC day for the last `days` days, oldest first, in one request. Absent where there is none. */
+  series?(days: number, signal?: AbortSignal): Promise<DailyPrice[]>;
+}
+
+/** One UTC day of the price series. */
+export interface DailyPrice {
+  /** The day's start, 00:00 UTC (ms since epoch). */
+  dayMs: number;
+  /** The day's last price, cents per BTC. */
+  closeCents: number;
+  /** The day's highest price, cents per BTC. */
+  highCents: number;
 }
 
 export type FetchLike = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
@@ -50,6 +62,25 @@ export function parsePriceCents(json: unknown): number | null {
   if (!isRecord(json)) return null;
   const v = json['usdCents'];
   return typeof v === 'number' && Number.isSafeInteger(v) && v > 0 && v <= 10_000_000_000 ? v : null;
+}
+
+const DAY_SECONDS = 86_400;
+const saneCents = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0 && v <= 10_000_000_000;
+
+/** The Worker's `{ points: [[dayStart, closeCents, highCents], ...] }`, strictly: oldest first, whole days, sane cents. Null otherwise. */
+export function parsePriceSeries(json: unknown): DailyPrice[] | null {
+  if (!isRecord(json) || !Array.isArray(json['points'])) return null;
+  const out: DailyPrice[] = [];
+  for (const p of json['points'] as unknown[]) {
+    if (!Array.isArray(p) || p.length !== 3) return null;
+    const [day, close, high] = p as unknown[];
+    if (typeof day !== 'number' || !Number.isSafeInteger(day) || day <= 0 || day % DAY_SECONDS !== 0) return null;
+    if (!saneCents(close) || !saneCents(high) || high < close) return null;
+    const prev = out[out.length - 1];
+    if (prev !== undefined && prev.dayMs >= day * 1000) return null;
+    out.push({ dayMs: day * 1000, closeCents: close, highCents: high });
+  }
+  return out;
 }
 
 /** The Worker keeps a fresh live answer one minute; allow for that and a little more. */
@@ -100,8 +131,15 @@ export function createMempoolPriceService(fetchFn: FetchLike = (url, init) => fe
     return cents;
   }
 
+  async function series(days: number, signal?: AbortSignal): Promise<DailyPrice[]> {
+    const points = parsePriceSeries(await get(`${PRICE_API}/series?days=${Math.max(1, Math.floor(days))}`, signal));
+    if (points === null || points.length === 0) throw new PriceError('The price service sent an unexpected answer.');
+    return points;
+  }
+
   return {
     historical,
+    series,
     async current(signal) {
       const body = await get(PRICE_API, signal);
       const fetchedAt = now();

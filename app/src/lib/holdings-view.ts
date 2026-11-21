@@ -55,9 +55,6 @@ export interface HoldingsView {
   retirement: RetirementCard[];
   /** Taxable, retirement and all together; null when no retirement wallet holds anything (it would just repeat the total). */
   all: AllBitcoin | null;
-  moneyInCents: number;
-  /** Proceeds from sales, spending and network fees paid in BTC. */
-  moneyOutCents: number;
   carryforwardCents: number;
   /** The tax year the saved losses are for, if one was saved. */
   lossesYear: number | null;
@@ -125,8 +122,6 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
       return { id: r.wallet, name: r.name, sats: r.sats, balanceFrom: r.balanceFrom, worth: costKnown ? worth : { ...worth, gainCents: null, percent: null }, costKnown, noteDiffers: costKnown && r.snapshot !== null && !r.snapshot.matches };
     }),
     all: h.retirement.some((r) => r.sats > 0) ? allBitcoin(h, priceCents) : null,
-    moneyInCents: h.moneyPutInCents,
-    moneyOutCents: state.disposals.reduce((s, d) => s + d.proceedsCents, 0),
     carryforwardCents: (({ st, lt }) => st + lt)(carryforwardFor(state.settings, yearOf(today), yearOf(today))),
     lossesYear: yearOf(today),
     isEmpty: state.wallets.length === 0 && state.lots.length === 0,

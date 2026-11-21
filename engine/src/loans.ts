@@ -311,6 +311,8 @@ export interface LoanSummary {
   purchaseCount: number;
   /** Cost of every linked purchase (held or not). */
   purchasesCostCents: Cents;
+  /** Everything the linked purchases bought: held + frozen + sold + other gone, exactly. */
+  boughtSats: Sats;
   heldSats: Sats;
   heldCostCents: Cents;
   frozenSats: Sats;
@@ -472,6 +474,7 @@ export function loanSummary(state: LedgerState, loanId: LoanId, priceCents: Cent
       }),
     purchaseCount: purchases.length,
     purchasesCostCents,
+    boughtSats: total((p) => p.sats),
     heldSats,
     heldCostCents,
     frozenSats: total((p) => p.frozenSats),

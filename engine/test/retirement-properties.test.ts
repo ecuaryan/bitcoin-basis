@@ -66,7 +66,6 @@ function taxView(state: LedgerState): unknown {
     years: YEARS.map((y) => ({ s: yearSummary(state, y), f8949: form8949Csv(state, y), tax: taxForYear(taxInput(taxContext(state, state.settings, y, `${y}-12-31`), 0, 0)) })),
     plan: planSale(state, state.settings, { wallet: 'ex', sats: 1_000_000, priceCents: 7_500_000, onDate: '2026-12-31', year: 2026 }),
     cpa: state.cpaFlags,
-    buyCost: state.buyCostCents,
     errors: state.errors.filter((e) => !e.entryId.startsWith('Q')),
   };
 }

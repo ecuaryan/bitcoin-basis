@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, taxYear, type Entry, type EntryKind, type Wallet } from '@bitcoin-basis/engine';
+import { DEFAULT_SETTINGS, RETIRED_SETTINGS, taxYear, type Entry, type EntryKind, type Wallet } from '@bitcoin-basis/engine';
 import { describeEntry, describeSettingChange } from './describe-entry.ts';
 
 /**
@@ -60,7 +60,7 @@ export function buildItems(entries: readonly Entry[]): EntryItem[] {
   return items.sort((a, b) => (a.current.at === b.current.at ? (a.id < b.id ? 1 : -1) : a.current.at < b.current.at ? 1 : -1));
 }
 
-export type KindGroup = 'bought' | 'received' | 'moved' | 'sold' | 'gave' | 'lost' | 'imported' | 'retirement' | 'wallets' | 'checks' | 'settings' | 'years' | 'giving' | 'loans';
+export type KindGroup = 'bought' | 'received' | 'moved' | 'sold' | 'gave' | 'lost' | 'imported' | 'retirement' | 'wallets' | 'checks' | 'settings' | 'years' | 'loans';
 export const KIND_GROUPS: readonly { value: KindGroup; label: string }[] = [
   { value: 'bought', label: 'Bought' },
   { value: 'received', label: 'Received' },
@@ -74,7 +74,6 @@ export const KIND_GROUPS: readonly { value: KindGroup; label: string }[] = [
   { value: 'checks', label: 'Retirement balances' },
   { value: 'settings', label: 'Settings' },
   { value: 'years', label: 'Year closings' },
-  { value: 'giving', label: 'Giving paid' },
   { value: 'loans', label: 'Loan' },
 ];
 
@@ -104,8 +103,6 @@ export function kindGroup(kind: EntryKind): KindGroup {
     case 'close-year':
     case 'unlock-year':
       return 'years';
-    case 'giving-paid':
-      return 'giving';
     case 'loan':
     case 'loan-update':
     case 'loan-draw':
@@ -148,10 +145,18 @@ export function entryRows(items: readonly EntryItem[], filter: EntryFilter, wall
   );
 }
 
+/** A settings change that touches only settings the app no longer has (giving, dollars put in before). */
+function retiredOnly(e: Entry): boolean {
+  if (e.kind !== 'settings') return false;
+  const keys = Object.keys(e.patch);
+  return keys.length > 0 && keys.every((k) => (RETIRED_SETTINGS as readonly string[]).includes(k));
+}
+
 export function matches(item: EntryItem, f: EntryFilter, wallets: ReadonlyMap<string, Wallet>): boolean {
   const e = item.current;
-  // Balance confirmations are never listed: they show only as "Confirmed Nov 21" on the wallet.
-  if (e.kind === 'balance-confirm') return false;
+  // Balance confirmations are never listed: they show only as "Confirmed Nov 21" on the wallet. Records from features
+  // the app no longer has (giving paid, and settings changes of only those features) are kept but never listed.
+  if (e.kind === 'balance-confirm' || e.kind === 'giving-paid' || retiredOnly(e)) return false;
   // Settings changes and loan records are noise in the everyday list: they show under Kind = Settings or Loan
   // (a loan's own page lists its payments, and a purchase paid with a loan carries its badge).
   if (f.group === '' && (kindGroup(e.kind) === 'settings' || kindGroup(e.kind) === 'loans')) return false;
@@ -206,7 +211,7 @@ function netSettings(run: readonly EntryItem[], all: readonly EntryItem[]): stri
   for (const i of older) Object.assign(before, patchOf(i));
   const after = { ...before };
   for (const i of [...run].reverse()) Object.assign(after, patchOf(i));
-  const changed = Object.keys(after).filter((k) => JSON.stringify(after[k]) !== JSON.stringify(before[k]));
+  const changed = Object.keys(after).filter((k) => !(RETIRED_SETTINGS as readonly string[]).includes(k) && JSON.stringify(after[k]) !== JSON.stringify(before[k]));
   return changed.length === 0 ? 'No net change' : changed.map((k) => describeSettingChange(k, after[k])).join(' · ');
 }
 

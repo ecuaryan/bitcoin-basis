@@ -30,7 +30,6 @@ describe('holdings', () => {
     expect(h.totalSats).toBe(sats('0.5'));
     expect(h.totalCostCents).toBe(cents('10000'));
     expect(h.documentationMix).toEqual({ documented: sats('0.3'), reconstructed: 0, estimated: sats('0.1'), unknown: sats('0.1') });
-    expect(h.moneyPutInCents).toBe(cents('50500'));
     expect(h.retirement).toEqual([
       { wallet: 'ira', name: 'ira', archived: false, sats: 7, balanceFrom: 'snapshot', purchaseCount: 0, purchaseSats: 0, costCents: 0, averageCostCentsPerBtc: null, snapshot: { entryId: 'S2', date: '2024-07-01', sats: 7, purchasedSats: 0, differenceSats: 7, matches: false } },
       { wallet: 'ira2', name: 'ira2', archived: false, sats: 0, balanceFrom: 'none', purchaseCount: 0, purchaseSats: 0, costCents: 0, averageCostCentsPerBtc: null, snapshot: null },
@@ -70,7 +69,7 @@ describe('year summary', () => {
     expect(y.ltGainCents).toBe(cents('-4500') + fee + cents('-40000') + cents('500'));
     expect(y.incomeCents).toBe(6000);
     expect([y.gifts.length, y.charityGifts.length, y.lost.length, y.closeOuts.length, y.recoveries.length]).toEqual([1, 1, 1, 1, 1]);
-    expect(y.givingPaidCents).toBe(1234);
+    expect(Object.keys(y)).not.toContain('givingPaidCents'); // a retired giving record changes nothing
     expect(y.digitalAssetAnswer).toBe('yes');
   });
   test('a short-term recovery counts as short', () => {

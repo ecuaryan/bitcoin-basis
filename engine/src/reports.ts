@@ -71,8 +71,6 @@ export interface Holdings {
   averageCostCentsPerBtc: Cents | null;
   /** Sats by documentation tier, over the same wallets as the totals. */
   documentationMix: Record<Tier, Sats>;
-  /** Buy costs plus "earlier money in" from settings. Never used in tax math. */
-  moneyPutInCents: Cents;
   /** Retirement wallets, in creation order. */
   retirement: RetirementHolding[];
 }
@@ -103,7 +101,7 @@ function retirementHolding(state: LedgerState, w: LedgerState['wallets'][number]
   };
 }
 
-/** Per-wallet balances and cost, totals, documentation mix and money put in. */
+/** Per-wallet balances and cost, totals and documentation mix. */
 export function holdings(state: LedgerState): Holdings {
   const wallets: WalletHolding[] = [];
   const retirement: RetirementHolding[] = [];
@@ -130,7 +128,6 @@ export function holdings(state: LedgerState): Holdings {
     totalCostCents,
     averageCostCentsPerBtc: averageCostPerBtc(totalCostCents, totalSats),
     documentationMix: mix,
-    moneyPutInCents: state.buyCostCents + state.settings.earlierMoneyInCents,
     retirement,
   };
 }
@@ -149,7 +146,6 @@ export interface YearSummary {
   gifts: GiftGiven[];
   charityGifts: CharityGift[];
   lost: LostRecord[];
-  givingPaidCents: Cents;
   /** The Form 1040 digital-asset question: yes if any disposal, fee, gift, close-out, recovery or income. */
   digitalAssetAnswer: 'yes' | 'no';
 }
@@ -180,7 +176,6 @@ export function yearSummary(state: LedgerState, year: number): YearSummary {
     gifts,
     charityGifts,
     lost: inYear(state.lost),
-    givingPaidCents: sum(inYear(state.givingPaid).map((g) => g.cents)),
     digitalAssetAnswer: anyActivity ? 'yes' : 'no',
   };
 }

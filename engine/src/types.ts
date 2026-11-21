@@ -175,6 +175,7 @@ export interface UnlockYearEntry extends EntryBase<'unlock-year'> {
   readonly year: number;
   readonly reason: string;
 }
+/** Written by older versions (the retired giving feature). Still accepted, so old records replay, and ignored. */
 export interface GivingPaidEntry extends EntryBase<'giving-paid'> {
   readonly year: number;
   readonly cents: Cents;
@@ -320,16 +321,22 @@ export interface Settings {
    * the years it names, so saving next year's figure never changes an earlier year's.
    */
   readonly carryforwardByYear: Readonly<Record<string, CarryforwardAmounts>>;
-  readonly givingEnabled: boolean;
-  readonly givingName: string;
-  /** Giving percent in basis points (1/10000ths): 1000 = 10%. A whole number, so no float error. */
-  readonly givingPercentBp: number;
-  readonly givingMode: 'before-tax' | 'after-tax';
-  readonly earlierMoneyInCents: Cents;
   /** Default time zone for new entries. */
   readonly timeZone: string;
 }
-export type SettingsPatch = Partial<Settings>;
+/**
+ * Settings older versions wrote (the giving feature and "dollars you put in before using this app"). Still accepted in
+ * a settings entry, so old records and backups replay, and ignored.
+ */
+export interface RetiredSettings {
+  readonly givingEnabled?: boolean;
+  readonly givingName?: string;
+  readonly givingPercentBp?: number;
+  readonly givingMode?: 'before-tax' | 'after-tax';
+  readonly earlierMoneyInCents?: Cents;
+}
+export const RETIRED_SETTINGS: readonly (keyof RetiredSettings)[] = ['givingEnabled', 'givingName', 'givingPercentBp', 'givingMode', 'earlierMoneyInCents'];
+export type SettingsPatch = Partial<Settings> & RetiredSettings;
 export interface CarryforwardAmounts {
   readonly st: Cents;
   readonly lt: Cents;
@@ -554,12 +561,6 @@ export interface Conflict {
   versions: Entry[];
 }
 
-export interface GivingPaid {
-  entryId: EntryId;
-  year: number;
-  cents: Cents;
-}
-
 export type CpaFlagCode = 'dual-basis' | 'lost-coins' | 'qualified-appraisal';
 export interface CpaFlag {
   entryId: EntryId;
@@ -624,12 +625,9 @@ export interface LedgerState {
   retirementSnapshots: RetirementSnapshot[];
   /** Retirement purchases in replay order. Never part of lots, cost basis, gains or any tax figure. */
   retirementBuys: RetirementBuy[];
-  givingPaid: GivingPaid[];
   conflicts: Conflict[];
   closedYears: number[];
   settings: Settings;
-  /** Total cost of applied `buy` entries (for "money put in"). */
-  buyCostCents: Cents;
   cpaFlags: CpaFlag[];
   errors: LedgerError[];
   /** Ids of the entries applied, in replay order. */

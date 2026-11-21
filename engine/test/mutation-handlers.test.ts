@@ -26,12 +26,12 @@ describe('lots created by each entry kind', () => {
   });
   const MAX = 100_000_000_000_000; // largest cents one entry may carry ($1 trillion)
   const pad = (i: number): string => `E${String(i).padStart(3, '0')}`;
-  test('a buy refused for pushing the ledger past its total does not count toward money put in', () => {
+  test('a buy refused for pushing the ledger past its total makes no lot', () => {
     // 2^52 cents is the ledger cap: 45 buys of $1 trillion fit, the 46th does not.
     const buys = Array.from({ length: 46 }, (_, i) => buy(pad(i), 'ex', '2025-01-01', '0.00000001', '1'));
     const state = replay([wallet('ex'), ...buys.map((b) => ({ ...b, costCents: MAX }))]);
     expect(state.errors.map((e) => [e.entryId, e.code])).toEqual([[pad(45), 'out-of-range']]);
-    expect(state.buyCostCents).toBe(45 * MAX);
+    expect(state.lots).toHaveLength(45);
   });
   test('a gift receive adds its value and the giver\'s cost to the ledger total (a difference would never hit the cap)', () => {
     // each gift counts 2 trillion dollars of volume: 22 fit under 2^52 cents, the 23rd does not
@@ -176,16 +176,16 @@ describe('trace coins', () => {
   });
 });
 
-describe('wallet names and giving', () => {
+describe('wallet names and retired giving records', () => {
   test('a taken-name problem quotes the trimmed name', () => {
     const state = replay([wallet('a', 'exchange', 'Main'), wallet('b', 'exchange', '  Main  ')]);
     expect(state.errors).toEqual([{ entryId: 'w-b', code: 'wallet-name-taken', message: 'another wallet is already named "Main"' }]);
   });
-  test('a giving-paid entry past the ledger cap is refused and not recorded', () => {
+  test('giving-paid entries (a retired feature) are accepted and ignored, whatever their size', () => {
     const gp = (i: number): Entry => ({ id: `G${String(i).padStart(3, '0')}`, kind: 'giving-paid', at: noon('2025-01-01'), tz: TZ, year: 2025, cents: 100_000_000_000_000 });
     const state = replay(Array.from({ length: 46 }, (_, i) => gp(i)));
-    expect(state.givingPaid).toHaveLength(45);
-    expect(state.errors.map((e) => [e.entryId, e.code])).toEqual([['G045', 'out-of-range']]);
+    expect(state.errors).toEqual([]);
+    expect(state.applied).toHaveLength(46);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMempoolPriceService, type FetchLike, parsePriceCents, PriceError, PRICE_API, quoteAsOf } from './price.ts';
+import { createMempoolPriceService, type FetchLike, parsePriceCents, parsePriceSeries, PriceError, PRICE_API, quoteAsOf } from './price.ts';
 
 function fakeFetch(answers: Record<string, { status: number; body: unknown }>) {
   const urls: string[] = [];
@@ -66,6 +66,31 @@ describe('price service (through the Worker)', () => {
     expect(parsePriceCents({ usdCents: 9_712_345 })).toBe(9_712_345);
     for (const bad of [null, [], {}, { usdCents: '1' }, { usdCents: 1.5 }, { usdCents: 0 }, { usdCents: -1 }, { usdCents: Number.MAX_SAFE_INTEGER }, { USD: 97_000 }]) {
       expect(parsePriceCents(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+});
+
+describe('price series (one request for the chart)', () => {
+  const D = 1_759_708_800;
+  it('asks /api/price/series with whole days and reads integer cents, oldest first', async () => {
+    const { fn, urls } = fakeFetch({ [`${PRICE_API}/series`]: { status: 200, body: { points: [[D, 12_450_000, 12_607_300], [D + 86_400, 12_400_000, 12_400_000]] } } });
+    const svc = createMempoolPriceService(fn);
+    expect(await svc.series?.(1095.7)).toEqual([
+      { dayMs: D * 1000, closeCents: 12_450_000, highCents: 12_607_300 },
+      { dayMs: (D + 86_400) * 1000, closeCents: 12_400_000, highCents: 12_400_000 },
+    ]);
+    expect(urls).toEqual(['/api/price/series?days=1095']);
+  });
+
+  it('an older server without the route, or an odd answer, is a PriceError', async () => {
+    await expect(createMempoolPriceService(fakeFetch({}).fn).series?.(30)).rejects.toBeInstanceOf(PriceError);
+    const empty = fakeFetch({ [`${PRICE_API}/series`]: { status: 200, body: { points: [] } } });
+    await expect(createMempoolPriceService(empty.fn).series?.(30)).rejects.toBeInstanceOf(PriceError);
+  });
+
+  it('is strict about the shape', () => {
+    for (const bad of [null, {}, { points: {} }, { points: [[D, 1]] }, { points: [[D + 1, 1, 1]] }, { points: [[D, 1.5, 2]] }, { points: [[D, 2, 1]] }, { points: [[D, 0, 1]] }, { points: [[D, 1, 1], [D, 1, 1]] }, { points: ['x'] }]) {
+      expect(parsePriceSeries(bad), JSON.stringify(bad)).toBeNull();
     }
   });
 });

@@ -87,11 +87,9 @@ describe('no throws on user-caused values', () => {
     const buys = Array.from({ length: 46 }, (_, i) => ({ id: `B${i}`, kind: 'buy', at: noon('2025-01-01'), tz: TZ, wallet: 'ex', sats: 1, costCents: MAX_ENTRY_CENTS, tier: 'documented' }) as Entry);
     const state = replay([wallet('ex'), ...buys]);
     expect(errorCodes(state)).toEqual({ B9: 'out-of-range' }); // ids sort B0, B1, B10.. B19, B2, ...: B9 is the 46th
-    expect(Number.isSafeInteger(holdings(state).moneyPutInCents)).toBe(true);
+    expect(Number.isSafeInteger(holdings(state).totalCostCents)).toBe(true);
     const whales = Array.from({ length: 3 }, (_, i) => ({ id: `W${i}`, kind: 'buy', at: noon('2025-01-01'), tz: TZ, wallet: 'ex', sats: MAX_ENTRY_SATS, costCents: 1, tier: 'documented' }) as Entry);
     expect(errorCodes(replay([wallet('ex'), ...whales]))).toEqual({ W2: 'out-of-range' });
-    const paid = Array.from({ length: 46 }, (_, i) => ({ id: `G${String(i).padStart(2, '0')}`, kind: 'giving-paid', at: noon('2025-01-01'), tz: TZ, year: 2025, cents: MAX_ENTRY_CENTS }) as Entry);
-    expect(errorCodes(replay(paid))).toEqual({ G45: 'out-of-range' });
   });
 });
 

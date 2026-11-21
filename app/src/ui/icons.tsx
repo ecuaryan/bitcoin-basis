@@ -97,11 +97,6 @@ export const ImportExportIcon = (p: IconProps) => (
     <path d="M8 20V5M4 9l4-4 4 4M16 4v15M12 15l4 4 4-4" />
   </Icon>
 );
-export const HeartIcon = (p: IconProps) => (
-  <Icon strokeWidth={1.9} {...p}>
-    <path d="M12 20c-4.5-3-8-6.2-8-10a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 3.8-3.5 7-8 10z" />
-  </Icon>
-);
 export const LifebuoyIcon = (p: IconProps) => (
   <Icon strokeWidth={1.9} {...p}>
     <circle cx="12" cy="12" r="9" />

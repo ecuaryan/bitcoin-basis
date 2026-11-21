@@ -193,3 +193,26 @@ export function planLinks(loanId: LoanId, options: readonly PurchaseOption[], ch
   }
   return plan;
 }
+
+const GONE_WORDS: Record<LoanPurchase['gone'][number]['kind'], string> = {
+  given: 'given away',
+  sold: 'sold',
+  spent: 'spent',
+  fees: 'paid as network fees',
+  lost: 'lost',
+  'closed-out': 'closed out on a frozen platform',
+};
+
+/**
+ * What became of the Bitcoin a loan's purchases bought that is no longer held: its sats and the ways it left, most
+ * first (`given away, sold, spent or paid as network fees`). Null when none has left.
+ */
+export function goneWords(purchases: readonly LoanPurchase[]): { sats: number; words: string } | null {
+  const by = new Map<string, number>();
+  for (const p of purchases) for (const g of p.gone) by.set(g.kind, (by.get(g.kind) ?? 0) + g.sats);
+  const kinds = [...by.entries()].filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]);
+  if (kinds.length === 0) return null;
+  const words = kinds.map(([k]) => GONE_WORDS[k as keyof typeof GONE_WORDS]);
+  const list = words.length === 1 ? words[0] : `${words.slice(0, -1).join(', ')} or ${words.at(-1)}`;
+  return { sats: kinds.reduce((t, [, s]) => t + s, 0), words: `later ${list}` };
+}

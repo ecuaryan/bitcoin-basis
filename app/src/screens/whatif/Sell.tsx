@@ -22,7 +22,7 @@ import { TERM_HELP } from '../../lib/terms.ts';
 import { PickCoinsSheet, PrepareSaleSheet, SaleReviewSheet, WalletSheet } from './sell-sheets.tsx';
 import { carriedOut, defaultSats, documentationNote, needsBrokerInstruction, picksFromSelection, planFor, planForWallet, stepFor, summarize, type PlanKey } from './sell-logic.ts';
 
-export const PLAN_LABEL: Record<PlanKey, string> = { 'oldest-first': 'Oldest first', 'lowest-tax': 'Lowest tax', 'hand-picked': 'Your picks' };
+export const PLAN_LABEL: Record<PlanKey, string> = { 'oldest-first': 'Oldest first', 'lowest-tax': 'Lowest tax', 'hand-picked': 'Lots you picked' };
 
 export function Sell() {
   const wide = useIsWide();
@@ -170,10 +170,10 @@ export function Sell() {
     const summary = summarize(plans.oldestFirst, plans.lowestTax);
     body = (
       <>
-        <PlanChoice label="Coins to use" className={cx('grid gap-2.5', plans.handPicked ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2')}>
+        <PlanChoice label="Lots to use" className={cx('grid gap-2.5', plans.handPicked ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2')}>
           <PlanCard title="Oldest first" plan={plans.oldestFirst} active={activeKey === 'oldest-first'} onSelect={() => setPlanKey('oldest-first')} carryBest={carriedOut(plans.oldestFirst) > carriedOut(plans.lowestTax)} />
           <PlanCard title="Lowest tax" plan={plans.lowestTax} active={activeKey === 'lowest-tax'} onSelect={() => setPlanKey('lowest-tax')} carryBest={carriedOut(plans.lowestTax) > carriedOut(plans.oldestFirst)} />
-          {plans.handPicked && <PlanCard title="Your picks" plan={plans.handPicked} active={activeKey === 'hand-picked'} onSelect={() => setPlanKey('hand-picked')} className="col-span-2 lg:col-span-1" />}
+          {plans.handPicked && <PlanCard title={PLAN_LABEL['hand-picked']} plan={plans.handPicked} active={activeKey === 'hand-picked'} onSelect={() => setPlanKey('hand-picked')} className="col-span-2 lg:col-span-1" />}
         </PlanChoice>
         <Card as="section" aria-label="What this means" className="flex flex-col gap-3 !rounded-2xl !p-3.5">
           <Note tone="warn">
@@ -199,7 +199,7 @@ export function Sell() {
               <Note>{documentationNote(plans.oldestFirst, plans.lowestTax)}</Note>
               {plans.lowestTax.deferredNote !== null && needsBrokerInstruction(plans.lowestTax) && <Note>{plans.lowestTax.deferredNote}</Note>}
               {plans.lowestTax.note !== null && <Note>{plans.lowestTax.note}</Note>}
-              {needsBrokerInstruction(active) && !selfCustody && <Note>Tell {wallet.name} which coins to sell before you sell. Otherwise it may use its own order.</Note>}
+              {needsBrokerInstruction(active) && !selfCustody && <Note>Tell {wallet.name} which lots to sell before you sell. Otherwise it may use its own order.</Note>}
               <p className="m-0 text-xs text-muted">Estimates, not tax advice. Based on your tax settings.</p>
             </div>
           </details>
@@ -207,7 +207,7 @@ export function Sell() {
         <div className="flex flex-col gap-2.5">
           <div className="flex gap-2.5">
             <Button className="min-h-[52px] flex-1 !rounded-2xl" onClick={() => setSheet('pick')}>
-              Pick coins
+              Pick lots
             </Button>
             {selfCustody ? (
               <Button variant="primary" className="min-h-[52px] flex-[1.6] !rounded-2xl" onClick={() => setSheet('prepare')} disabled={exchanges.length === 0}>

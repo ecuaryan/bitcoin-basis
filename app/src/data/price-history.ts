@@ -1,4 +1,4 @@
-import type { PriceService } from './price.ts';
+import { parsePriceSeries, type DailyPrice, type PriceService } from './price.ts';
 
 export interface PricePoint {
   /** Milliseconds since the epoch. */
@@ -103,4 +103,96 @@ export async function loadPriceSeries(service: PriceService, times: readonly num
     out.push({ ms, cents });
   }
   return out;
+}
+
+// ---- The daily series ---------------------------------------------------------------------
+
+export interface StoredSeries {
+  /** The whole hour it was fetched in (ms), so the stored copy does not record when the app was opened. */
+  hourMs: number;
+  days: number;
+  points: DailyPrice[];
+}
+
+export interface SeriesCache {
+  get(): StoredSeries | null;
+  set(value: StoredSeries): void;
+}
+
+const SERIES_KEY = 'bb.price-series.v1';
+
+/** The chart's daily series, kept on this device (one copy, replaced each time) so it is asked for at most hourly. */
+export function createLocalSeriesCache(storage: Pick<Storage, 'getItem' | 'setItem'> = window.localStorage): SeriesCache {
+  return {
+    get() {
+      try {
+        const raw: unknown = JSON.parse(storage.getItem(SERIES_KEY) ?? 'null');
+        if (typeof raw !== 'object' || raw === null) return null;
+        const { hourMs, days } = raw as Record<string, unknown>;
+        const points = parsePriceSeries(raw);
+        if (typeof hourMs !== 'number' || !Number.isSafeInteger(hourMs) || hourMs % HOUR_MS !== 0) return null;
+        if (typeof days !== 'number' || !Number.isSafeInteger(days) || days <= 0 || points === null || points.length === 0) return null;
+        return { hourMs, days, points };
+      } catch {
+        return null;
+      }
+    },
+    set({ hourMs, days, points }) {
+      try {
+        storage.setItem(SERIES_KEY, JSON.stringify({ hourMs, days, points: points.map((p) => [p.dayMs / 1000, p.closeCents, p.highCents]) }));
+      } catch {
+        // Storage full or blocked: fine, it will be asked for again next time.
+      }
+    },
+  };
+}
+
+export function memorySeriesCache(): SeriesCache {
+  let v: StoredSeries | null = null;
+  return { get: () => v, set: (next) => void (v = next) };
+}
+
+/**
+ * Chart points from a daily series: each day at its start, at its last price, except the day with the highest
+ * price, which is drawn at that high. So the line reaches the peak the chart marks, and nothing hides it.
+ */
+export function seriesPoints(days: readonly DailyPrice[]): PricePoint[] {
+  let peak = -1;
+  days.forEach((d, i) => {
+    if (peak < 0 || d.highCents > (days[peak] as DailyPrice).highCents) peak = i;
+  });
+  return days.map((d, i) => ({ ms: d.dayMs, cents: i === peak ? d.highCents : d.closeCents }));
+}
+
+export interface ChartHistory {
+  points: PricePoint[];
+  /** One point per day (the series), as opposed to a few separate lookups. */
+  daily: boolean;
+}
+
+/**
+ * The chart's history: the daily series in one request (kept an hour on this device). If the server cannot give
+ * it (an older server has no series), a copy kept earlier, however old; failing that, a few separate lookups at
+ * `fallbackTimes`, as before.
+ */
+export async function loadChartHistory(
+  service: PriceService,
+  options: { days: number; nowMs: number; fallbackTimes: readonly number[]; seriesCache: SeriesCache; pointCache: PriceCache; signal?: AbortSignal; pauseMs?: number },
+): Promise<ChartHistory> {
+  const { days, signal } = options;
+  const hourMs = floorToHour(options.nowMs);
+  const kept = options.seriesCache.get();
+  if (kept !== null && kept.days === days && kept.hourMs === hourMs) return { points: seriesPoints(kept.points), daily: true };
+  if (service.series) {
+    try {
+      const points = await service.series(days, signal);
+      options.seriesCache.set({ hourMs, days, points });
+      return { points: seriesPoints(points), daily: true };
+    } catch {
+      // Fall through: an older copy, or the separate lookups.
+    }
+  }
+  if (kept !== null && kept.days === days) return { points: seriesPoints(kept.points), daily: true };
+  const points = await loadPriceSeries(service, options.fallbackTimes, options.pointCache, { ...(signal ? { signal } : {}), ...(options.pauseMs !== undefined ? { pauseMs: options.pauseMs } : {}) });
+  return { points, daily: false };
 }

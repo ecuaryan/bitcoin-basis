@@ -1,7 +1,7 @@
 import { loanSummary, replay } from '@bitcoin-basis/engine';
 import { expect, test, type Page } from '@playwright/test';
 import { buildDemoBook, DEMO_LOAN_ID, DEMO_PRICE_CENTS, DEMO_TODAY } from '../src/demo/demo-data.ts';
-import { formatMoney, shortBtc } from '../src/lib/format.ts';
+import { formatMoney, groupedBtc, shortBtc } from '../src/lib/format.ts';
 import { setUp } from './fake.ts';
 import { expectNoViolations, go, openDemo } from './helpers.ts';
 
@@ -219,13 +219,13 @@ test('Import: a funded_by column creates the loan in the preview and links its r
   await page.getByLabel('Choose a spreadsheet (CSV)').setInputFiles(new URL('./fixtures/opening-lots-funded-by.csv', import.meta.url).pathname);
   const status = page.getByRole('status').filter({ hasText: 'will be created' });
   await expect(status).toContainText('1 loan will be created');
-  await expect(status).toContainText('2 coins paid with a loan');
-  const add = page.getByRole('button', { name: /add 3 coins/i });
+  await expect(status).toContainText('2 lots paid with a loan');
+  const add = page.getByRole('button', { name: /add 3 lots/i });
   await expect(add).toBeDisabled();
-  await page.getByLabel('Interest rate for HELOC (2 coins)').fill('8.5');
+  await page.getByLabel('Interest rate for HELOC (2 lots)').fill('8.5');
   await expectNoViolations(page);
   await add.click();
-  await expect(page.getByText('Added 3 coins, 1 wallet and 1 loan.')).toBeVisible();
+  await expect(page.getByText('Added 3 lots, 1 wallet and 1 loan.')).toBeVisible();
   const card = page.getByRole('region', { name: 'Loans' });
   await expect(card).toContainText('HELOC');
   await expect(card).toContainText('Owed $12,600');
@@ -264,4 +264,37 @@ test('Loan settings, removing a payment, closing and reopening', async ({ page }
   await go(page, `/loans/${DEMO_LOAN_ID}`);
   await page.getByRole('button', { name: 'Reopen this loan' }).click();
   await expect(page.getByText('This loan is closed.')).toHaveCount(0);
+});
+
+test('Loan page: Bought is everything the purchases bought; after a gift, Still held and where the rest went', async ({ page }) => {
+  await openDemo(page);
+  await go(page, `/loans/${DEMO_LOAN_ID}`);
+  const rows = page.getByRole('region', { name: 'Where it stands' }).getByLabel('The loan');
+  const row = (k: string) => rows.locator('div').filter({ has: page.getByText(k, { exact: true }) });
+  // The demo's loan purchases are all still held: one row, the full amount.
+  await expect(row('Bought')).toContainText(`${groupedBtc(expected.boughtSats)} BTC`);
+  await expect(rows.getByText('Still held', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'What does paying it off today use?' }).click();
+  await expect(rows).toContainText('not been billed yet');
+
+  // Give away a little from a lot the loan paid for.
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
+  const log = page.getByRole('dialog', { name: 'Log' });
+  await log.getByRole('tab', { name: 'Gave' }).click();
+  await log.getByLabel('Who is it for?').fill('Sam');
+  await log.getByLabel('From wallet').selectOption({ label: 'Strike' });
+  await log.getByLabel('Amount', { exact: true }).fill('0.001');
+  await log.getByRole('radio', { name: 'Pick lots' }).click();
+  const list = log.getByRole('list', { name: 'Lots in this wallet' });
+  for (const box of await list.getByRole('checkbox').all()) if (await box.isChecked()) await box.uncheck();
+  await list.getByRole('listitem').filter({ hasText: 'HELOC' }).first().getByRole('checkbox').check();
+  await log.getByRole('button', { name: 'Review gift' }).click();
+  await page.getByRole('dialog').last().getByRole('button', { name: 'Save gift' }).click();
+  await page.getByRole('dialog').last().getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await expect(row('Bought')).toContainText(`${groupedBtc(expected.boughtSats)} BTC`);
+  await expect(row('Still held')).toContainText(`${groupedBtc(expected.heldSats - 100_000)} BTC`);
+  await expect(row('Still held')).toContainText('0.0010 0000 BTC later given away');
+  await expectNoViolations(page);
 });

@@ -9,7 +9,6 @@ import type { LedgerState, LocalDate, LotPick, PickError, Result, Settings, Wall
 import { TIERS } from '../types.ts';
 import { taxContext, taxInput } from './context.ts';
 import { evaluatePicks, proceedsFor, type SaleEvaluation } from './evaluate.ts';
-import { givingOnSale, givingPercentBp } from './giving.ts';
 
 /** More than this much added tax triggers the estimated-payment heads-up ($1,000). */
 export const HEADS_UP_TAX_CENTS = 100_000;
@@ -31,8 +30,6 @@ export type SalePlanError = SellRefusal | PickError | { code: 'unknown-wallet' |
 export interface SalePlan extends SaleEvaluation {
   readonly strategy: 'oldest-first' | 'lowest-tax' | 'hand-picked';
   readonly picks: LotPick[];
-  /** Giving on this sale in cents, or null when giving is off. */
-  readonly givingCents: Cents | null;
   /** Estimated tax added is over $1,000: an estimated payment may be needed. */
   readonly headsUp: boolean;
   /** On the lowest-tax plan: a reminder that it defers tax rather than removing it. */
@@ -78,12 +75,10 @@ export function planSale(state: LedgerState, settings: Settings, req: SaleReques
   if (proceeds === null) return err({ code: 'invalid-input', message: 'the sale is too large to plan' });
 
   const ctx = taxContext(state, settings, req.year, req.onDate);
-  const percent = givingPercentBp(settings);
   const build = (strategy: SalePlan['strategy'], picks: LotPick[]): SalePlan => {
     const ev = evaluatePicks(state.lots, picks, proceeds, ctx);
-    const givingCents = settings.givingEnabled ? givingOnSale({ percent, gains: ev.gainCents, mode: settings.givingMode, estimatedTax: ev.totalTaxCents }) : null;
     // Only exchange wallets get this far (canSellFrom), and their default is assumed to be oldest first.
-    return { ...ev, strategy, picks, givingCents, headsUp: ev.totalTaxCents > HEADS_UP_TAX_CENTS, deferredNote: strategy === 'lowest-tax' ? DEFERRED_NOTE : null, note: null, brokerInstructionNeeded: strategy !== 'oldest-first' };
+    return { ...ev, strategy, picks, headsUp: ev.totalTaxCents > HEADS_UP_TAX_CENTS, deferredNote: strategy === 'lowest-tax' ? DEFERRED_NOTE : null, note: null, brokerInstructionNeeded: strategy !== 'oldest-first' };
   };
 
   const oldest = picksFor(oldestFirstOrder(state.lots, wallet.id), req.sats);

@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coinbaseBase, mempoolBase } from '../src/config.ts';
-import { decimalDollarsToCents, livePrice } from '../src/price.ts';
+import { dailySeries, decimalDollarsToCents, livePrice, MAX_SERIES_DAYS, priceSeries, seriesDays } from '../src/price.ts';
 import { Client, ORIGIN, startServer } from './harness.ts';
 
 type Reply = { status: number; body: string };
@@ -109,6 +109,110 @@ describe('GET /api/price/history', () => {
     expect(res.data).toEqual({ error: 'bad_gateway' });
     reply = historyOk(2);
     expect((await new Client(server).get(`/api/price/history?ts=${hour}`)).status).toBe(200);
+  });
+});
+
+const DAY = 24 * HOUR;
+const today = () => now() - (now() % DAY);
+/** mempool's whole-history answer for the last `days` days, newest first as mempool sends it: hourly for three years, daily before. */
+function wholeHistory(days: number, usdAt: (t: number) => number = (t) => 50_000 + ((t / HOUR) % 24) * 10): string {
+  const prices = [];
+  for (let t = now() - (now() % HOUR); t > now() - days * DAY; t -= t > now() - 1095 * DAY ? HOUR : DAY) prices.push({ time: t, USD: usdAt(t) });
+  return JSON.stringify({ prices, exchangeRates: {} });
+}
+const isWhole = (url: URL) => url.pathname === '/api/v1/historical-price' && !url.searchParams.has('timestamp');
+
+// In order: the Worker's cache outlives a test, and the first good answer fills it for an hour.
+describe('GET /api/price/series', () => {
+  it.each([
+    ['missing', ''],
+    ['empty', '?days='],
+    ['zero', '?days=0'],
+    ['not a number', '?days=abc'],
+    ['negative', '?days=-5'],
+    ['decimal', '?days=1.5'],
+    ['too long', '?days=1234567'],
+  ])('rejects bad days (%s) with 400, without calling mempool', async (_label, query) => {
+    const res = await new Client(server).get(`/api/price/series${query}`);
+    expect(res.status).toBe(400);
+    expect(res.data).toEqual({ error: 'bad_request' });
+    expect(seen).toHaveLength(0);
+  });
+
+  it.each([
+    ['an error status', { status: 503, body: 'down' }],
+    ['not JSON', { status: 200, body: '<html>' }],
+    ['the wrong shape', { status: 200, body: '{"prices":"x"}' }],
+    ['a nonsense price', { status: 200, body: JSON.stringify({ prices: [{ time: now() - HOUR, USD: -1 }] }) }],
+    ['nothing in the window', { status: 200, body: JSON.stringify({ prices: [{ time: 1_300_000_000, USD: 1 }] }) }],
+  ])('upstream failure (%s) is a 502 JSON error, not cached', async (_label, r) => {
+    reply = () => r;
+    const res = await new Client(server).get('/api/price/series?days=30');
+    expect(res.status).toBe(502);
+    expect(res.data).toEqual({ error: 'bad_gateway' });
+  });
+
+  it('asks mempool once for the whole history, sends nothing about the browser, answers one point per day in integer cents', async () => {
+    reply = (url) => (isWhole(url) ? { status: 200, body: wholeHistory(40) } : { status: 404, body: '' });
+    const c = new Client(server);
+    c.cookie = '__Secure-bb_session=secret';
+    const res = await c.get('/api/price/series?days=30');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    const { points } = res.data as { points: [number, number, number][] };
+    expect(points).toHaveLength(30);
+    expect(points.at(-1)?.[0]).toBe(today());
+    expect(points[0]?.[0]).toBe(today() - 29 * DAY);
+    for (const [day, close, high] of points) {
+      expect(day % DAY).toBe(0);
+      expect(Number.isSafeInteger(close) && Number.isSafeInteger(high) && high >= close).toBe(true);
+    }
+    // A whole past day: its high is the 23:00 price (the fake's highest), its close the same hour.
+    expect(points[0]?.slice(1)).toEqual([5_023_000, 5_023_000]);
+    expect(seen.map((s) => s.url)).toEqual(['/api/v1/historical-price?currency=USD']);
+    const h = seen[0]?.headers ?? {};
+    expect(h.cookie).toBeUndefined();
+    expect(h.origin).toBeUndefined();
+    expect(h.referer).toBeUndefined();
+    expect(JSON.stringify(h)).not.toContain(c.ip);
+    // Another window comes from the same cached answer.
+    const week = await c.get('/api/price/series?days=7');
+    expect((week.data as { points: unknown[] }).points).toEqual(points.slice(-7));
+    expect(seen).toHaveLength(1);
+  });
+});
+
+describe('daily series', () => {
+  const T = 1_759_708_800; // a UTC midnight (2025-10-06)
+  it('keeps the last price and the highest of each UTC day, oldest first, whatever order mempool sends', () => {
+    const data = {
+      prices: [
+        { time: T + DAY + 5 * HOUR, USD: 120_000 },
+        { time: T + 19 * HOUR, USD: 126_073 },
+        { time: T + 23 * HOUR, USD: 124_500.5 },
+        { time: T + 2 * HOUR, USD: 123_000 },
+        { time: T - DAY, USD: 1 }, // before the window
+      ],
+    };
+    expect(dailySeries(data, T)).toEqual([
+      [T, 12_450_050, 12_607_300],
+      [T + DAY, 12_000_000, 12_000_000],
+    ]);
+  });
+
+  it('is strict: any other shape, or a bad price in the window, is null', () => {
+    for (const bad of [null, [], { prices: {} }, { prices: [1] }, { prices: [{ time: '1', USD: 1 }] }, { prices: [{ time: 1.5, USD: 1 }] }, { prices: [{ time: T, USD: '1' }] }, { prices: [{ time: T, USD: 0 }] }, { prices: [{ time: T, USD: Number.NaN }] }]) {
+      expect(dailySeries(bad, T), JSON.stringify(bad)).toBeNull();
+    }
+    // A zero price long before the window is not used, so it does no harm.
+    expect(dailySeries({ prices: [{ time: T - DAY, USD: 0 }] }, T)).toEqual([]);
+  });
+
+  it('days: whole numbers from 1, capped at ten years', () => {
+    expect(seriesDays('1')).toBe(1);
+    expect(seriesDays('1095')).toBe(1095);
+    expect(seriesDays('999999')).toBe(MAX_SERIES_DAYS);
+    expect(MAX_SERIES_DAYS).toBe(3660);
   });
 });
 
@@ -271,12 +375,54 @@ describe('live price when mempool is down (stand-in cache)', () => {
   });
 });
 
+/** The Cache API, stood in for in Node, for the series' cache lifetime and its size limit. */
+describe('price series (stand-in cache)', () => {
+  const store = new Map<string, { body: string; cacheControl: string | null }>();
+  const standIn = {
+    match: (req: Request) => Promise.resolve(store.has(req.url) ? new Response(store.get(req.url)?.body) : undefined),
+    put: async (req: Request, res: Response) => void store.set(req.url, { body: await res.text(), cacheControl: res.headers.get('Cache-Control') }),
+  };
+  const env = { ORIGIN, MEMPOOL_URL: FAKE, DEV_ALLOW_HTTP: '1' };
+  const ask = async (days: number) => {
+    const res = await priceSeries(new Request(`${ORIGIN}/api/price/series?days=${days}`, { headers: { 'Sec-Fetch-Site': 'same-origin' } }), env, new URL(`${ORIGIN}/api/price/series?days=${days}`)).catch((e: unknown) => e);
+    return res instanceof Response ? ((await res.json()) as { points: [number, number, number][] }) : res;
+  };
+  beforeEach(() => {
+    store.clear();
+    vi.stubGlobal('caches', { default: standIn });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the worked-out series an hour, for every window, in a body far smaller than mempool\'s', async () => {
+    const whole = wholeHistory(MAX_SERIES_DAYS + 30);
+    expect(whole.length).toBeGreaterThan(900_000); // near the size mempool sends today (about 1.1 MB)
+    reply = () => ({ status: 200, body: whole });
+    const three = await ask(1095);
+    expect((three as { points: unknown[] }).points).toHaveLength(1095);
+    const cachedSeries = store.get(`${ORIGIN}/__price/series/v1`);
+    expect(cachedSeries?.cacheControl).toBe('public, max-age=3600');
+    expect(JSON.parse(cachedSeries?.body ?? '{}').points).toHaveLength(MAX_SERIES_DAYS);
+    expect(JSON.stringify(three).length).toBeLessThan(40_000);
+    seen.length = 0;
+    expect(((await ask(99_999)) as { points: unknown[] }).points).toHaveLength(MAX_SERIES_DAYS);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('a body over 3 MiB is refused (502)', async () => {
+    reply = () => ({ status: 200, body: JSON.stringify({ prices: [{ time: now(), USD: 1 }], pad: 'x'.repeat(3 * 1024 * 1024) }) });
+    expect(await ask(30)).toMatchObject({ status: 502 });
+    expect(store.size).toBe(0);
+  });
+});
+
 describe('same origin only, no session needed', () => {
   it('another site cannot use the price endpoints (Origin or Sec-Fetch-Site)', async () => {
     reply = historyOk(1);
     const c = new Client(server);
     const ts = pastHour();
-    for (const path of ['/api/price', `/api/price/history?ts=${ts}`]) {
+    for (const path of ['/api/price', `/api/price/history?ts=${ts}`, '/api/price/series?days=30']) {
       expect((await c.get(path, { origin: 'https://evil.example' })).status, path).toBe(403);
       const crossSite = await server.fetch(`http://localhost${path}`, { headers: { 'Sec-Fetch-Site': 'cross-site' } });
       expect(crossSite.status, path).toBe(403);

@@ -21,6 +21,7 @@ import {
 import { localDate, yearOf } from './dates.ts';
 import { splitProportional } from './money.ts';
 import { detailOf, oldestFirstOrder, pickProblem, splitMovePicks, withProceeds, type Piece } from './picks.ts';
+import { RETIRED_SETTINGS } from './types.ts';
 import type {
   BalanceConfirmEntry,
   BuyEntry,
@@ -70,9 +71,7 @@ export function applyOpeningLot(book: Book, e: OpeningLotEntry): Problem | null 
 export function applyBuy(book: Book, e: BuyEntry): Problem | null {
   const w = activeWallet(book, e.wallet);
   if (isProblem(w)) return w;
-  const bad = newLot(book, e, w.id, { costCents: e.costCents, acquiredAt: e.at, tier: e.tier, alwaysLongTerm: false, proof: e.proof ?? w.defaultProof, lossBasis: null }, e.costCents);
-  if (bad === null) book.state.buyCostCents += e.costCents;
-  return bad;
+  return newLot(book, e, w.id, { costCents: e.costCents, acquiredAt: e.at, tier: e.tier, alwaysLongTerm: false, proof: e.proof ?? w.defaultProof, lossBasis: null }, e.costCents);
 }
 
 export function applyReceive(book: Book, e: ReceiveEntry, date: LocalDate): Problem | null {
@@ -275,7 +274,9 @@ export function applyRetirementBuy(book: Book, e: RetirementBuyEntry, date: Loca
  * the entry's own year (`entryYear`), so a figure saved for one year never changes another year's.
  */
 export function applySettingsPatch(settings: Settings, patch: SettingsPatch, entryYear: number): Settings {
-  const next = { ...settings, ...patch, carryforwardByYear: { ...settings.carryforwardByYear, ...patch.carryforwardByYear } };
+  // Older versions' settings (RETIRED_SETTINGS) are accepted and ignored.
+  const kept = Object.fromEntries(Object.entries(patch).filter(([k]) => !(RETIRED_SETTINGS as readonly string[]).includes(k))) as Partial<Settings>;
+  const next = { ...settings, ...kept, carryforwardByYear: { ...settings.carryforwardByYear, ...patch.carryforwardByYear } };
   if (patch.carryforwardStCents === undefined && patch.carryforwardLtCents === undefined && patch.carryforwardYear === undefined) return next;
   const year = next.carryforwardYear ?? entryYear;
   return { ...next, carryforwardYear: year, carryforwardByYear: { ...next.carryforwardByYear, [String(year)]: { st: next.carryforwardStCents, lt: next.carryforwardLtCents } } };
@@ -339,11 +340,7 @@ export function applyEntry(book: Book, e: CoinEntry, date: LocalDate): Problem |
     case 'settings':
       book.state.settings = applySettingsPatch(book.state.settings, e.patch, yearOf(date));
       return null;
-    case 'giving-paid': {
-      const bad = addVolume(book, 0, e.cents);
-      if (bad === null) book.state.givingPaid.push({ entryId: e.id, year: e.year, cents: e.cents });
-      return bad;
-    }
+    case 'giving-paid': // older versions' giving records: accepted, ignored
     case 'close-year':
     case 'unlock-year':
     case 'delete':

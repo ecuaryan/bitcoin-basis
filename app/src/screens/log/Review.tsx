@@ -21,9 +21,9 @@ function CoinsUsed({ coins }: { coins: NonNullable<Draft['coins']> }) {
   const rows = coins.picks.slice(0, 6);
   const more = coins.picks.length - rows.length;
   return (
-    <section aria-label="Coins used" className="flex flex-col gap-1.5 rounded-2xl border border-line bg-bg px-3.5 py-3">
+    <section aria-label="Lots used" className="flex flex-col gap-1.5 rounded-2xl border border-line bg-bg px-3.5 py-3">
       <h3 className="m-0 text-xs font-normal text-muted">
-        Coins used, saved with this entry ({coins.picks.length})
+        Lots used, saved with this entry ({coins.picks.length})
       </h3>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {rows.map((p) => {
@@ -35,7 +35,7 @@ function CoinsUsed({ coins }: { coins: NonNullable<Draft['coins']> }) {
                 <Amount sats={p.sats} interactive={false} />
               </span>
               <span className="text-xs text-muted">
-                {lot ? `${shortDate(lot.acquiredDate)} · ${TIER_LABEL[lot.tier]}` : 'Coin'}
+                {lot ? `${shortDate(lot.acquiredDate)} · ${TIER_LABEL[lot.tier]}` : 'Lot'}
               </span>
             </li>
           );

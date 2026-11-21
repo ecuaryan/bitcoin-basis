@@ -24,7 +24,7 @@ export function giftNoteText(g: GiftGiven): string {
     `Worth on that day: ${formatMoney(g.valueCents)}`,
     `Giver's cost for these coins: ${formatMoney(g.costCents)}`,
     '',
-    "Coins given (the date the giver got them, amount, giver's cost):",
+    "Lots given (the date the giver got them, amount, giver's cost):",
     ...g.picks.map((p) => `- ${longDate(p.acquiredDate)}: ${formatBtc(p.sats)} BTC, cost ${formatMoney(p.costCents)}`),
     '',
     CARRYOVER,
@@ -54,7 +54,7 @@ export function GiftNoteCard({ gift, heading: Heading = 'h4' }: { gift: GiftGive
           <Money cents={gift.costCents} />
         </dd>
       </dl>
-      <ul aria-label="Coins given" className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-muted">
+      <ul aria-label="Lots given" className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-muted">
         {gift.picks.map((p) => (
           <li key={p.lotId} className="flex justify-between gap-3">
             <span>Bought {longDate(p.acquiredDate)}</span>

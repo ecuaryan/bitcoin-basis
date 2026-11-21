@@ -1,4 +1,5 @@
 import { mulDivRoundHalfUp, oneYearAnniversary, retirementPurchases, SATS_PER_BTC, termFor, uuidv7, worthOf, type BalanceConfirmEntry, type Entry, type Lot, type RetirementHolding, type RetirementPurchaseView, type RetirementSnapshotCheck, type RetirementSnapshotEntry, type Wallet, type Worth } from '@bitcoin-basis/engine';
+import { BackLink } from '../../ui/BackLink.tsx';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
@@ -28,7 +29,7 @@ import { CloseOutSheet } from './CloseOut.tsx';
 import { checkHistory, lastConfirmed, walletEntries, walletLots } from './model.ts';
 import { WalletMenu, type WalletMenuStart } from './WalletMenu.tsx';
 import { useTitle } from '../../ui/use-title.ts';
-import { TERM_HELP } from '../../lib/terms.ts';
+import { LOT_HELP, LOT_HELP_LABEL, TERM_HELP } from '../../lib/terms.ts';
 import { useHelp } from '../../ui/Help.tsx';
 import { GainWords, WorthLine } from '../../ui/WorthLine.tsx';
 import { PlainMoney } from '../../ui/plain-money.tsx';
@@ -55,9 +56,9 @@ const ROUND_BTN = 'press flex size-11 flex-none items-center justify-center roun
 function Header({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): void; wide: boolean }) {
   return (
     <header className="flex items-center gap-3">
-      <Link to="/" aria-label="Back to Holdings" className={ROUND_BTN}>
+      <BackLink fallback="/" fallbackLabel="Back to Holdings" className={ROUND_BTN}>
         <ChevronLeftIcon size={18} />
-      </Link>
+      </BackLink>
       <h1 className="m-0 min-w-0 flex-1 truncate font-display text-[28px] font-semibold tracking-tight lg:text-4xl">{wallet.name}</h1>
       {wide ? <HideButton variant="text" /> : null}
       {wide ? <LockButton variant="text" /> : null}
@@ -333,21 +334,22 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
   );
 }
 
-// ---- Coins -----------------------------------------------------------------------------
+// ---- Lots ------------------------------------------------------------------------------
 
 function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots: Lot[]; today: string; entries: readonly Entry[]; walletsById: ReadonlyMap<string, Wallet>; priceCents: number | null }) {
   const [all, setAll] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
-  // Newest first: the coin you just added is the one you look for.
+  // Newest first: the lot you just added is the one you look for.
   const sorted = useMemo(() => [...lots].sort((a, b) => (a.acquiredAt > b.acquiredAt ? -1 : a.acquiredAt < b.acquiredAt ? 1 : 0)), [lots]);
   const shown = all ? sorted : sorted.slice(0, 5);
-  const termHelp = useHelp('What are short-term and long-term?', TERM_HELP);
+  // One "?": what a lot is, then the two tax clocks each row shows.
+  const lotHelp = useHelp(`${LOT_HELP_LABEL.slice(0, -1)}, and what are short-term and long-term?`, `${LOT_HELP} ${TERM_HELP}`);
   const { state } = useLedger();
   return (
-    <Card as="section" aria-label="Coins in this wallet" className="flex flex-col">
-      <SectionHeader title="Coins, newest first" help={termHelp.button} right={<span className="flex-none text-xs text-muted">Cost per BTC</span>} className="-mt-2" />
-      {termHelp.panel}
-      {sorted.length === 0 ? <EmptyLine>No coins here.</EmptyLine> : null}
+    <Card as="section" aria-label="Lots in this wallet" className="flex flex-col">
+      <SectionHeader title="Lots, newest first" help={lotHelp.button} right={<span className="flex-none text-xs text-muted">Cost per BTC</span>} className="-mt-2" />
+      {lotHelp.panel}
+      {sorted.length === 0 ? <EmptyLine>No lots here.</EmptyLine> : null}
       <ul className="m-0 flex list-none flex-col p-0">
         {shown.map((l) => {
           const long = termFor(l, today) === 'long';
@@ -390,7 +392,7 @@ function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots:
           );
         })}
       </ul>
-      {sorted.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {countOf(sorted.length, 'coin')}</ShowMore> : null}
+      {sorted.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {countOf(sorted.length, 'lot')}</ShowMore> : null}
     </Card>
   );
 }

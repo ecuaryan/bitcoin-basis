@@ -44,7 +44,7 @@ function Row({ label, tone, children, big }: { label: string; tone: 'plain' | 'h
   );
 }
 
-/** The choices of coins to use: side-by-side cards, one picked. A radio group (arrow keys move, Tab leaves). */
+/** The choices of lots to use: side-by-side cards, one picked. A radio group (arrow keys move, Tab leaves). */
 export function PlanChoice({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     const dir = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
@@ -90,9 +90,9 @@ export function PlanCard({ title, plan, active, onSelect, carryBest = false, cla
       <span id={titleId} className={cx('text-[13px]', active ? 'font-bold text-amber' : 'font-semibold text-soft')}>
         {title}
       </span>
-      <Row label="Coins used" tone={tone}>
+      <Row label="Lots used" tone={tone}>
         {rangeLabel(plan.coinsFrom, plan.coinsTo)}
-        <span className="block text-[11px] font-normal text-muted">{countOf(plan.picks.length, 'coin')}</span>
+        <span className="block text-[11px] font-normal text-muted">{countOf(plan.picks.length, 'lot')}</span>
       </Row>
       {rows.map((r) => (
         <Row key={r.label} label={r.label} tone={tone}>
@@ -110,11 +110,6 @@ export function PlanCard({ title, plan, active, onSelect, carryBest = false, cla
       {plan.estimatedShareBp > 0 && (
         <Row label="On Estimated or Unknown cost" tone={tone}>
           {shortPercentFromBp(plan.estimatedShareBp)}
-        </Row>
-      )}
-      {plan.givingCents !== null && (
-        <Row label="Giving on this sale" tone={tone}>
-          <Money cents={plan.givingCents} countUp />
         </Row>
       )}
     </button>

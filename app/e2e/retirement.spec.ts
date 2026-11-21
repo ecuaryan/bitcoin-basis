@@ -79,8 +79,8 @@ test('Retirement: a spreadsheet row for a retirement wallet becomes a retirement
   await expect(status).toContainText('1 retirement purchase will be added');
   await expect(status).toContainText('Kept apart from tax math.');
   await expectNoViolations(page);
-  await status.getByRole('button', { name: 'Create wallet and add 1 coin and 1 retirement purchase' }).click();
-  await expect(page.getByText('Added 1 coin, 1 retirement purchase and 1 wallet.')).toBeVisible();
+  await status.getByRole('button', { name: 'Create wallet and add 1 lot and 1 retirement purchase' }).click();
+  await expect(page.getByText('Added 1 lot, 1 retirement purchase and 1 wallet.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Taxable and retirement' })).toContainText('Retirement');
 });
 
@@ -96,6 +96,6 @@ test('Retirement: a new wallet in the spreadsheet written as retirement purchase
   await status.getByRole('radiogroup', { name: 'What kind of wallet is Swan IRA' }).getByRole('radio', { name: /Retirement/ }).click();
   await expect(status).toContainText('1 retirement purchase will be added');
   await status.getByRole('button', { name: /^Create wallets and add/ }).click();
-  await expect(page.getByText(/Added 1 coin, 1 retirement purchase and 2 wallets/)).toBeVisible();
+  await expect(page.getByText(/Added 1 lot, 1 retirement purchase and 2 wallets/)).toBeVisible();
   await expect(page.getByRole('region', { name: 'Taxable and retirement' })).toContainText('Retirement');
 });

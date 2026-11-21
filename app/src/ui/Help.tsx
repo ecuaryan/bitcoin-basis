@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react';
 import { cx } from '../lib/cx.ts';
+import { LOT_HELP, LOT_HELP_LABEL } from '../lib/terms.ts';
 
 /** A small "?" that opens a short explanation. Put `button` next to a label and `panel` below it. */
 export function useHelp(label: string, text: string): { button: ReactNode; panel: ReactNode; open: boolean } {
@@ -25,4 +26,9 @@ export function useHelp(label: string, text: string): { button: ReactNode; panel
     </p>
   ) : null;
   return { button, panel, open };
+}
+
+/** "What is a lot?": the one explainer, wherever lots first appear on a screen. */
+export function useLotHelp(): { button: ReactNode; panel: ReactNode; open: boolean } {
+  return useHelp(LOT_HELP_LABEL, LOT_HELP);
 }

@@ -79,6 +79,14 @@ export class FakeServer {
    */
   priceKeptAt: number | null = null;
   priceAt: (unixSeconds: number) => number | null = () => this.priceCents;
+  /**
+   * `GET /api/price/series?days=` answers this day's last and highest price for each of the last `days` UTC days
+   * (null: none that day). By default `priceAt` at the day's start, for both.
+   */
+  priceDay: (dayStartSeconds: number) => { closeCents: number; highCents: number } | null = (day) => {
+    const c = this.priceAt(day);
+    return c === null ? null : { closeCents: c, highCents: c };
+  };
   private readonly sessions = new Map<string, Session>();
   private readonly challenges = new Map<string, { challenge: string; type: 'create' | 'get'; purpose?: string; cookie?: string }>();
 
@@ -180,6 +188,19 @@ export class FakeServer {
         const ts = Number(url.searchParams.get('ts'));
         const cents = Number.isSafeInteger(ts) && ts > 0 ? this.priceAt(Math.floor(ts / 3600) * 3600) : null;
         return cents === null ? { status: 404, json: { error: 'no price' } } : { status: 200, json: { usdCents: cents } };
+      }
+      case 'GET /api/price/series': {
+        const raw = url.searchParams.get('days') ?? '';
+        if (!/^\d{1,6}$/.test(raw) || Number(raw) < 1) return { status: 400, json: { error: 'bad_request' } };
+        const days = Math.min(Number(raw), 3660);
+        const now = Math.floor(Date.now() / 1000);
+        const today = now - (now % 86_400);
+        const points: [number, number, number][] = [];
+        for (let d = today - (days - 1) * 86_400; d <= today; d += 86_400) {
+          const p = this.priceDay(d);
+          if (p !== null) points.push([d, p.closeCents, p.highCents]);
+        }
+        return points.length === 0 ? { status: 502, json: { error: 'bad_gateway' } } : { status: 200, json: { points } };
       }
       case 'POST /api/register/options': {
         if (session === null) {

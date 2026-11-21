@@ -49,11 +49,6 @@ export interface SettingsDraft {
   stateRate: string;
   carryforwardSt: string;
   carryforwardLt: string;
-  givingEnabled: boolean;
-  givingName: string;
-  givingPercent: string;
-  givingMode: Settings['givingMode'];
-  earlierMoneyIn: string;
   timeZone: string;
 }
 
@@ -86,11 +81,6 @@ export function draftFrom(s: Settings, year?: number, set: TaxProfileSet = ALL_S
     stateRate: s.state.kind === 'custom' ? percent(s.state.rate) : '',
     carryforwardSt: dollars(losses.st),
     carryforwardLt: dollars(losses.lt),
-    givingEnabled: s.givingEnabled,
-    givingName: s.givingName,
-    givingPercent: percent(s.givingPercentBp),
-    givingMode: s.givingMode,
-    earlierMoneyIn: dollars(s.earlierMoneyInCents),
     timeZone: s.timeZone,
   };
 }
@@ -114,10 +104,6 @@ export function patchFrom(current: Settings, d: SettingsDraft, year?: number, se
   const wages = money('wages', d.wages);
   const st = money('carryforwardSt', d.carryforwardSt);
   const lt = money('carryforwardLt', d.carryforwardLt);
-  const earlier = money('earlierMoneyIn', d.earlierMoneyIn);
-  const pct = parsePercentBp(d.givingPercent);
-  if (pct === null) errors.givingPercent = 'Use a percent from 0 to 100, like 10.';
-  if (d.givingName.trim() === '') errors.givingName = 'Give it a name.';
   if (!isValidTimeZone(d.timeZone)) errors.timeZone = 'Use a time zone name, like America/Boise.';
   let state: StateTaxSetting | null = null;
   if (d.stateChoice === NO_STATE_TAX) state = { kind: 'none' };
@@ -135,11 +121,6 @@ export function patchFrom(current: Settings, d: SettingsDraft, year?: number, se
     wagesCents: wages,
     state: state ?? current.state,
     ...(year === undefined ? { carryforwardStCents: st, carryforwardLtCents: lt } : {}),
-    givingEnabled: d.givingEnabled,
-    givingName: d.givingName.trim(),
-    givingPercentBp: pct ?? 0,
-    givingMode: d.givingMode,
-    earlierMoneyInCents: earlier,
     timeZone: d.timeZone,
   };
   const patch: Record<string, unknown> = {};

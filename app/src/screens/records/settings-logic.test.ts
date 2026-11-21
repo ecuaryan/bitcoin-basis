@@ -8,15 +8,15 @@ describe('settings form', () => {
     expect(r).toEqual({ ok: true, patch: {} });
   });
   it('sends only what changed, in cents and basis points', () => {
-    const d = { ...draftFrom(DEFAULT_SETTINGS), wages: '130,000', givingEnabled: true, givingPercent: '12.5', stateChoice: 'custom', stateRate: '5.3' };
+    const d = { ...draftFrom(DEFAULT_SETTINGS), wages: '130,000', stateChoice: 'custom', stateRate: '5.35' };
     const r = patchFrom(DEFAULT_SETTINGS, d);
-    expect(r).toEqual({ ok: true, patch: { wagesCents: 13_000_000, givingEnabled: true, givingPercentBp: 1250, state: { kind: 'custom', rate: 530 } } });
+    expect(r).toEqual({ ok: true, patch: { wagesCents: 13_000_000, state: { kind: 'custom', rate: 535 } } });
   });
   it('round-trips awkward amounts without floats', () => {
-    const s = { ...DEFAULT_SETTINGS, wagesCents: 12_345_607, givingPercentBp: 1205 };
+    const s = { ...DEFAULT_SETTINGS, wagesCents: 12_345_607, state: { kind: 'custom' as const, rate: 1205 } };
     const d = draftFrom(s);
     expect(d.wages).toBe('123456.07');
-    expect(d.givingPercent).toBe('12.05');
+    expect(d.stateRate).toBe('12.05');
     expect(patchFrom(s, d)).toEqual({ ok: true, patch: {} });
   });
   it('saves changed losses from past years under this year only, and only then', () => {
@@ -50,8 +50,8 @@ describe('settings form', () => {
     expect(stateOptionLabel('TX')).toBe('Texas no tax · 2026 rate');
   });
   it('explains what is wrong', () => {
-    const r = patchFrom(DEFAULT_SETTINGS, { ...draftFrom(DEFAULT_SETTINGS), wages: 'lots', givingName: ' ', timeZone: 'Mars/Base' });
+    const r = patchFrom(DEFAULT_SETTINGS, { ...draftFrom(DEFAULT_SETTINGS), wages: 'lots', timeZone: 'Mars/Base' });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(['givingName', 'timeZone', 'wages']);
+    if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(['timeZone', 'wages']);
   });
 });

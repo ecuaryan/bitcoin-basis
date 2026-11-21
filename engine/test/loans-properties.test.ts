@@ -126,6 +126,8 @@ describe('loan properties', () => {
         const state = replay([...coinHistory(coins, outs), ...loanRecords(ops, coins.length)]);
         const s = loanSummary(state, 'h', 6_000_000, '2026-12-31') as NonNullable<ReturnType<typeof loanSummary>>;
         expect(s.interestOnPurchasesCents).toBeLessThanOrEqual(s.interestPaidCents);
+        // What the purchases bought adds back exactly from where it is now.
+        expect(s.boughtSats).toBe(s.heldSats + s.frozenSats + s.soldSats + s.otherGoneSats);
         const years = loanInterestByYear(state);
         expect(years.reduce((t, y) => t + y.interestPaidCents, 0)).toBe(s.interestPaidCents);
         expect(years.reduce((t, y) => t + y.onPurchasesCents, 0)).toBe(s.interestOnPurchasesCents);

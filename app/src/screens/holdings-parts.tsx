@@ -1,19 +1,18 @@
 import { mulDivRoundHalfUp, SATS_PER_BTC, type Lot, type Tier, type Worth } from '@bitcoin-basis/engine';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { dayChangeTenthsPercent } from '../data/price.ts';
 import { cx } from '../lib/cx.ts';
 import { countOf, formatMoney, shortDate } from '../lib/format.ts';
 import type { HoldingsView, StackYear, WalletCard } from '../lib/holdings-view.ts';
-import { buildItems } from '../lib/entry-list.ts';
 import { describeOrigin, TIER_HELP, TIER_LABEL } from '../lib/origin.ts';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { Amount, Money } from '../ui/Amount.tsx';
 import { PlainMoney } from '../ui/plain-money.tsx';
 import { Card } from '../ui/Card.tsx';
 import { Sheet } from '../ui/Sheet.tsx';
+import { useLotHelp } from '../ui/Help.tsx';
 import { ChevronRightIcon } from '../ui/icons.tsx';
-import { useHelp } from '../ui/Help.tsx';
 import { usePrice } from '../data/price-provider.tsx';
 import { PriceUnavailableLine, yourPriceText } from '../ui/PriceProblem.tsx';
 import { PriceAge, PriceRefreshButton } from '../ui/PriceFreshness.tsx';
@@ -95,7 +94,7 @@ export function StackRows({ stack, onPick }: { stack: StackYear[]; onPick(year: 
             <span className="w-16 text-right text-xs">
               <ShortBtc sats={row.sats} />
             </span>
-            <span className="sr-only">Show where the {row.year} coins came from.</span>
+            <span className="sr-only">Show the {row.year} lots and where each came from.</span>
           </button>
         </li>
       ))}
@@ -126,7 +125,7 @@ export function StackColumns({ stack, onPick }: { stack: StackYear[]; onPick(yea
               {[...TIER_ORDER].reverse().map((t) => (row.byTier[t] > 0 ? <span key={t} className={cx('w-full', TIER_BG[t])} style={{ height: `${(row.byTier[t] / row.sats) * 100}%` }} /> : null))}
             </span>
             <span className="text-xs text-muted">{row.year}</span>
-            <span className="sr-only">Show where the {row.year} coins came from.</span>
+            <span className="sr-only">Show the {row.year} lots and where each came from.</span>
           </button>
         </li>
       ))}
@@ -215,13 +214,18 @@ function CoinRow({ lot, priceCents }: { lot: Lot; priceCents: number | null }) {
 export function YearSheet({ row, onClose }: { row: StackYear | null; onClose(): void }) {
   const { quote } = usePrice();
   const priceCents = quote?.usdCents ?? null;
+  const lotHelp = useLotHelp();
   return (
-    <Sheet open={row !== null} onClose={onClose} title={row ? `${row.year} coins` : ''}>
+    <Sheet open={row !== null} onClose={onClose} title={row ? `${row.year} lots` : ''}>
       {row && (
         <>
-          <p className="mb-2 text-sm text-muted">
-            {countOf(row.lots.length, 'coin')}, newest first. Tap one to see where it came from.
+          <p className="mb-2 flex items-baseline gap-1 text-sm text-muted">
+            <span>
+              {countOf(row.lots.length, 'lot')}, newest first. Tap one to see where it came from.
+            </span>
+            {lotHelp.button}
           </p>
+          {lotHelp.panel ? <div className="mb-2">{lotHelp.panel}</div> : null}
           <TierLegend tiers={tiersPresent(row.byTier)} className="mb-2" />
           <YearTotal lots={row.lots} year={row.year} priceCents={priceCents} />
           <ul className="m-0 list-none p-0">
@@ -239,7 +243,7 @@ function YearTotal({ lots, year, priceCents }: { lots: Lot[]; year: number; pric
   const w = sumWorth(lots, priceCents);
   return (
     <p className="mb-2 mt-0 text-sm" aria-label={`${year} total`}>
-      <span className="text-soft">All {year} coins now </span>
+      <span className="text-soft">All {year} lots now </span>
       {w.valueCents === null ? '—' : <Money cents={w.valueCents} />}
       <span className="text-soft"> · </span>
       <GainWords worth={w} className="font-semibold" />
@@ -318,64 +322,6 @@ export function DocumentationCard({ view }: { view: HoldingsView }) {
           </li>
         ))}
       </ul>
-    </Card>
-  );
-}
-
-/** What the imported coins (opening lots, not removed) cost in all. Money in counts only purchases logged here. */
-function importedCostCents(entries: Parameters<typeof buildItems>[0]): number {
-  return buildItems(entries).reduce((sum, i) => (!i.deleted && i.current.kind === 'opening-lot' ? sum + i.current.costCents : sum), 0);
-}
-
-export function MoneyCard({ view }: { view: HoldingsView }) {
-  const { entries, state } = useLedger();
-  const imported = useMemo(() => importedCostCents(entries), [entries]);
-  const earlier = state.settings.earlierMoneyInCents;
-  const help = useHelp(
-    'What do these mean?',
-    'Put in: dollars you paid for purchases logged in this app, plus anything you entered in Settings for before you started. Taken out: dollars your sales and spending brought in. Not used in tax math.',
-  );
-  return (
-    <Card as="section" aria-label="Money in and out" className="flex flex-col gap-3">
-      <h2 className="m-0 flex items-baseline gap-1 text-[15px] font-semibold">
-        Money in and out
-        {help.button}
-      </h2>
-      {help.panel}
-      <dl className="m-0 grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-0.5">
-          <dt className="text-xs text-muted">Put in</dt>
-          <dd className="m-0 text-xl font-semibold">
-            <Money cents={view.moneyInCents} precision="dollars" />
-          </dd>
-          <dd className="m-0 text-xs text-muted">
-            {earlier > 0 ? (
-              <>
-                Purchases here, plus <Money cents={earlier} precision="dollars" /> from before
-              </>
-            ) : (
-              'Purchases logged here'
-            )}
-          </dd>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <dt className="text-xs text-muted">Taken out</dt>
-          <dd className="m-0 text-xl font-semibold">
-            <Money cents={view.moneyOutCents} precision="dollars" />
-          </dd>
-          <dd className="m-0 text-xs text-muted">From sales and spending</dd>
-        </div>
-      </dl>
-      {imported > 0 && earlier === 0 ? (
-        <p className="m-0 text-xs leading-[1.45] text-soft">
-          Your imported coins (cost <Money cents={imported} precision="dollars" />) are not counted here. To count money you put in before
-          using this app, enter it in{' '}
-          <Link to="/settings#taxes" className="font-semibold text-amber">
-            Settings, under Your records
-          </Link>
-          .
-        </p>
-      ) : null}
     </Card>
   );
 }

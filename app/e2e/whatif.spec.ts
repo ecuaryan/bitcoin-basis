@@ -18,11 +18,11 @@ test('Sell: compare, slide, pick coins and log a sale', async ({ page }) => {
   await slider.press('End');
   await expect(big).not.toHaveText(before);
 
-  await page.getByRole('button', { name: 'Pick coins' }).click();
-  await expect(page.getByRole('dialog', { name: 'Pick coins' })).toBeVisible();
+  await page.getByRole('button', { name: 'Pick lots' }).click();
+  await expect(page.getByRole('dialog', { name: 'Pick lots' })).toBeVisible();
   await expectNoViolations(page);
-  await page.getByRole('button', { name: 'Use these coins' }).click();
-  await expect(page.getByRole('radio', { name: 'Your picks' })).toBeVisible();
+  await page.getByRole('button', { name: 'Use these lots' }).click();
+  await expect(page.getByRole('radio', { name: 'Lots you picked' })).toBeVisible();
 
   await page.getByRole('button', { name: 'I sold it, log it' }).click();
   const review = page.getByRole('dialog', { name: 'Log your sale' });

@@ -17,11 +17,6 @@ export const DEFAULT_SETTINGS: Settings = {
   carryforwardStCents: 0,
   carryforwardLtCents: 0,
   carryforwardByYear: {},
-  givingEnabled: false,
-  givingName: 'Giving',
-  givingPercentBp: 1000,
-  givingMode: 'before-tax',
-  earlierMoneyInCents: 0,
   timeZone: DEFAULT_TIME_ZONE,
 };
 
@@ -60,11 +55,9 @@ export function replay(entries: readonly Entry[]): LedgerState {
     balanceChecks: [],
     retirementSnapshots: [],
     retirementBuys: [],
-    givingPaid: [],
     conflicts: resolution.conflicts,
     closedYears: resolution.closedYears,
     settings: DEFAULT_SETTINGS,
-    buyCostCents: 0,
     cpaFlags: [],
     errors: resolution.errors,
     applied: [],

@@ -46,7 +46,7 @@ export function SellForm({ initial, preset, onReview, onSwitch }: FormProps) {
     amount: sats === null ? 'Enter how much you sold.' : null,
     value: value.cents === null ? (how === 'sold' ? 'Enter the dollars you received.' : 'Enter what it was worth.') : null,
     what: how === 'spent' && description.trim() === '' ? 'Say what it bought.' : null,
-    picks: sats !== null && picks === null ? 'Choose coins that add up to the amount.' : null,
+    picks: sats !== null && picks === null ? 'Pick lots that add up to the amount.' : null,
   };
   const valid = Object.values(errors).every((e) => e === null);
 

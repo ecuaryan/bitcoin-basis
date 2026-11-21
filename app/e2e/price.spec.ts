@@ -143,3 +143,26 @@ test('a price you enter is used for a purchase in dollars only if you save it, a
   await page.getByRole('region', { name: 'Recent entries' }).getByRole('button').filter({ hasText: /0\.0010/ }).first().click();
   await expect(page.getByRole('dialog')).toContainText('Price source: your price at $100,000.00 per BTC');
 });
+
+test('the chart loads its daily history in one request; a server without it falls back to a few lookups', async ({ page }) => {
+  await setUp(page);
+  await addWallet(page, 'Kraken');
+  await logPurchase(page);
+  const card = page.getByRole('region', { name: 'Average cost versus price' }).first();
+  await expect(card.getByTestId('chart-high-label')).toHaveText(/^High \$[\d,]+ · [A-Z][a-z]{2} \d{1,2}, 20\d{2}$/);
+  expect(Number(await card.getByRole('slider').getAttribute('aria-valuemax'))).toBeGreaterThan(1000);
+
+  // An older server: no series route. Next time the chart is built from separate lookups, without a "High" mark.
+  await page.evaluate(() => {
+    window.localStorage.removeItem('bb.price-series.v1');
+    window.__bbFake?.server.failing.set('/api/price/series', 404);
+  });
+  await go(page, '/records');
+  await expect(card).toHaveCount(0);
+  await go(page, '/');
+  const slider = card.getByRole('slider');
+  await expect(slider).toBeVisible({ timeout: 15_000 });
+  await expect.poll(async () => Number(await slider.getAttribute('aria-valuemax'))).toBeGreaterThan(5);
+  expect(Number(await slider.getAttribute('aria-valuemax'))).toBeLessThan(20);
+  await expect(card.getByTestId('chart-high-label')).toHaveCount(0);
+});

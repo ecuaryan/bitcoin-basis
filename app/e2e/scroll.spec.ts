@@ -63,3 +63,55 @@ test('each tab keeps its own place, tapping the current tab goes to the top, and
   await page.goBack();
   await expect.poll(() => y(page)).toBe(300);
 });
+
+test('a wallet opened from mid-Holdings starts at the top; the in-app Back and the browser Back both return to the place', async ({ page }) => {
+  await openDemo(page);
+  // Room to scroll on any screen size (a spacer outside the app), then stop with the wallet link part way down the screen.
+  await page.evaluate(() => {
+    const s = document.createElement('div');
+    s.style.height = '3000px';
+    document.body.append(s);
+  });
+  const wallet = page.getByRole('region', { name: 'Wallets' }).locator('a[href^="/wallet/"]').first();
+  const top = await wallet.evaluate((el) => Math.round(el.getBoundingClientRect().top + window.scrollY));
+  const before = Math.max(250, top - 300);
+  await scrollTo(page, before);
+
+  // The real tap: the link is on screen where Holdings was left.
+  await wallet.click();
+  await expect(page).toHaveURL(/\/wallet\//);
+  await expect.poll(() => y(page)).toBe(0);
+  await scrollTo(page, 150);
+  await page.getByRole('link', { name: 'Back', exact: true }).first().click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect.poll(async () => Math.abs((await y(page)) - before)).toBeLessThan(8);
+
+  // Again, with the browser's back.
+  await wallet.click();
+  await expect(page).toHaveURL(/\/wallet\//);
+  await expect.poll(() => y(page)).toBe(0);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await expect.poll(async () => Math.abs((await y(page)) - before)).toBeLessThan(8);
+  // Back went back in history: forward returns to the wallet, at the top where it was left.
+  await page.goForward();
+  await expect(page).toHaveURL(/\/wallet\//);
+});
+
+test('a link to a section (/settings#security) lands on that section', async ({ page }) => {
+  await openDemo(page);
+  await page.evaluate(() => window.scrollTo(0, 300));
+  // An old Records link that the app sends on to /settings#security.
+  await page.evaluate(() => {
+    window.history.pushState({}, '', '/records?v=security');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page).toHaveURL(/\/settings#security$/);
+  const heading = page.getByRole('heading', { name: 'Security and devices' });
+  await expect(heading).toBeVisible();
+  // At the top of the screen, or as near as the page's end allows.
+  await expect
+    .poll(() => heading.evaluate((el) => el.getBoundingClientRect().top < 200 || Math.ceil(window.scrollY) >= document.documentElement.scrollHeight - window.innerHeight - 1))
+    .toBe(true);
+  await expect(heading).toBeInViewport();
+});

@@ -49,3 +49,19 @@ test('scrubbing the price chart shows a point label, by pointer and keyboard', a
   expect(await chart.getAttribute('aria-valuetext')).not.toBe(end);
   await expectNoViolations(page);
 });
+
+test('the chart is drawn from daily prices and marks the high, with its date; Hide amounts masks its dollars', async ({ page }) => {
+  await openDemo(page);
+  const card = page.getByRole('region', { name: 'Average cost versus price' }).first();
+  const high = card.getByTestId('chart-high-label');
+  await expect(high).toHaveText(/^High \$\d{2,3},\d{3} · [A-Z][a-z]{2} \d{1,2}, 20\d{2}$/);
+  // Every day is a point: the slider steps through about three years of days.
+  const chart = card.getByRole('slider');
+  expect(Number(await chart.getAttribute('aria-valuemax'))).toBeGreaterThan(1000);
+  await chart.focus();
+  await page.keyboard.press('End');
+  await page.keyboard.press('PageDown');
+  await expect(chart).toHaveAttribute('aria-valuetext', /^[A-Z][a-z]{2} \d{1,2}, 20\d{2}: BTC price/);
+  await page.getByRole('button', { name: 'Hide amounts' }).first().click();
+  await expect(high).toHaveText(/^High \$•+ · [A-Z][a-z]{2} \d{1,2}, 20\d{2}$/);
+});

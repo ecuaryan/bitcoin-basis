@@ -14,6 +14,7 @@ import { Review } from '../log/Review.tsx';
 import { saleDraft } from '../log/sale-review.tsx';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import { Sheet } from '../../ui/Sheet.tsx';
+import { useLotHelp } from '../../ui/Help.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { needsBrokerInstruction, picksFromSelection, planFor, planForWallet, rangeLabel, type PlanKey } from './sell-logic.ts';
 import { Note, TierChip } from './sell-parts.tsx';
@@ -53,7 +54,7 @@ export function WalletSheet({ open, onClose, wallets, selected, onPick }: { open
   );
 }
 
-// ---- Pick coins --------------------------------------------------------------------------
+// ---- Pick lots ---------------------------------------------------------------------------
 
 export function PickCoinsSheet({
   open,
@@ -72,7 +73,7 @@ export function PickCoinsSheet({
   sats: number;
   /** Lot ids to start from (the plan on screen). */
   initial: readonly string[];
-  /** Name of the plan those coins came from, such as "Lowest tax". */
+  /** Name of the plan those lots came from, such as "Lowest tax". */
   label?: string;
   today: string;
   onUse(order: string[]): void;
@@ -80,6 +81,7 @@ export function PickCoinsSheet({
   const lots = useMemo(() => oldestFirstOrder(state.lots, wallet), [state.lots, wallet]);
   const [order, setOrder] = useState<string[]>([...initial]);
   const [changed, setChanged] = useState(false);
+  const lotHelp = useLotHelp();
   // Ticked coins first, so they are in view when the sheet opens. The order stays put while ticking.
   const [listed] = useState(() => {
     const start = new Set(initial);
@@ -101,13 +103,17 @@ export function PickCoinsSheet({
     });
   }
   return (
-    <Sheet open={open} onClose={onClose} title="Pick coins">
+    <Sheet open={open} onClose={onClose} title="Pick lots">
       <div className="flex flex-col gap-3 pb-3">
-        <p className="m-0 text-[13px] text-muted">Tick the coins to sell. The last one is trimmed to fit.</p>
+        <p className="m-0 flex items-baseline gap-1 text-[13px] text-muted">
+          <span>Tick the lots to sell. The last one is trimmed to fit.</span>
+          {lotHelp.button}
+        </p>
+        {lotHelp.panel}
         <div role="status" className={cx('rounded-xl border px-3 py-2 text-sm font-semibold', short === 0 ? 'border-accent text-amber' : 'border-line text-soft')}>
           {short === 0 ? (
             <>
-              {countOf(picks.length, 'coin')} ticked{label !== undefined && !changed ? ` (${label})` : ''}. They cover <Amount sats={sats} showUnit interactive={false} />.
+              {countOf(picks.length, 'lot')} ticked{label !== undefined && !changed ? ` (${label})` : ''}. They cover <Amount sats={sats} showUnit interactive={false} />.
             </>
           ) : (
             <>
@@ -160,7 +166,7 @@ export function PickCoinsSheet({
               onClose();
             }}
           >
-            Use these coins
+            Use these lots
           </Button>
         </div>
       </div>
@@ -229,8 +235,8 @@ export function SaleReviewSheet({
     const lots = oldestFirstOrder(state.lots, walletId);
     const extra = (
       <>
-        {needsBrokerInstruction(plan) && <Note tone="warn">Tell {wallet.name} which coins to sell before you sell. Without instructions it may use its own order.</Note>}
-        {plan.estimatedShareBp > 0 && <Note>Some of these coins have an Estimated or Unknown cost. Confirm how to report that with your CPA.</Note>}
+        {needsBrokerInstruction(plan) && <Note tone="warn">Tell {wallet.name} which lots to sell before you sell. Without instructions it may use its own order.</Note>}
+        {plan.estimatedShareBp > 0 && <Note>Some of these lots have an Estimated or Unknown cost. Confirm how to report that with your CPA.</Note>}
         <TaxTableNotice year={year} />
         {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
       </>
@@ -333,7 +339,7 @@ export function PrepareSaleSheet({
           <dl className="m-0 flex flex-col rounded-2xl border border-line bg-bg px-4 py-1 text-sm">
             {[
               ['Coins arriving', <Amount key="a" sats={result.draft.sats} showUnit interactive={false} />],
-              ['Coins used', `${rangeLabel(result.plan.coinsFrom, result.plan.coinsTo)} · ${countOf(result.plan.picks.length, 'coin')}`],
+              ['Lots used', `${rangeLabel(result.plan.coinsFrom, result.plan.coinsTo)} · ${countOf(result.plan.picks.length, 'lot')}`],
               ['Fee', <Amount key="f" sats={result.draft.feeSats} showUnit interactive={false} />],
               ['Tax from this move', 'None except the fee'],
             ].map(([k, v], i, all) => (
@@ -346,7 +352,7 @@ export function PrepareSaleSheet({
         ) : (
           <p className="m-0 text-sm text-loss">The fee must be a whole number of sats, smaller than the amount.</p>
         )}
-        {result && <p className="m-0 text-[13px] text-muted">Your exchange sells by its own rules unless you tell it which coins.</p>}
+        {result && <p className="m-0 text-[13px] text-muted">Your exchange sells by its own rules unless you tell it which lots.</p>}
         <div className="flex gap-2.5">
           <Button className="flex-1" onClick={onClose}>
             Cancel

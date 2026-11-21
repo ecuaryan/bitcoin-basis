@@ -21,7 +21,7 @@ All screenshots use the built-in synthetic demo data.
 - **End-to-end encrypted with passkeys.** A fingerprint or face unlock opens your records through the WebAuthn PRF extension. The server stores only padded ciphertext, has no code path that deletes or overwrites, and copies everything daily to a locked backup bucket.
 - **Local-first.** An installable app that works offline and syncs a phone and a computer through a small server you own.
 - **A tax engine you can check.** Pure TypeScript with integer sats and cents and no runtime dependencies. 610 tests with 100% coverage enforced in CI, a 93% mutation score, and an exact match with an independent reference on 2,800 random cases.
-- **Built to current IRS rules.** Coins are tracked wallet by wallet (Rev. Proc. 2024-28), every sale remembers exactly which coins it used, and edge cases such as gifts below cost, frozen platforms, loans and closed years are covered by tests.
+- **Built to current IRS rules.** Coins are tracked wallet by wallet (Rev. Proc. 2024-28), every sale remembers exactly which lots it used, and edge cases such as gifts below cost, frozen platforms, loans and closed years are covered by tests.
 - **Verifiable.** Each release publishes its build hashes, and a daily job rebuilds the app from source and compares it with the live site.
 - **Built by directing AI agents, then checking their work.** Adversarial reviews, differential tests and real-device checks; the mistakes they caught are listed in [how this was built with AI](docs/how-this-was-built-with-ai.md).
 
@@ -36,15 +36,15 @@ If you hold your own coins, nobody sends you a tax statement, yet the IRS still 
 
 ## What it does
 
-- **Holdings:** what your Bitcoin is worth, average cost, unrealized gain, a stack by year, and balances per wallet. Every lot is tagged Documented, Reconstructed, Estimated or Unknown, so you can see how well each cost is backed up.
+- **Holdings:** what your Bitcoin is worth, average cost, unrealized gain, a daily price chart for three years against your average cost (with the high marked), a stack by year, and balances per wallet. Every lot is tagged Documented, Reconstructed, Estimated or Unknown, so you can see how well each cost is backed up.
 - **Log:** buy, receive (income, gift, inherited, payout from a frozen platform), move between wallets (with the fee), sell or spend, give, and record lost coins.
-- **Wallet by wallet:** coins are tracked per wallet, as the 2025 IRS rules ask (Rev. Proc. 2024-28). Saved coin choices: every sale remembers exactly which lots it used, so adding an older purchase later never changes a past sale.
-- **Sell and Borrow planners:** compare oldest first with lowest tax (coins used, short- and long-term gain, tax this adds, losses left for next year). Borrow shows loan-to-value, margin-call and liquidation prices, and the tax a liquidation would add.
+- **Wallet by wallet:** coins are tracked per wallet, as the 2025 IRS rules ask (Rev. Proc. 2024-28). Saved lot choices: every sale remembers exactly which lots it used (a lot is Bitcoin you got at one time for one cost, usually one purchase), so adding an older purchase later never changes a past sale.
+- **Sell and Borrow planners:** compare oldest first with lowest tax (lots used, short- and long-term gain, tax this adds, losses left for next year). Borrow shows loan-to-value, margin-call and liquidation prices, and the tax a liquidation would add.
 - **Tax season:** gains, losses, income and gifts for a year, the 1040 digital-asset answer, and CSV downloads (Form 8949-style, income) for your preparer. Federal tables for 2025 to 2027; state as a flat rate, no tax, or a custom rate.
-- **Records:** entries with history (edits and deletes are new entries, nothing is overwritten), close a year, import your coins from a spreadsheet (CSV), and export everything as a spreadsheet or a full backup file.
+- **Records:** entries with history (edits and deletes are new entries, nothing is overwritten), close a year, import your lots from a spreadsheet (CSV), and export everything as a spreadsheet or a full backup file.
 - **Settings** (the gear at the top, or Settings in the sidebar): taxes, security and devices, the emergency kit, and app options.
 - **Frozen or failed platform:** close-out with the loss, and later payouts as recovery gains.
-- **Loans:** Bitcoin bought with borrowed money (for example a HELOC). Link purchases to draws, log payments and rate changes, check the balance against a statement, and see the break-even price including interest paid.
+- **Loans:** Bitcoin bought with borrowed money (for example a HELOC). Link purchases to draws, log payments and rate changes, check the balance against a statement, and see what the loan bought, what is still held, and the break-even price including interest paid.
 - **Retirement accounts:** log what an IRA bought to see each purchase's cost, worth now and gain, plus an All Bitcoin total (taxable and retirement together). Retirement coins never enter tax math.
 - **Emergency kit:** a one-page printout for your estate papers: the recovery code, how to open the records, and where the Bitcoin is held (wallet names only). The app reminds you to test it once a year.
 - **Hide amounts** (your choice, off by default), installable on a phone, offline after the first load.

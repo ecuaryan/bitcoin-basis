@@ -214,7 +214,7 @@ function ProofView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void
       }}
     >
       <BackLink onClick={onBack} />
-      <TextField label="Where receipts usually are" value={proof} onChange={(e) => setProof(e.target.value)} hint="New purchases and receives in this wallet start with this. Coins already logged keep theirs." autoComplete="off" />
+      <TextField label="Where receipts usually are" value={proof} onChange={(e) => setProof(e.target.value)} hint="New purchases and receives in this wallet start with this. Lots already logged keep theirs." autoComplete="off" />
       <Button type="submit" variant="primary" disabled={head === undefined || busy} className="min-h-14 rounded-[18px] text-[17px]">
         {busy ? 'Saving…' : 'Save'}
       </Button>
@@ -309,7 +309,7 @@ function LostView({ wallet, startSats, onBack, onClose }: { wallet: Wallet; star
   const available = useMemo(() => (at === null ? [] : lotsAvailable(state, entries, wallet.id, at)), [state, entries, wallet.id, at]);
   const picks = choosePicks(available, sats, mode, chosen);
   const onDate = at === null ? today : localDate(at, tz);
-  const errors = { when: at === null ? 'Pick a date and time.' : null, amount: sats === null ? 'Enter how much was lost.' : null, picks: sats !== null && picks === null ? 'Choose coins that add up to the amount.' : null };
+  const errors = { when: at === null ? 'Pick a date and time.' : null, amount: sats === null ? 'Enter how much was lost.' : null, picks: sats !== null && picks === null ? 'Pick lots that add up to the amount.' : null };
 
   function review() {
     setTried(true);

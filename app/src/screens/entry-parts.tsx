@@ -104,11 +104,11 @@ function facts(e: Entry, name: (id: string) => string, loan: (id: string) => str
     case 'receive':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['Source', e.source.type]];
     case 'move':
-      return [['From', name(e.from)], ['To', name(e.to)], coins('Coins arriving', e.sats), coins('Network fee', e.feeSats), ['Coins used', countOf(e.picks.length, 'batch', 'batches')]];
+      return [['From', name(e.from)], ['To', name(e.to)], coins('Coins arriving', e.sats), coins('Network fee', e.feeSats), ['Lots used', countOf(e.picks.length, 'lot')]];
     case 'sell':
-      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash(e.spent ? 'Value spent' : 'Proceeds', e.proceedsCents), ['Coins used', countOf(e.picks.length, 'batch', 'batches')], ...(e.description ? ([['What for', e.description]] as [string, ReactNode][]) : [])];
+      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash(e.spent ? 'Value spent' : 'Proceeds', e.proceedsCents), ['Lots used', countOf(e.picks.length, 'lot')], ...(e.description ? ([['What for', e.description]] as [string, ReactNode][]) : [])];
     case 'give':
-      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['To', `${e.recipient} (${e.to})`], ['Coins used', countOf(e.picks.length, 'batch', 'batches')]];
+      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['To', `${e.recipient} (${e.to})`], ['Lots used', countOf(e.picks.length, 'lot')]];
     case 'lost':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), ['Cause', e.cause.replace('-', ' ')]];
     case 'retirement-buy':
@@ -119,7 +119,6 @@ function facts(e: Entry, name: (id: string) => string, loan: (id: string) => str
     case 'retirement-snapshot':
       return [['Wallet', name(e.wallet)], coins('Balance', e.sats)];
     case 'giving-paid':
-      return [['Year', String(e.year)], cash('Paid', e.cents)];
     case 'close-year':
     case 'unlock-year':
       return [['Year', String(e.year)]];

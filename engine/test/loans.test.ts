@@ -82,6 +82,7 @@ describe('Example L: four $5,000 purchases on a 6.5% HELOC', () => {
       availableCreditCents: 3_100_000,
       purchaseCount: 4,
       purchasesCostCents: 2_000_000,
+      boughtSats: 20_776_284,
       heldSats: 18_774_284,
       heldCostCents: 1_799_828,
       frozenSats: 0,

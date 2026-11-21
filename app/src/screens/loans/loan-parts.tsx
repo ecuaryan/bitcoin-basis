@@ -19,7 +19,11 @@ export const LOAN_ESTIMATE_HELP =
 /** The break-even label everywhere, and what its "?" says. */
 export const BREAK_EVEN_LABEL = 'Break-even price (with interest paid so far)';
 export const BREAK_EVEN_HELP =
-  'The price at which the coins still held would cover what they cost plus the interest you have paid. Interest you have not paid yet is not included until you pay it.';
+  'Uses the Bitcoin from this loan’s purchases that you still hold: the price at which it would cover what it cost plus the interest you have paid so far. Interest not billed or paid yet is not included until you pay it.';
+
+/** What the "?" beside "If you paid it off today" says. */
+export const PAYOFF_HELP =
+  'Uses the Bitcoin from this loan’s purchases that you still hold, at today’s price, against what you owe now: the balance plus interest since your last payment that has not been billed yet (an estimate, marked ≈).';
 
 /** A quiet "≈" before an estimated figure (read as "about"). */
 export function Approx() {

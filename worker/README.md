@@ -3,7 +3,7 @@
 One Cloudflare Worker that does two things:
 
 - **Hosts the app.** Static files from `../app/dist`, served by Workers static assets (single-page-app fallback). Worker code runs only for `/assets/*`, so a missing build file is a 404 instead of `index.html`.
-- **Relays the public BTC price** (`GET /api/price`, `GET /api/price/history?ts=`): fetched from mempool.space server-side and cached, so the browser never contacts a third party.
+- **Relays the public BTC price** (`GET /api/price`, `GET /api/price/history?ts=`, `GET /api/price/series?days=` for the chart): fetched from mempool.space server-side and cached, so the browser never contacts a third party.
 - **Runs the sync API** under `/api/*`: passkey sign-in, recovery sign-in, and an append-only store of encrypted blobs in a private R2 bucket. It never sees a key or plaintext, and has no code path that deletes or overwrites anything.
 
 The contract with the app is [`docs/sync-protocol.md`](../docs/sync-protocol.md).

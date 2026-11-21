@@ -72,7 +72,7 @@ test('Log sheet: fixing an error while typing does not pull the form up', async 
 
 test('A toast never pushes the page, and opening a sheet does not slide it', async ({ page }) => {
   await go(page, '/wallet/wallet-strike');
-  const coins = page.getByRole('region', { name: 'Coins in this wallet' });
+  const coins = page.getByRole('region', { name: 'Lots in this wallet' });
   await expect(coins).toBeVisible();
   const at = await top(coins);
   expect(await shiftDuring(page, () => page.getByRole('button', { name: 'Yes', exact: true }).click())).toBeLessThan(NEAR_ZERO);

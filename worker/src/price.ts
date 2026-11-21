@@ -4,7 +4,8 @@
 // pages may ask, requests are rate limited, and answers are cached so the sources see few calls.
 // The live price: mempool, asked twice at most; if it still fails, Coinbase's public spot price (COINBASE_URL,
 // `off` to skip it); if that fails too, the last good price, kept for a few hours and marked stale with the
-// time it is from. Only with none of these is it an error. Historical prices come from mempool alone.
+// time it is from. Only with none of these is it an error. Historical prices come from mempool alone, one hour at
+// a time (`/api/price/history`) or as a daily series for the chart (`/api/price/series`, from one upstream call).
 import { coinbaseBase, mempoolBase } from './config.ts';
 import { fail, HttpError, json } from './http.ts';
 
@@ -40,6 +41,13 @@ const LIVE_COINBASE_MS = UPSTREAM_TIMEOUT_MS - LIVE_MEMPOOL_MS;
 const HISTORY_TTL = 30 * 24 * HOUR;
 const RECENT_TTL = 5 * 60;
 const MAX_UPSTREAM_BYTES = 64 * 1024;
+const DAY = 24 * HOUR;
+/** The whole history in one answer is about 1.1 MB (2026); room to grow, still bounded. */
+const MAX_SERIES_BYTES = 3 * 1024 * 1024;
+/** The daily series covers at most ten years; asking for more answers this much. */
+export const MAX_SERIES_DAYS = 3660;
+/** The series is worked out from one upstream call and kept this long, so mempool sees about one call an hour. */
+const SERIES_TTL = HOUR;
 
 /** Dollars (number) to integer cents, or null if not a sane positive price. */
 export function dollarsToCents(v: unknown): number | null {
@@ -67,6 +75,14 @@ export function historyHour(param: string | null, nowMs: number): number {
   return ts - (ts % HOUR);
 }
 
+/** `?days=<whole days>`, 1 or more; more than MAX_SERIES_DAYS is capped. */
+export function seriesDays(param: string | null): number {
+  if (param === null || !/^\d{1,6}$/.test(param)) fail(400);
+  const days = Number(param);
+  if (days < 1) fail(400);
+  return Math.min(days, MAX_SERIES_DAYS);
+}
+
 /** Only the app's own pages (or the address bar) may ask: no other site can use this as a proxy. */
 function sameOriginOnly(req: Request, origin: string): void {
   const site = req.headers.get('Sec-Fetch-Site');
@@ -82,12 +98,13 @@ async function limit(req: Request, env: PriceEnv): Promise<void> {
 }
 
 /** GETs JSON from mempool: no cookies, no Origin, no Referer, no redirects, bounded size and time. Any failure is a 502. */
-async function upstream(base: string, path: string, timeoutMs = UPSTREAM_TIMEOUT_MS): Promise<unknown> {
+async function upstream(base: string, path: string, timeoutMs = UPSTREAM_TIMEOUT_MS, maxBytes = MAX_UPSTREAM_BYTES): Promise<unknown> {
   try {
     const res = await fetch(`${base}${path}`, { headers: { Accept: 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) fail(502);
+    if (Number(res.headers.get('Content-Length') ?? 0) > maxBytes) fail(502);
     const text = await res.text();
-    if (text.length > MAX_UPSTREAM_BYTES) fail(502);
+    if (text.length > maxBytes) fail(502);
     return JSON.parse(text) as unknown;
   } catch {
     return fail(502);
@@ -211,4 +228,67 @@ export async function historicalPrice(req: Request, env: PriceEnv, url: URL, now
     if (usdCents === null) fail(502);
     return { ts, usdCents };
   });
+}
+
+/** One UTC day of the series: its start (unix seconds), the last price that day and the highest, in cents. */
+export type SeriesDay = [day: number, closeCents: number, highCents: number];
+
+/**
+ * mempool's whole history (`{ prices: [{ time, USD }, ...] }`, hourly lately, daily or weekly further back, in any
+ * order) to one point per UTC day from `fromSec` on, oldest first. Each day keeps its last price and its highest,
+ * so a peak inside a day survives. Strict: anything but that shape, or a price in the window that is not a sane
+ * positive number, is null.
+ */
+export function dailySeries(data: unknown, fromSec: number): SeriesDay[] | null {
+  if (!isRecord(data) || !Array.isArray(data['prices'])) return null;
+  const days = new Map<number, { closeAt: number; close: number; high: number }>();
+  for (const p of data['prices'] as unknown[]) {
+    if (!isRecord(p)) return null;
+    const { time, USD } = p;
+    if (typeof time !== 'number' || !Number.isSafeInteger(time) || time < 0 || typeof USD !== 'number' || !Number.isFinite(USD)) return null;
+    if (time < fromSec) continue;
+    const cents = dollarsToCents(USD);
+    if (cents === null) return null;
+    const day = time - (time % DAY);
+    const d = days.get(day);
+    if (d === undefined) days.set(day, { closeAt: time, close: cents, high: cents });
+    else {
+      if (time >= d.closeAt) Object.assign(d, { closeAt: time, close: cents });
+      d.high = Math.max(d.high, cents);
+    }
+  }
+  return [...days.entries()].sort((a, b) => a[0] - b[0]).map(([day, d]): SeriesDay => [day, d.close, d.high]);
+}
+
+/** A stored series, or null if absent or not the current shape. */
+function asSeries(v: unknown): SeriesDay[] | null {
+  if (!isRecord(v) || !Array.isArray(v['points'])) return null;
+  const ok = (v['points'] as unknown[]).every((p) => Array.isArray(p) && p.length === 3 && p.every((n) => typeof n === 'number' && Number.isSafeInteger(n) && n > 0));
+  return ok ? (v['points'] as SeriesDay[]) : null;
+}
+
+/**
+ * `{ points: [[dayStart, closeCents, highCents], ...] }` for the last `?days=` UTC days (today included), oldest
+ * first: the price chart's history in one request. Worked out from one call for mempool's whole history, kept an
+ * hour for every window. A 502 when mempool fails or sends nothing for the window.
+ */
+export async function priceSeries(req: Request, env: PriceEnv, url: URL, nowMs = Date.now()): Promise<Response> {
+  sameOriginOnly(req, env.ORIGIN);
+  const days = seriesDays(url.searchParams.get('days'));
+  const base = mempoolBase(env) ?? fail(500);
+  await limit(req, env);
+  const now = Math.floor(nowMs / 1000);
+  const today = now - (now % DAY);
+  const key = `${env.ORIGIN}/__price/series/v1`;
+  let all = asSeries(await cacheGet(key));
+  if (all === null) {
+    const data = await upstream(base, '/api/v1/historical-price?currency=USD', UPSTREAM_TIMEOUT_MS, MAX_SERIES_BYTES);
+    all = dailySeries(data, today - (MAX_SERIES_DAYS - 1) * DAY) ?? fail(502);
+    if (all.length === 0) fail(502);
+    await cachePut(key, { points: all }, SERIES_TTL);
+  }
+  const from = today - (days - 1) * DAY;
+  const points = all.filter((p) => p[0] >= from);
+  if (points.length === 0) fail(502);
+  return json({ points });
 }

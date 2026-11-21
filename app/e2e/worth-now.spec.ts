@@ -6,7 +6,7 @@ const NOW_LINE = /Now \$[\d,]+\.\d\d · (up|down) \$[\d,]+\.\d\d \([+−]\d+%\)/
 test('Wallet: each coin shows what it is worth now, up or down', async ({ page }) => {
   await openDemo(page);
   await go(page, '/wallet/wallet-strike');
-  const coins = page.getByRole('region', { name: 'Coins in this wallet' });
+  const coins = page.getByRole('region', { name: 'Lots in this wallet' });
   await expect(coins.getByText(NOW_LINE).first()).toBeVisible();
   await expect(coins.getByText(/ · (up|down) /).first()).toBeVisible();
   await expectNoViolations(page);

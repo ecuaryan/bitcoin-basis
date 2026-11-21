@@ -58,26 +58,79 @@ const CURVE: readonly (readonly [string, number])[] = [
 ];
 const CURVE_MS = CURVE.map(([d, usd]) => [Date.parse(`${d}T00:00:00Z`), usd * 100] as const);
 
+const DEMO_TODAY_MS = Date.parse(`${DEMO_TODAY}T16:00:00Z`);
+
+/** The curve itself at a time: straight-line steps between the curve points, then today's price. */
+function demoCurveAt(ms: number): number {
+  const pts = [...CURVE_MS, [DEMO_TODAY_MS, DEMO_PRICE_CENTS] as const];
+  const first = pts[0] as readonly [number, number];
+  if (ms <= first[0]) return first[1];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1] as readonly [number, number];
+    const b = pts[i] as readonly [number, number];
+    if (ms <= b[0]) return a[1] + mulDivRoundHalfUp(b[1] - a[1], ms - a[0], b[0] - a[0]);
+  }
+  return DEMO_PRICE_CENTS;
+}
+
 /** Demo price (cents per BTC) at a time, by straight-line steps between the curve points. */
 export function demoPriceAt(ms: number): number {
-  const todayMs = Date.parse(`${DEMO_TODAY}T16:00:00Z`);
-  const pts = [...CURVE_MS, [todayMs, DEMO_PRICE_CENTS] as const];
-  const first = pts[0] as readonly [number, number];
-  if (ms >= todayMs - DAY) return DEMO_PRICE_CENTS;
-  let base = first[1];
-  if (ms > first[0]) {
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1] as readonly [number, number];
-      const b = pts[i] as readonly [number, number];
-      if (ms <= b[0]) {
-        base = a[1] + mulDivRoundHalfUp(b[1] - a[1], ms - a[0], b[0] - a[0]);
-        break;
-      }
-    }
-  }
+  if (ms >= DEMO_TODAY_MS - DAY) return DEMO_PRICE_CENTS;
   // A little deterministic wobble (up to 6%) so the line looks like a market, not a ruler.
   const wobble = (Math.floor(ms / DAY) * 7919) % 121;
-  return mulDivRoundHalfUp(base, 970 + wobble, 1000);
+  return mulDivRoundHalfUp(demoCurveAt(ms), 970 + wobble, 1000);
+}
+
+/** A rally in the demo chart: up to this many permille above the curve, peaking on this day, over about two months. */
+const RALLY_PEAK_MS = Date.parse('2026-09-24T00:00:00Z');
+const RALLY_PERMILLE = 115;
+const RALLY_HALF_WIDTH_DAYS = 32;
+let walkCache: { start: number; steps: number[]; highs: number[] } | null = null;
+
+/** A seeded, mean-reverting day-to-day drift (permille) from the curve's first day to the demo's today, and each day's intraday high. */
+function demoWalk(): { start: number; steps: number[]; highs: number[] } {
+  if (walkCache) return walkCache;
+  const start = Math.floor((CURVE_MS[0] as readonly [number, number])[0] / DAY);
+  const end = Math.floor(DEMO_TODAY_MS / DAY);
+  const rand = mulberry32(2_100_000);
+  const steps: number[] = [];
+  const highs: number[] = [];
+  let walk = 0;
+  for (let d = start; d <= end; d++) {
+    walk += Math.floor(rand() * 51) - 25 - Math.trunc(walk / 12);
+    steps.push(walk);
+    highs.push(4 + Math.floor(rand() * 22));
+  }
+  walkCache = { start, steps, highs };
+  return walkCache;
+}
+
+/**
+ * The demo chart's daily prices (cents per BTC) for the UTC day starting at `dayMs`: the curve, a rally in the
+ * autumn of 2026, and day-to-day moves of a few percent, easing into today's price over the last two weeks.
+ * Invented, like the rest of the demo. Integers only.
+ */
+export function demoDailyPrice(dayMs: number): { closeCents: number; highCents: number } {
+  const day = Math.floor(dayMs / DAY);
+  const toToday = Math.floor(DEMO_TODAY_MS / DAY) - day;
+  if (toToday <= 0) return { closeCents: DEMO_PRICE_CENTS, highCents: mulDivRoundHalfUp(DEMO_PRICE_CENTS, 1006, 1000) };
+  const w = demoWalk();
+  const i = Math.min(w.steps.length - 1, Math.max(0, day - w.start));
+  const ease = Math.min(14, toToday);
+  const fromPeak = Math.abs(day - Math.floor(RALLY_PEAK_MS / DAY));
+  const rally = fromPeak >= RALLY_HALF_WIDTH_DAYS ? 0 : mulDivRoundHalfUp(RALLY_PERMILLE, (RALLY_HALF_WIDTH_DAYS - fromPeak) ** 2, RALLY_HALF_WIDTH_DAYS ** 2);
+  const permille = 1000 + mulDivRoundHalfUp((w.steps[i] as number) + rally, ease, 14);
+  const closeCents = mulDivRoundHalfUp(demoCurveAt(day * DAY + DAY / 2), permille, 1000);
+  return { closeCents, highCents: mulDivRoundHalfUp(closeCents, 1000 + (w.highs[i] as number), 1000) };
+}
+
+/** The demo chart's series: one point per UTC day for the `days` days ending on the day of `endMs`, oldest first. */
+export function demoPriceSeries(endMs: number, days: number): { dayMs: number; closeCents: number; highCents: number }[] {
+  const last = Math.floor(endMs / DAY) * DAY;
+  return Array.from({ length: days }, (_, k) => {
+    const dayMs = last - (days - 1 - k) * DAY;
+    return { dayMs, ...demoDailyPrice(dayMs) };
+  });
 }
 
 function mulberry32(seed: number): () => number {
@@ -243,7 +296,7 @@ function build(t: Tuning): Entry[] {
         entries.push({
           ...base,
           kind: 'settings',
-          patch: { filingStatus: 'married-joint', wagesCents: 13_000_000, state: { kind: 'flat', state: 'ID' }, carryforwardLtCents: 2_480_000, carryforwardYear: 2026, earlierMoneyInCents: 1_200_000 },
+          patch: { filingStatus: 'married-joint', wagesCents: 13_000_000, state: { kind: 'flat', state: 'ID' }, carryforwardLtCents: 2_480_000, carryforwardYear: 2026 },
         });
         break;
       case 'buy': {

@@ -44,7 +44,7 @@ export function GiveForm({ initial, preset, onReview }: FormProps) {
     recipient: recipient.trim() === '' ? (to === 'person' ? 'Who is it for? A first name is enough.' : 'Enter the name of the charity or church.') : null,
     amount: sats === null ? 'Enter how much you gave.' : null,
     value: value.cents === null ? 'Enter what it was worth.' : null,
-    picks: sats !== null && picks === null ? 'Choose coins that add up to the amount.' : null,
+    picks: sats !== null && picks === null ? 'Pick lots that add up to the amount.' : null,
   };
   const valid = Object.values(errors).every((e) => e === null);
 

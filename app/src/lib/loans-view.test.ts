@@ -1,9 +1,9 @@
-import { loanSummary, replay, suggestLoanPayment, type Entry } from '@bitcoin-basis/engine';
+import { loanSummary, replay, suggestLoanPayment, type Entry, type LoanPurchase } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_LOAN_ID, DEMO_TODAY } from '../demo/demo-data.ts';
 import { describeEntry } from './describe-entry.ts';
 import { buildItems, entryRows, kindGroup, NO_FILTER } from './entry-list.ts';
-import { breakEvenWords, loanTag, loanTagFor, loanTags, paymentNudge, planLinks, purchaseOptions, purchaseWorth, statementDayText, statementToCheck, type PurchaseOption } from './loans-view.ts';
+import { breakEvenWords, goneWords, loanTag, loanTagFor, loanTags, paymentNudge, planLinks, purchaseOptions, purchaseWorth, statementDayText, statementToCheck, type PurchaseOption } from './loans-view.ts';
 
 const book = buildDemoBook();
 const state = replay(book.entries);
@@ -115,5 +115,19 @@ describe('loan records in entry lists', () => {
     expect(describeEntry(pay, wallets, names).detail).toBe('Home equity line');
     const rate = book.entries.find((e) => e.kind === 'loan-update') as Entry;
     expect(describeEntry(rate, wallets, names).title).toBe('Rate changed');
+  });
+});
+
+describe('where a loan\'s Bitcoin went', () => {
+  const piece = (kind: LoanPurchase['gone'][number]['kind'], sats: number) => ({ kind, entryId: 'e', date: '2026-01-01', lotId: 'l', sats, costCents: 0, proceedsCents: 0 });
+  const p = (gone: ReturnType<typeof piece>[]) => ({ gone }) as unknown as LoanPurchase;
+  it('names only the ways it left, most first, with the total', () => {
+    expect(goneWords([p([piece('given', 300_000), piece('fees', 1_000)]), p([piece('sold', 70_000), piece('spent', 5_981), piece('given', 1_000)])])).toEqual({
+      sats: 377_981,
+      words: 'later given away, sold, spent or paid as network fees',
+    });
+    expect(goneWords([p([piece('lost', 5)])])).toEqual({ sats: 5, words: 'later lost' });
+    expect(goneWords([p([piece('closed-out', 5), piece('sold', 9)])])?.words).toBe('later sold or closed out on a frozen platform');
+    expect(goneWords([p([])])).toBeNull();
   });
 });

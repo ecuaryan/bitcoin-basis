@@ -5,7 +5,7 @@ import { configOk } from './config.ts';
 import { fromB64u, randomBytes, sameSecret, sha256, toB64u } from './crypto.ts';
 import { errorResponse, fail, finish, guard, HttpError, json, readBytes, readJson } from './http.ts';
 import { SECURITY_HEADERS } from './headers.ts';
-import { historicalPrice, livePrice } from './price.ts';
+import { historicalPrice, livePrice, priceSeries } from './price.ts';
 import {
   backup, currentEpoch, currentRecovery, deliveryKey, getJson, history, historyKey, listAll, newestDelivery, putNew, recoveryKey,
   type Claimed, type Credential, type Delivery, type Env,
@@ -74,6 +74,7 @@ const routes: Record<string, (c: Ctx) => Promise<Response>> = {
   // Public price, fetched here so the browser never talks to a third party (src/price.ts).
   'GET /api/price': ({ req, env }) => livePrice(req, env),
   'GET /api/price/history': ({ req, env, url }) => historicalPrice(req, env, url),
+  'GET /api/price/series': ({ req, env, url }) => priceSeries(req, env, url),
 
   'POST /api/register/options': async (c) => {
     await limit(c, 'register');

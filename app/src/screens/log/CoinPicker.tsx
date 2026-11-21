@@ -5,13 +5,14 @@ import { countOf, shortDate } from '../../lib/format.ts';
 import { TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Segmented } from '../../ui/Segmented.tsx';
+import { useLotHelp } from '../../ui/Help.tsx';
 import { TIER_BG } from '../holdings-parts.tsx';
 import { longDate, nextDay, type PickMode } from './model.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { loanTagFor } from '../../lib/loans-view.ts';
 import { LoanBadge } from '../loans/loan-parts.tsx';
 
-/** Which coins a sale, move or gift will use. Oldest first by default; or tick the ones you want. */
+/** Which lots a sale, move or gift will use. Oldest first by default; or tick the ones you want. */
 export function CoinPicker({
   lots,
   needed,
@@ -23,7 +24,7 @@ export function CoinPicker({
   onDate,
   walletName,
 }: {
-  /** The wallet's coins at that time, oldest first. */
+  /** The wallet's lots at that time, oldest first. */
   lots: readonly Lot[];
   needed: number | null;
   mode: PickMode;
@@ -35,11 +36,12 @@ export function CoinPicker({
   /** Local date of the entry, to say short- or long-term. */
   onDate: string;
   today: string;
-  /** For the empty message: "No coins in Strike on Nov 20, 2026." */
+  /** For the empty message: "No lots in Strike on Nov 20, 2026." */
   walletName?: string;
 }) {
   const id = useId();
   const { state } = useLedger();
+  const lotHelp = useLotHelp();
   const used = new Map((picks ?? []).map((p) => [p.lotId, p.sats]));
   const have = lots.reduce((s, l) => s + l.sats, 0);
   const chosenSats = lots.filter((l) => chosen.has(l.id)).reduce((s, l) => s + l.sats, 0);
@@ -58,18 +60,22 @@ export function CoinPicker({
 
   return (
     <fieldset className="m-0 flex min-w-0 flex-col gap-2.5 border-0 p-0">
-      <legend className="mb-1 p-0 text-xs text-muted">Which coins</legend>
+      <legend className="mb-1 flex items-baseline gap-1 p-0 text-xs text-muted">
+        Which lots
+        {lotHelp.button}
+      </legend>
+      {lotHelp.panel}
       <Segmented<PickMode>
-        label="How to choose coins"
+        label="How to choose lots"
         value={mode}
         onChange={switchMode}
         options={[
           { value: 'oldest', label: 'Oldest first' },
-          { value: 'hand', label: 'Choose coins' },
+          { value: 'hand', label: 'Pick lots' },
         ]}
       />
       {needed === null ? (
-        <p className="m-0 text-xs text-muted">Enter an amount to see which coins it would use.</p>
+        <p className="m-0 text-xs text-muted">Enter an amount to see which lots it would use.</p>
       ) : mode === 'oldest' ? (
         picks === null ? (
           <p role="status" className="m-0 text-[13px] text-loss">
@@ -77,28 +83,28 @@ export function CoinPicker({
           </p>
         ) : (
           <p className="m-0 text-xs text-muted">
-            Uses {countOf(picks.length, 'coin')}, oldest first. Saved with the entry.
+            Uses {countOf(picks.length, 'lot')}, oldest first. Saved with the entry.
           </p>
         )
       ) : (
         <p role="status" className={cx('m-0 text-[13px]', picks === null ? 'text-amber' : 'text-muted')}>
           {picks === null ? (
             <>
-              Ticked <Amount sats={chosenSats} interactive={false} /> of <Amount sats={needed} interactive={false} /> needed. Tick more coins.
+              Ticked <Amount sats={chosenSats} interactive={false} /> of <Amount sats={needed} interactive={false} /> needed. Tick more lots.
             </>
           ) : (
             <>
-              Ticked coins cover it. The newest ticked coin is used only as far as needed.
+              The ticked lots cover it. The newest ticked lot is used only as far as needed.
             </>
           )}
         </p>
       )}
       {lots.length === 0 ? (
         <p className="m-0 rounded-xl border border-line bg-bg px-3 py-2.5 text-[13px] text-muted">
-          No coins in {walletName ?? 'this wallet'} on {longDate(onDate)}.
+          No lots in {walletName ?? 'this wallet'} on {longDate(onDate)}.
         </p>
       ) : shown.length === 0 ? null : (
-        <ul aria-label="Coins in this wallet" className={cx('m-0 flex list-none flex-col rounded-2xl border border-line bg-bg p-0', mode === 'hand' && 'max-h-72 overflow-y-auto')}>
+        <ul aria-label="Lots in this wallet" className={cx('m-0 flex list-none flex-col rounded-2xl border border-line bg-bg p-0', mode === 'hand' && 'max-h-72 overflow-y-auto')}>
           {shown.map((lot) => {
             const take = used.get(lot.id);
             const long = termFor(lot, onDate) === 'long';

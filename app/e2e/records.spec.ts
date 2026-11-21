@@ -36,15 +36,15 @@ test('Records: import creates the new wallets, then adds the coins', async ({ pa
   await expect(status).toContainText('2 wallets will be created');
   const made = page.getByRole('list', { name: 'New wallets' });
   await expect(made).toContainText('Cold storage (multisig)');
-  await expect(made).toContainText('2 coins');
+  await expect(made).toContainText('2 lots');
   await expect(made).toContainText('River');
   await expect(page.getByRole('radio', { name: 'Self-custody', checked: true })).toHaveCount(1);
   await expect(status).toContainText('“strike” in the file is your wallet Strike.');
-  await expect(status).toContainText('5 coins · 0.7750 BTC · $16,225 cost');
+  await expect(status).toContainText('5 lots · 0.7750 BTC · $16,225 cost');
   await expect(status).toContainText('Documented');
   await expectNoViolations(page);
-  await page.getByRole('button', { name: 'Create wallets and add 5 coins' }).click();
-  await expect(page.getByText('Added 5 coins and 2 wallets.')).toBeVisible();
+  await page.getByRole('button', { name: 'Create wallets and add 5 lots' }).click();
+  await expect(page.getByText('Added 5 lots and 2 wallets.')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
   await expect(page.getByText('Cold storage (multisig)').first()).toBeVisible();
 });
@@ -65,8 +65,8 @@ test('Records: import opening lots with one bad row (a real book; the demo has n
   await expect(problems).toContainText('Row 4');
   await expect(problems).toContainText('sats "abc"');
   await expectNoViolations(page);
-  await page.getByRole('button', { name: /Create wallet and add the 3 coins/ }).click();
-  await expect(page.getByText('Added 3 coins and 1 wallet.')).toBeVisible();
+  await page.getByRole('button', { name: /Create wallet and add the 3 lots/ }).click();
+  await expect(page.getByText('Added 3 lots and 1 wallet.')).toBeVisible();
 });
 
 test('Records: the demo has no import or restore, and says so', async ({ page }) => {
@@ -76,18 +76,6 @@ test('Records: the demo has no import or restore, and says so', async ({ page })
   await expect(page.getByLabel('Choose a spreadsheet (CSV)')).toHaveCount(0);
   await expect(page.getByLabel('Choose a backup file')).toHaveCount(0);
   expect(await page.evaluate(() => Object.keys(window.localStorage).filter((k) => !['bb.hide', 'bb.kit-first-seen'].includes(k)))).toEqual([]);
-});
-
-test('Records: giving off by default, then mark paid', async ({ page }) => {
-  await openDemo(page);
-  await go(page, '/records?v=giving');
-  await expect(page.getByText('Giving is off')).toBeVisible();
-  await page.getByRole('button', { name: 'Turn it on' }).click();
-  await expect(page.getByRole('region', { name: 'What is due' })).toBeVisible();
-  await expectNoViolations(page);
-  await page.getByRole('button', { name: 'Mark as paid' }).click();
-  await expect(page.getByRole('list', { name: 'Payments' })).toContainText('Paid for 2026');
-  await expect(page.getByRole('region', { name: 'What is due' })).toContainText('$0.00');
 });
 
 test('Records: changing settings changes the Sell tax', async ({ page }) => {
@@ -128,19 +116,17 @@ test('Records: test the emergency kit sheet, then the reminder hides', async ({ 
   await expect(page.getByRole('region', { name: 'Needs attention' })).toHaveCount(0);
 });
 
-test('Records: settings toggles save once, and the entries list keeps settings out of the way', async ({ page }) => {
+test('Records: quick settings changes save once, and the entries list keeps settings out of the way', async ({ page }) => {
   await openDemo(page);
   await go(page, '/settings');
-  const giving = page.getByRole('group', { name: 'Giving' }).or(page.getByRole('region', { name: 'Giving' }));
-  const toggle = giving.getByRole('switch').first();
-  await expect(toggle).toBeVisible();
-  const start = await toggle.isChecked();
-  const flip = () => giving.getByText('Set aside a share of gains').click();
-  // Flip it three times quickly (ends flipped once), then a pair that cancels out.
-  for (let i = 0; i < 3; i++) await flip();
+  const filing = page.getByLabel('Filing status');
+  await expect(filing).toBeVisible();
+  // Three choices in quick succession are one save; a pair that cancels out saves nothing.
+  for (const label of ['Single', 'Head of household', 'Married filing separately']) await filing.selectOption({ label });
   await expect(page.getByText('Saved.')).toBeVisible({ timeout: 8000 });
-  expect(await toggle.isChecked()).toBe(!start);
-  for (let i = 0; i < 2; i++) await flip();
+  await expect(filing).toHaveValue('married-separate');
+  await filing.selectOption({ label: 'Single' });
+  await filing.selectOption({ label: 'Married filing separately' });
   await page.waitForTimeout(2500);
   await go(page, '/records?v=entries');
   await expect(page.getByText('Settings changed')).toHaveCount(0);

@@ -81,11 +81,11 @@ test('sell with hand-picked coins saves the pick', async ({ page }) => {
   const d = dialog(page);
   await d.getByLabel('From wallet').selectOption({ label: 'Strike' });
   await d.getByLabel('Amount', { exact: true }).fill('0.002');
-  await d.getByRole('radio', { name: 'Choose coins' }).click();
+  await d.getByRole('radio', { name: 'Pick lots' }).click();
   await d.getByRole('checkbox').nth(1).check();
   await d.getByRole('button', { name: 'Review sale' }).click();
   await expect(d.getByText('Taxable gain')).toBeVisible();
-  await expect(d.getByRole('region', { name: 'Coins used' })).toContainText('(1)');
+  await expect(d.getByRole('region', { name: 'Lots used' })).toContainText('(1)');
   await axeClean(page);
   await d.getByRole('button', { name: 'Save sale' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);

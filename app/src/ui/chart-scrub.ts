@@ -19,9 +19,12 @@ export function nearestIndex(points: readonly PricePoint[], fraction: number): n
   return Math.abs((points[lo] as PricePoint).ms - target) <= Math.abs((points[hi] as PricePoint).ms - target) ? lo : hi;
 }
 
-/** Next index for an arrow/Home/End key, or null for other keys. */
+/** Next index for an arrow/Page/Home/End key, or null for other keys. Page Up/Down move about a month of a daily series. */
 export function keyIndex(key: string, index: number, count: number): number | null {
   const max = count - 1;
+  const page = Math.max(1, Math.round(count / 36));
+  if (key === 'PageDown') return Math.max(0, index - page);
+  if (key === 'PageUp') return Math.min(max, index + page);
   if (key === 'ArrowLeft' || key === 'ArrowDown') return Math.max(0, index - 1);
   if (key === 'ArrowRight' || key === 'ArrowUp') return Math.min(max, index + 1);
   if (key === 'Home') return 0;

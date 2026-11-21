@@ -1,10 +1,9 @@
-/** Sell planner, giving and borrow edge cases (from an adversarial review). Synthetic data only. */
+/** Sell planner and borrow edge cases (from an adversarial review). Synthetic data only. */
 import { describe, expect, test } from 'vitest';
 import { DEFAULT_SETTINGS, replay } from '../src/replay.ts';
-import { givingDue, givingPercentBp, planBorrow, planSale, taxContext, TIER_NOTE } from '../src/planner/index.ts';
+import { planBorrow, planSale, taxContext, TIER_NOTE } from '../src/planner/index.ts';
 import type { Entry, Settings } from '../src/types.ts';
-import { parseEntry } from '../src/validate.ts';
-import { buy, cents, noon, pick, receive, sats, sell, TZ, wallet } from './helpers.ts';
+import { buy, cents, noon, pick, receive, sats, TZ, wallet } from './helpers.ts';
 
 const DATE = '2026-11-15';
 const SETTINGS: Settings = { ...DEFAULT_SETTINGS, filingStatus: 'married-joint', wagesCents: cents('130000') };
@@ -30,20 +29,6 @@ describe('lowest tax stays tier-first, and says so when oldest first is cheaper'
     const r = planSale(state, SETTINGS, { wallet: 'ex', sats: sats('0.5'), priceCents: cents('75000'), onDate: DATE, year: 2026, handPicks: [pick('A', '0.5')] });
     if (!r.ok) throw new Error(r.error.message);
     expect([r.value.oldestFirst, r.value.lowestTax, r.value.handPicked].map((p) => p?.brokerInstructionNeeded)).toEqual([false, true, true]);
-  });
-});
-
-describe('giving (Decision 16)', () => {
-  test('giving due counts logged sells and spending (spending realizes a gain like a sale); fees do not', () => {
-    const s: Settings = { ...SETTINGS, givingEnabled: true };
-    const state = replay([wallet('ex'), buy('B', 'ex', '2024-01-01', '1', '10000'), sell('SP', 'ex', '2026-03-01', [pick('B', '0.5')], '40000', true)]);
-    // Gain $35,000 at 10%.
-    expect(givingDue(state, s, 2026).dueCents).toBe(cents('3500'));
-  });
-  test('the giving percent is stored as whole basis points, so 1.005% is not representable and 101 is', () => {
-    expect(givingPercentBp({ givingPercentBp: 101 })).toBe(101);
-    const patch = (p: number): boolean => parseEntry({ id: 'x', kind: 'settings', at: noon('2026-01-01'), tz: TZ, patch: { givingPercentBp: p } }).ok;
-    expect([patch(100.5), patch(101)]).toEqual([false, true]);
   });
 });
 

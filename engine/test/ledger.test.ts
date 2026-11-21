@@ -1,5 +1,7 @@
 /** Replay rules: wallets, lots, disposals, receives, frozen platforms, balance checks, settings. */
 import { describe, expect, test } from 'vitest';
+import { exportEntriesJson, importEntriesJson } from '../src/io.ts';
+import { MAX_ENTRY_CENTS } from '../src/money.ts';
 import { DEFAULT_SETTINGS, replay } from '../src/replay.ts';
 import type { Entry } from '../src/types.ts';
 import { buy, cents, errorCodes, give, lost, move, noon, pick, receive, sats, sell, testBook, TZ, wallet } from './helpers.ts';
@@ -115,12 +117,10 @@ describe('lots', () => {
       { id: 'B1', wallet: 'ex', sats: sats('0.1'), costCents: cents('4000'), acquiredDate: '2024-01-01', acquiredAt: noon('2024-01-01'), tier: 'reconstructed', proof: 'Email receipt', originEntryId: 'B1', alwaysLongTerm: false, tz: TZ, lossBasis: null },
       { id: 'B2', wallet: 'ex', sats: sats('0.2'), costCents: 100, acquiredDate: '2024-01-02', acquiredAt: noon('2024-01-02'), tier: 'documented', proof: 'Bank statement', originEntryId: 'B2', alwaysLongTerm: false, tz: TZ, lossBasis: null },
     ]);
-    expect(state.buyCostCents).toBe(cents('4001'));
   });
   test('opening lots: origin becomes proof; acquired date comes from acquiredAt', () => {
     const state = replay([wallet('ex'), { id: 'O', kind: 'opening-lot', at: '2023-01-20T14:02:11Z', tz: TZ, wallet: 'ex', acquiredAt: '2023-01-20T05:02:11Z', sats: 5, costCents: 7, tier: 'estimated', origin: 'Old spreadsheet' }]);
     expect(state.lots[0]).toMatchObject({ id: 'O', proof: 'Old spreadsheet', acquiredDate: '2023-01-19', tier: 'estimated' });
-    expect(state.buyCostCents).toBe(0);
   });
 });
 
@@ -345,13 +345,27 @@ describe('gifts, charity, lost, settings, giving', () => {
   });
   test('settings patches merge in order', () => {
     const state = replay([
-      { id: 's1', kind: 'settings', at: noon('2026-01-01'), tz: TZ, patch: { wagesCents: 1, givingEnabled: true } },
+      { id: 's1', kind: 'settings', at: noon('2026-01-01'), tz: TZ, patch: { wagesCents: 1, filingStatus: 'married-joint' } },
       { id: 's2', kind: 'settings', at: noon('2026-01-02'), tz: TZ, patch: { wagesCents: 2 } },
     ]);
-    expect(state.settings).toEqual({ ...DEFAULT_SETTINGS, wagesCents: 2, givingEnabled: true });
+    expect(state.settings).toEqual({ ...DEFAULT_SETTINGS, wagesCents: 2, filingStatus: 'married-joint' });
   });
-  test('giving paid is recorded by year', () => {
-    const state = replay([{ id: 'g', kind: 'giving-paid', at: noon('2026-01-01'), tz: TZ, year: 2025, cents: 5000 }]);
-    expect(state.givingPaid).toEqual([{ entryId: 'g', year: 2025, cents: 5000 }]);
+  test('an old backup with the retired giving settings, giving-paid records and earlier money in restores cleanly: accepted, ignored', () => {
+    const old: unknown[] = [
+      { id: 'w', kind: 'wallet', at: noon('2025-01-01'), tz: TZ, wallet: 'ex', name: 'Exchange', type: 'exchange', defaultProof: 'Email receipt' },
+      { id: 's1', kind: 'settings', at: noon('2025-01-02'), tz: TZ, patch: { givingEnabled: true, givingName: 'Tithe', givingPercentBp: 1000, givingMode: 'after-tax', earlierMoneyInCents: 1_234_500, wagesCents: 7 } },
+      { id: 'b', kind: 'buy', at: noon('2025-02-01'), tz: TZ, wallet: 'ex', sats: 1_000_000, costCents: 50_000, tier: 'documented' },
+      { id: 'g', kind: 'giving-paid', at: noon('2026-01-01'), tz: TZ, year: 2025, cents: 5000 },
+      { id: 'g2', kind: 'giving-paid', at: noon('2026-02-01'), tz: TZ, year: 2025, cents: MAX_ENTRY_CENTS },
+    ];
+    // Restored the way a backup file is: exported, then read back with every entry validated.
+    const restored = importEntriesJson(exportEntriesJson(old as Entry[]));
+    if (!restored.ok) throw new Error(JSON.stringify(restored.error));
+    const state = replay(restored.value);
+    expect(state.errors).toEqual([]);
+    expect(state.applied).toEqual(['w', 's1', 'b', 'g', 'g2']);
+    expect(state.settings).toEqual({ ...DEFAULT_SETTINGS, wagesCents: 7 });
+    expect(Object.keys(state.settings).some((k) => k.startsWith('giving') || k === 'earlierMoneyInCents')).toBe(false);
+    expect(state.lots).toHaveLength(1);
   });
 });

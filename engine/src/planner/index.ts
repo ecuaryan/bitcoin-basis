@@ -3,4 +3,3 @@ export { planSale, DEFERRED_NOTE, HEADS_UP_TAX_CENTS, TIER_NOTE, type SalePlan, 
 export type { SaleEvaluation } from './evaluate.ts';
 export { planPrepareSale, type MoveDraft, type PrepareSaleError, type PrepareSaleRequest } from './prepare.ts';
 export { planBorrow, type BorrowError, type BorrowPlan, type BorrowRequest } from './borrow.ts';
-export { givingDue, givingOnSale, givingPercentBp, type GivingDue, type GivingOnSaleInput, type GivingSale } from './giving.ts';

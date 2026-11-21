@@ -20,7 +20,6 @@ describe('retirement purchases in replay', () => {
     const state = replay([wallet('ira', 'retirement'), rbuy('R1', 'ira', '2024-02-01', '0.1', '4000', { proof: 'Statement' }), rbuy('R2', 'ira', '2025-03-01', '0.05', '3000')]);
     expect(state.errors).toEqual([]);
     expect(state.lots).toEqual([]);
-    expect(state.buyCostCents).toBe(0);
     expect(state.retirementBuys).toEqual([
       { entryId: 'R1', id: 'R1', wallet: 'ira', at: noon('2024-02-01'), date: '2024-02-01', tz: TZ, sats: sats('0.1'), costCents: cents('4000'), proof: 'Statement' },
       { entryId: 'R2', id: 'R2', wallet: 'ira', at: noon('2025-03-01'), date: '2025-03-01', tz: TZ, sats: sats('0.05'), costCents: cents('3000'), proof: '' },
@@ -144,7 +143,6 @@ describe('holdings', () => {
     // Never in the taxable totals.
     expect(h.totalSats).toBe(0);
     expect(h.totalCostCents).toBe(0);
-    expect(h.moneyPutInCents).toBe(0);
   });
 });
 

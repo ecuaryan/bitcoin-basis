@@ -10,7 +10,6 @@ const ROUTES: { path: string }[] = [
   { path: '/tax' },
   { path: '/tax/summary/2026' },
   { path: '/records?v=entries' },
-  { path: '/records?v=giving' },
   { path: '/records?v=closed' },
   { path: '/records?v=wallets' },
   { path: '/records?v=io' },
@@ -69,8 +68,8 @@ for (const tab of ['Bought', 'Received', 'Moved', 'Sold or spent', 'Gave']) {
 
 test('axe: the other sheets (year, add wallet, wallet menu, edit)', async ({ page }) => {
   await openDemo(page);
-  await page.getByRole('button', { name: /Show where the .*2023 coins came from/ }).click();
-  await expect(page.getByRole('dialog', { name: '2023 coins' })).toBeVisible();
+  await page.getByRole('button', { name: /Show the 2023 lots and where each came from/ }).click();
+  await expect(page.getByRole('dialog', { name: '2023 lots' })).toBeVisible();
   await expectNoViolations(page);
   await page.keyboard.press('Escape');
 
@@ -91,10 +90,10 @@ test('axe: the other sheets (year, add wallet, wallet menu, edit)', async ({ pag
 test('axe: Sell sheets (pick coins, review)', async ({ page }) => {
   await openDemo(page);
   await go(page, '/what-if');
-  await page.getByRole('button', { name: 'Pick coins' }).click();
-  await expect(page.getByRole('dialog', { name: 'Pick coins' })).toBeVisible();
+  await page.getByRole('button', { name: 'Pick lots' }).click();
+  await expect(page.getByRole('dialog', { name: 'Pick lots' })).toBeVisible();
   await expectNoViolations(page);
-  await page.getByRole('button', { name: 'Use these coins' }).click();
+  await page.getByRole('button', { name: 'Use these lots' }).click();
   await page.getByRole('button', { name: 'I sold it, log it' }).click();
   await expect(page.getByRole('dialog', { name: 'Log your sale' })).toBeVisible();
   await expectNoViolations(page);

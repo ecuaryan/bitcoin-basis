@@ -81,7 +81,7 @@ suite('settings noise', () => {
   const set = (id: string, at: string, patch: object): Entry => entry({ id, kind: 'settings', at, tz, patch });
   const conf = (id: string, at: string, sats = 100): Entry => entry({ id, kind: 'balance-confirm', at, tz, wallet: 'strike', sats });
   const none: EntryFilter = { text: '', wallet: '', group: '', year: '' };
-  const book = [wallet, set('s1', '2026-05-01T10:00:00Z', { givingEnabled: true }), set('s2', '2026-05-01T10:01:00Z', { givingEnabled: false }), set('s3', '2026-05-01T10:02:00Z', { givingEnabled: true, givingMode: 'after-tax' }), conf('c1', '2026-05-02T10:00:00Z'), conf('c2', '2026-05-03T10:00:00Z')];
+  const book = [wallet, set('s1', '2026-05-01T10:00:00Z', { wagesCents: 100 }), set('s2', '2026-05-01T10:01:00Z', { wagesCents: 0 }), set('s3', '2026-05-01T10:02:00Z', { wagesCents: 100, timeZone: 'America/Denver' }), conf('c1', '2026-05-02T10:00:00Z'), conf('c2', '2026-05-03T10:00:00Z')];
   const items = buildItems(book);
   it('hides settings entries unless Kind is Settings, and never lists balance confirmations', () => {
     expect(items.filter((i) => matches(i, none, names)).map((i) => i.id)).toEqual(['w1']);
@@ -93,11 +93,23 @@ suite('settings noise', () => {
     const rows = collapseRuns(items.filter((i) => matches(i, { ...none, group: 'settings' }, names)), items);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.count).toBe(3);
-    expect(rows[0]?.net).toBe('Giving turned on · after tax');
+    expect(rows[0]?.net).toBe('Wages changed · Time zone America/Denver');
   });
   it('says so when toggles cancel out', () => {
-    const b = buildItems([wallet, set('s1', '2026-05-01T10:00:00Z', { givingEnabled: true }), set('s2', '2026-05-01T10:01:00Z', { givingEnabled: false })]);
+    const b = buildItems([wallet, set('s1', '2026-05-01T10:00:00Z', { wagesCents: 100 }), set('s2', '2026-05-01T10:01:00Z', { wagesCents: 0 })]);
     expect(collapseRuns(b.filter((i) => i.id !== 'w1'), b)[0]?.net).toBe('No net change');
+  });
+  it('never lists records of features the app no longer has (giving paid; giving or earlier-money-in settings)', () => {
+    const old = buildItems([
+      wallet,
+      set('o1', '2025-05-01T10:00:00Z', { givingEnabled: true, givingPercentBp: 1000 }),
+      set('o2', '2025-05-02T10:00:00Z', { earlierMoneyInCents: 5000, wagesCents: 7 }),
+      entry({ id: 'gp', kind: 'giving-paid', at: '2025-06-01T10:00:00Z', tz, year: 2025, cents: 100 }),
+    ]);
+    expect(entryRows(old, NO_FILTER, names).map((r) => r.item.id)).toEqual(['w1']);
+    const settings = entryRows(old, { ...NO_FILTER, group: 'settings' }, names);
+    expect(settings.map((r) => r.item.id)).toEqual(['o2']);
+    expect(describe(settings[0]?.item.current as Entry, new Map()).detail).toBe('wages');
   });
   it('counts what the list shows: entryRows is the one source for every list', () => {
     const rows = entryRows(items, NO_FILTER, names);

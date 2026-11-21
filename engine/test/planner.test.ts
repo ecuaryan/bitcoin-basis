@@ -5,9 +5,9 @@ import { averageCostPerBtc, holdings } from '../src/reports.ts';
 import { capitalTaxEffect } from '../src/tax/tax.ts';
 import { carryforwardFor, stateChoiceFromSettings } from '../src/tax/settings.ts';
 import { picksAfterMove } from '../src/picks.ts';
-import { givingDue, givingOnSale, planBorrow, planPrepareSale, planSale, taxContext, taxInput, DEFERRED_NOTE } from '../src/planner/index.ts';
+import { planBorrow, planPrepareSale, planSale, taxContext, taxInput, DEFERRED_NOTE } from '../src/planner/index.ts';
 import type { Entry, LedgerState, Settings } from '../src/types.ts';
-import { buy, cents, give, noon, pick, receive, sats, sell, testBook, TZ, wallet } from './helpers.ts';
+import { buy, cents, give, noon, pick, sats, sell, testBook, TZ, wallet } from './helpers.ts';
 
 const DATE = '2026-11-15';
 const PRICE = cents('75000');
@@ -24,7 +24,7 @@ describe('sell planner: spec examples', () => {
   test('1, 2, 3: test book, 0.25 BTC at $75,000', () => {
     const { oldestFirst, lowestTax } = plans(testBook());
     expect(oldestFirst.picks).toEqual([pick('L1', '0.25')]);
-    expect(oldestFirst).toMatchObject({ strategy: 'oldest-first', costCents: cents('14000'), ltGainCents: cents('4750'), stGainCents: 0, federalTaxCents: cents('547.50'), stateTaxCents: cents('251.75'), totalTaxCents: cents('799.25'), coinsFrom: '2021-03-15', coinsTo: '2021-03-15', headsUp: false, deferredNote: null, givingCents: null, estimatedSats: 0, estimatedShareBp: 0 });
+    expect(oldestFirst).toMatchObject({ strategy: 'oldest-first', costCents: cents('14000'), ltGainCents: cents('4750'), stGainCents: 0, federalTaxCents: cents('547.50'), stateTaxCents: cents('251.75'), totalTaxCents: cents('799.25'), coinsFrom: '2021-03-15', coinsTo: '2021-03-15', headsUp: false, deferredNote: null, estimatedSats: 0, estimatedShareBp: 0 });
     expect(lowestTax.picks).toEqual([pick('L3', '0.2'), pick('L4', '0.05')]);
     expect(lowestTax).toMatchObject({ ltGainCents: cents('-4500'), stGainCents: cents('-650'), totalTaxCents: cents('-519'), coinsFrom: '2025-02-10', coinsTo: '2025-12-20', deferredNote: DEFERRED_NOTE });
     expect(lowestTax.carryforwardOut).toEqual({ st: 0, lt: cents('2150') });
@@ -122,54 +122,6 @@ describe('sell planner: spec examples', () => {
     const entries: Entry[] = [wallet('ex'), buy('A', 'ex', '2021-01-01', '0.1', '1000', 'estimated'), buy('B', 'ex', '2022-01-01', '0.1', '1000', 'documented'), buy('C', 'ex', '2023-01-01', '0.1', '1000', 'unknown')];
     const { oldestFirst } = plans(entries, SETTINGS, sats('0.3'));
     expect(oldestFirst).toMatchObject({ estimatedSats: sats('0.2'), estimatedShareBp: 6667 });
-  });
-});
-
-describe('giving', () => {
-  test('11: $41,250 lot sold for $50,000 at 10% before tax = $875.00', () => {
-    expect(givingOnSale({ percent: 1000, gains: cents('8750'), mode: 'before-tax', estimatedTax: 0 })).toBe(cents('875'));
-    const entries = [wallet('ex'), buy('B', 'ex', '2020-01-01', '1', '41250')];
-    const settings = { ...SETTINGS, givingEnabled: true };
-    const { oldestFirst } = plans(entries, settings, sats('1'), cents('50000'));
-    expect(oldestFirst.givingCents).toBe(cents('875'));
-  });
-  test('after-tax subtracts the tax; losses give nothing; half-up', () => {
-    expect(givingOnSale({ percent: 1000, gains: 10_000, mode: 'after-tax', estimatedTax: 2_500 })).toBe(750);
-    expect(givingOnSale({ percent: 1000, gains: -500, mode: 'before-tax', estimatedTax: 0 })).toBe(0);
-    expect(givingOnSale({ percent: 1000, gains: 5, mode: 'before-tax', estimatedTax: 0 })).toBe(1);
-    expect(givingOnSale({ percent: 1000, gains: 4, mode: 'before-tax', estimatedTax: 0 })).toBe(0);
-  });
-  const book: Entry[] = [
-    ...testBook(),
-    sell('S1', 'ex', '2026-03-01', [pick('L1', '0.25')], '18750'),
-    sell('S2', 'ex', '2026-04-01', [pick('L1', '0.25')], '20000'),
-    sell('S3', 'ex', '2025-04-01', [pick('L2', '0.1')], '5000'),
-    receive('R', 'ex', '2026-05-01', '0.001', '25', { type: 'income' }),
-    { id: 'P', kind: 'giving-paid', at: noon('2026-06-01'), tz: TZ, year: 2026, cents: cents('100') },
-  ];
-  test('giving due: sales minus paid; income listed separately', () => {
-    const state = replay(book);
-    const d = givingDue(state, { ...SETTINGS, givingEnabled: true, givingName: 'Tithe' }, 2026);
-    expect(d.sales.map((s) => [s.entryId, s.givingCents])).toEqual([['S1', cents('475')], ['S2', cents('600')]]);
-    expect(d).toMatchObject({ enabled: true, name: 'Tithe', dueCents: cents('1075'), paidCents: cents('100'), owedCents: cents('975'), incomeCents: cents('25') });
-    expect(d.income).toHaveLength(1);
-    expect(d.paidEntries).toHaveLength(1);
-  });
-  test('after-tax mode uses each sale\'s own incremental tax in order', () => {
-    const state = replay(book);
-    const d = givingDue(state, { ...SETTINGS, givingEnabled: true, givingMode: 'after-tax' }, 2026);
-    expect(d.sales[0]).toMatchObject({ estimatedTaxCents: cents('799.25'), givingCents: Math.round((cents('4750') - cents('799.25')) / 10) });
-    expect(d.sales[1]?.estimatedTaxCents).toBeGreaterThan(0);
-  });
-  test('spending counts like a sale; network fees do not', () => {
-    const withSpend: Entry[] = [...book, sell('SP', 'ex', '2026-07-01', [pick('L2', '0.01')], '750', true)];
-    const d = givingDue(replay(withSpend), { ...SETTINGS, givingEnabled: true }, 2026);
-    // 0.01 BTC of L2 cost $225.00, spent for $750.00 → $525.00 gain → $52.50 at 10%
-    expect(d.sales.map((s) => [s.entryId, s.givingCents])).toEqual([['S1', cents('475')], ['S2', cents('600')], ['SP', cents('52.50')]]);
-  });
-  test('off: nothing due, paid still shown', () => {
-    const d = givingDue(replay(book), SETTINGS, 2026);
-    expect(d).toMatchObject({ enabled: false, sales: [], dueCents: 0, paidCents: cents('100'), owedCents: -cents('100') });
   });
 });
 

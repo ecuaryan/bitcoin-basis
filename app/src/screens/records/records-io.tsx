@@ -87,7 +87,7 @@ function ImportLots() {
   const adder = useSubmit(async (p: ImportPreview) => {
     const loans = loanEntries(p.newLoans, rates, nowInstant(Date.now()), tz);
     if (loans === null) return;
-    // New loans and wallets first, then the coins, then the links from loans to the coins they paid for.
+    // New loans and wallets first, then the lots, then the links from loans to the lots they paid for.
     const batches = [...chunk([...loans, ...walletEntries(p.newWallets, types, nowInstant(Date.now()), tz)], BATCH), ...chunk(p.entries, BATCH), ...chunk(p.retirementBuys, BATCH), ...chunk(p.links, BATCH)];
     const total = batches.reduce((s, b) => s + b.length, 0);
     let done = 0;
@@ -106,7 +106,7 @@ function ImportLots() {
     }
     const n = p.entries.length;
     const made = [...(p.newWallets.length > 0 ? [countOf(p.newWallets.length, 'wallet')] : []), ...(p.newLoans.length > 0 ? [countOf(p.newLoans.length, 'loan')] : [])];
-    const parts = [...(n > 0 || p.retirementBuys.length === 0 ? [countOf(n, 'coin')] : []), ...(p.retirementBuys.length > 0 ? [countOf(p.retirementBuys.length, 'retirement purchase')] : []), ...made];
+    const parts = [...(n > 0 || p.retirementBuys.length === 0 ? [countOf(n, 'lot')] : []), ...(p.retirementBuys.length > 0 ? [countOf(p.retirementBuys.length, 'retirement purchase')] : []), ...made];
     toast.show(`Added ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`}.`, { success: true });
     setFile(null);
     setProgress(null);
@@ -114,8 +114,8 @@ function ImportLots() {
   });
   const add = adder.run;
   return (
-    <Card as="section" aria-label="Bring in your coins" className="flex flex-col gap-3 !rounded-[18px] !p-4">
-      <h2 className="m-0 text-[15px] font-semibold">Bring in your coins from a spreadsheet</h2>
+    <Card as="section" aria-label="Bring in your lots" className="flex flex-col gap-3 !rounded-[18px] !p-4">
+      <h2 className="m-0 text-[15px] font-semibold">Bring in your lots from a spreadsheet</h2>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <FilePicker label="Choose a spreadsheet (CSV)" accept=".csv,text/csv" onText={read} />
         <button
@@ -181,8 +181,8 @@ function ImportLots() {
 function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onAdd, goodOnly = false }: { p: ImportPreview; types: Record<string, WalletType>; setTypes(t: Record<string, WalletType>): void; rates: Record<string, string>; setRates(r: Record<string, string>): void; progress: { done: number; total: number } | null; failed: boolean; onAdd(): void; goodOnly?: boolean }) {
   const n = p.entries.length;
   const r = p.retirementBuys.length;
-  const coins = (k: number) => countOf(k, 'coin');
-  const what = [...(n > 0 || r === 0 ? [coins(n)] : []), ...(r > 0 ? [countOf(r, 'retirement purchase')] : [])].join(' and ');
+  const lots = (k: number) => countOf(k, 'lot');
+  const what = [...(n > 0 || r === 0 ? [lots(n)] : []), ...(r > 0 ? [countOf(r, 'retirement purchase')] : [])].join(' and ');
   const mix = TIERS.filter((t) => (p.tiers[t] ?? 0) > 0).map((t) => `${TIER_LABEL[t]} ${Math.max(1, Math.round(((p.tiers[t] ?? 0) * 100) / p.sats))}%`);
   const busy = progress !== null;
   const make = p.newWallets.length > 0;
@@ -196,7 +196,7 @@ function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onA
           <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="New loans">
             {p.newLoans.map((l) => (
               <li key={l.entryId}>
-                <AprInput label={`Interest rate for ${l.name} (${coins(l.coins)})`} value={rates[l.name] ?? ''} onChange={(v) => setRates({ ...rates, [l.name]: v })} />
+                <AprInput label={`Interest rate for ${l.name} (${lots(l.coins)})`} value={rates[l.name] ?? ''} onChange={(v) => setRates({ ...rates, [l.name]: v })} />
               </li>
             ))}
           </ul>
@@ -212,7 +212,7 @@ function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onA
             {p.newWallets.map((w) => (
               <li key={w.entryId} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <span className="min-w-0 break-words">
-                  {w.name} <span className="text-muted">· {coins(w.coins)}</span>
+                  {w.name} <span className="text-muted">· {lots(w.coins)}</span>
                 </span>
                 <Segmented<WalletType> label={`What kind of wallet is ${w.name}`} value={types[w.name] ?? w.guessedType} onChange={(v) => setTypes({ ...types, [w.name]: v })} options={w.retirementLike ? KIND_OPTIONS_WITH_RETIREMENT : KIND_OPTIONS} className="w-full sm:w-auto [&_button]:flex-1 [&_button]:whitespace-nowrap" />
               </li>
@@ -230,7 +230,7 @@ function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onA
         {n > 0 || r === 0 ? (
           <>
             <span className="font-semibold">
-              {coins(n)} · <Amount sats={p.sats} showUnit short interactive={false} /> · <Money cents={p.costCents} precision="dollars" /> cost
+              {lots(n)} · <Amount sats={p.sats} showUnit short interactive={false} /> · <Money cents={p.costCents} precision="dollars" /> cost
             </span>
             <span className="text-xs text-muted">{mix.join(' · ')}</span>
           </>
@@ -241,11 +241,11 @@ function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onA
           </span>
         ) : null}
         {r > 0 ? <span className="text-xs text-muted">Kept apart from tax math.</span> : null}
-        {linked > 0 ? <span className="text-xs text-muted">{countOf(linked, 'coin')} paid with a loan</span> : null}
+        {linked > 0 ? <span className="text-xs text-muted">{countOf(linked, 'lot')} paid with a loan</span> : null}
       </div>
       {p.closedYears.length > 0 && (
         <span className="text-xs text-amber">
-          Coins from {p.closedYears.join(' and ')} land in {p.closedYears.length === 1 ? 'a year you closed' : 'years you closed'}. That is allowed for imported coins.
+          Lots from {p.closedYears.join(' and ')} land in {p.closedYears.length === 1 ? 'a year you closed' : 'years you closed'}. That is allowed for imported lots.
         </span>
       )}
       {p.warnings.map((w) => (
@@ -253,7 +253,7 @@ function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onA
           Row {w.row}: {w.message}
         </span>
       ))}
-      {failed && <span className="text-xs text-loss">Something went wrong. Nothing more was added. Try again; coins already added are skipped.</span>}
+      {failed && <span className="text-xs text-loss">Something went wrong. Nothing more was added. Try again; lots already added are skipped.</span>}
       {!ratesReady ? <span className="text-xs text-amber">Enter each new loan&apos;s rate, like 6.5.</span> : null}
       <Button variant="primary" className="self-start" disabled={busy || !ratesReady} onClick={onAdd}>
         {busy ? `Adding ${progress.done.toLocaleString('en-US')} of ${progress.total.toLocaleString('en-US')}…` : make ? `Create ${p.newWallets.length === 1 ? 'wallet' : 'wallets'} and add ${goodOnly ? 'the ' : ''}${what}` : `Add ${goodOnly ? 'the ' : ''}${what}`}
@@ -342,7 +342,7 @@ function Export() {
             downloadText('opening-lots.csv', out.csv);
           }}
         >
-          <DownloadIcon size={16} /> Spreadsheet of your coins
+          <DownloadIcon size={16} /> Spreadsheet of your lots
         </Button>
       </div>
       <div className="flex items-end gap-2">
@@ -381,7 +381,7 @@ export function ImportExportView() {
       <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Import and export</h2>
       {isDemo ? (
         <>
-          <NotInDemo title="Bring in your coins from a spreadsheet" label="Bring in your coins" />
+          <NotInDemo title="Bring in your lots from a spreadsheet" label="Bring in your lots" />
           <NotInDemo title="Restore from a backup file" label="Restore from a backup" />
         </>
       ) : (

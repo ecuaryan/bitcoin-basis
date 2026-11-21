@@ -51,8 +51,8 @@ test('hidden amounts and the year sheet are accessible too', async ({ page }) =>
   const split = page.getByRole('region', { name: 'Taxable and retirement' });
   await expect(split).toContainText('Counts for tax');
   await expect(split).not.toContainText(/\$\d|\d\.\d{4}|%/);
-  await page.getByRole('button', { name: /Show where the .*2023 coins came from/ }).click();
-  await expect(page.getByRole('dialog', { name: '2023 coins' })).toBeVisible();
+  await page.getByRole('button', { name: /Show the 2023 lots and where each came from/ }).click();
+  await expect(page.getByRole('dialog', { name: '2023 lots' })).toBeVisible();
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations.map((v) => v.id)).toEqual([]);
   await page.keyboard.press('Escape');

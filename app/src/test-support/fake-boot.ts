@@ -5,7 +5,7 @@
  */
 import { createMempoolPriceService, type PriceService } from '../data/price.ts';
 import { incomingRecovery } from '../data/recovery-handoff.ts';
-import { DEMO_PRICE_CENTS, demoPriceAt } from '../demo/demo-data.ts';
+import { DEMO_PRICE_CENTS, demoDailyPrice, demoPriceAt } from '../demo/demo-data.ts';
 import { createApiClient } from '../vault/api.ts';
 import { createMemoryDb } from '../vault/idb.ts';
 import { FakeAuthenticator } from '../vault/test/fake-authenticator.ts';
@@ -35,9 +35,10 @@ export async function openFakeVault(): Promise<Vault> {
   if (host !== '127.0.0.1' && host !== 'localhost') throw new Error('The fake vault only runs on localhost.');
   const server = new FakeServer(FAKE_SETUP_CODE);
   // Prices for the app's own price endpoints, so testers and tests see real figures: today's is fixed, the past
-  // follows the demo's made-up curve. Tests can fail them with `server.failing.set('/api/price', 503)`.
+  // follows the demo's made-up curve (the chart's daily series too). Tests can fail them with `server.failing.set('/api/price', 503)`.
   server.priceCents = DEMO_PRICE_CENTS;
   server.priceAt = (ts) => demoPriceAt(ts * 1000);
+  server.priceDay = (day) => demoDailyPrice(day * 1000);
   // Like a real platform authenticator, it refuses to create a second passkey for these records
   // (`excludeCredentials`); after `forgetDevice()` its passkey stands in for one synced from another device.
   const auth = new FakeAuthenticator('e2e', { origin: window.location.origin, rpId: host, honorExclude: true });

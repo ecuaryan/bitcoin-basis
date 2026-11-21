@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useLedger } from '../data/ledger-provider.tsx';
-import { floorToHour, loadPriceSeries, memoryPriceCache, seriesTimes, createLocalPriceCache, type PricePoint } from '../data/price-history.ts';
+import { createLocalPriceCache, createLocalSeriesCache, floorToHour, loadChartHistory, seriesPoints, seriesTimes, type ChartHistory, type PricePoint } from '../data/price-history.ts';
 import { usePrice } from '../data/price-provider.tsx';
-import { demoPriceAt } from '../demo/demo-data.ts';
+import { demoPriceSeries } from '../demo/demo-data.ts';
 import { cx } from '../lib/cx.ts';
 import { buildHoldingsView, type HoldingsView } from '../lib/holdings-view.ts';
 import { BalanceNudge } from './BalanceNudge.tsx';
@@ -26,7 +26,6 @@ import {
   HeroAverageLine,
   HeroGainLine,
   heroFigures,
-  MoneyCard,
   PriceLine,
   RetirementCard,
   SplitCard,
@@ -44,36 +43,43 @@ import { useTitle } from '../ui/use-title.ts';
 
 const YEARS_BACK = 3;
 
-/** Price history for the chart: monthly for the demo, a few quarterly points (cached) for the live service. */
-function usePriceSeries(): { points: PricePoint[]; loading: boolean } {
+const SERIES_DAYS = YEARS_BACK * 365;
+
+/**
+ * Price history for the chart: one point per day, from one request (kept an hour on this device), or the demo's
+ * made-up days. If the server has no series, a few quarterly lookups (cached) instead.
+ */
+function usePriceSeries(): { points: PricePoint[]; loading: boolean; daily: boolean } {
   const { service, quote } = usePrice();
   const { isDemo, today } = useLedger();
-  const [past, setPast] = useState<PricePoint[]>([]);
+  const [live, setLive] = useState<ChartHistory>({ points: [], daily: false });
   const [loaded, setLoaded] = useState(false);
   const nowMs = isDemo ? Date.parse(`${today}T16:00:00Z`) : null;
+  const demo = useMemo<ChartHistory | null>(() => (nowMs === null ? null : { points: seriesPoints(demoPriceSeries(nowMs, SERIES_DAYS)), daily: true }), [nowMs]);
+  const past = demo ?? live;
 
   useEffect(() => {
+    if (nowMs !== null) return;
     const ctl = new AbortController();
-    // Live: whole hours only, so the cached times don't record when the app was opened.
-    const end = nowMs ?? floorToHour(Date.now());
-    const times = isDemo ? seriesTimes(end, YEARS_BACK * 12, YEARS_BACK * 12 + 1) : seriesTimes(end, YEARS_BACK * 12, YEARS_BACK * 4 + 1).slice(0, -1).map(floorToHour);
-    const svc = isDemo ? { current: service.current, historical: (ts: number) => Promise.resolve(demoPriceAt(ts * 1000)) } : service;
-    const cache = isDemo ? memoryPriceCache() : createLocalPriceCache();
-    void loadPriceSeries(svc, times, cache, { signal: ctl.signal, pauseMs: isDemo ? 0 : 250 }).then((pts) => {
+    // Whole hours only, so the cached times don't record when the app was opened.
+    const end = floorToHour(Date.now());
+    const fallbackTimes = seriesTimes(end, YEARS_BACK * 12, YEARS_BACK * 4 + 1).slice(0, -1).map(floorToHour);
+    void loadChartHistory(service, { days: SERIES_DAYS, nowMs: end, fallbackTimes, seriesCache: createLocalSeriesCache(), pointCache: createLocalPriceCache(), signal: ctl.signal, pauseMs: 250 }).then((h) => {
       if (!ctl.signal.aborted) {
-        setPast(pts);
+        setLive(h);
         setLoaded(true);
       }
     });
     return () => ctl.abort();
-  }, [service, isDemo, nowMs]);
+  }, [service, nowMs]);
 
   const points = useMemo(() => {
     // A price the person typed is not a market price: it never joins the chart.
-    if (isDemo || quote === null || quote.source === 'manual') return past;
-    return [...past, { ms: quote.asOf, cents: quote.usdCents }];
+    const last = past.points[past.points.length - 1];
+    if (isDemo || quote === null || quote.source === 'manual' || (last !== undefined && quote.asOf <= last.ms)) return past.points;
+    return [...past.points, { ms: quote.asOf, cents: quote.usdCents }];
   }, [past, quote, isDemo]);
-  return { points, loading: !loaded };
+  return { points, loading: demo === null && !loaded, daily: past.daily };
 }
 
 /** No price yet: a soft placeholder the size of the number while it loads, a dash if it could not be fetched. */
@@ -210,7 +216,7 @@ function ChartFooter({ points, className }: { points: PricePoint[]; className?: 
   const first = points[0];
   return (
     <div className={cx('flex justify-between text-muted', className)}>
-      <span>{first ? new Date(first.ms).getUTCFullYear() : ''}</span>
+      <span>{first ? new Date(first.ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : ''}</span>
       <span>Dashed line: your average cost</span>
       <span>Today</span>
     </div>
@@ -222,7 +228,7 @@ function ChartFooter({ points, className }: { points: PricePoint[]; className?: 
 function PhoneHoldings({ view }: { view: HoldingsView }) {
   const { status } = usePrice();
   const { today } = useLedger();
-  const { points: series, loading: seriesLoading } = usePriceSeries();
+  const { points: series, loading: seriesLoading, daily } = usePriceSeries();
   const young = isYoung(view, today);
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
@@ -271,7 +277,7 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
           </div>
         </div>
         {gainHelp.panel}
-        <PriceChart points={series} averageCostCents={view.averageCostCentsPerBtc} width={320} height={84} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} />
+        <PriceChart points={series} averageCostCents={view.averageCostCentsPerBtc} width={320} height={96} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} markHigh={daily} />
         <ChartFooter points={series} className="text-[11px]" />
         <LossesStat view={view} variant="row" />
       </Card>
@@ -298,7 +304,6 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
 
       <LoansSection />
 
-      <MoneyCard view={view} />
       <RetirementCard view={view} />
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>
@@ -310,7 +315,7 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
 function DesktopHoldings({ view }: { view: HoldingsView }) {
   const { status } = usePrice();
   const { today } = useLedger();
-  const { points: series, loading: seriesLoading } = usePriceSeries();
+  const { points: series, loading: seriesLoading, daily } = usePriceSeries();
   const young = isYoung(view, today);
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
@@ -373,7 +378,7 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
             <h2 className="m-0 text-[15px] font-semibold">Price vs. your average cost</h2>
             <span className="text-[13px] text-muted">{YEARS_BACK} years</span>
           </div>
-          <PriceChart points={series} averageCostCents={avg} width={640} height={220} strokeWidth={2.5} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} />
+          <PriceChart points={series} averageCostCents={avg} width={640} height={220} strokeWidth={2.5} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} markHigh={daily} />
           <div className="flex justify-between text-xs text-muted">
             <span>{series[0] ? new Date(series[0].ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : ''}</span>
             <span>Dashed: your average cost, {avg === null ? '—' : <Money cents={avg} />}</span>
@@ -403,13 +408,12 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
         {tierHelp.panel}
         <StackColumns stack={view.stack} onPick={setYear} />
         <span className="text-xs text-muted">
-          {view.documentedPercent}% documented. Pick a year to see each coin and where it came from.
+          {view.documentedPercent}% documented. Pick a year to see each lot and where it came from.
         </span>
       </Card>
 
       {/* Cards keep their own height: a long Held apart list should not stretch the short ones. */}
-      <div className="grid grid-cols-3 items-start gap-4">
-        <MoneyCard view={view} />
+      <div className="grid grid-cols-2 items-start gap-4">
         <DocumentationCard view={view} />
         <RetirementCard view={view} />
       </div>

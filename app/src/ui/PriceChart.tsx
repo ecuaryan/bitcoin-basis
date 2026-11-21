@@ -1,12 +1,15 @@
 import { useId } from 'react';
 import type { PricePoint } from '../data/price-history.ts';
 import { cx } from '../lib/cx.ts';
-import { scrubText, useChartScrub } from './chart-scrub.ts';
+import { formatMoney, maskDigits } from '../lib/format.ts';
+import { lineCentsAt, peakIndex, smoothLine, tableIndexes } from './chart-line.ts';
+import { pointDate, scrubText, useChartScrub } from './chart-scrub.ts';
 import { usePrefs } from './prefs.tsx';
 
 /**
  * Price over time with the average-cost line under it. The gap between the two, where price is above
- * cost, is filled orange. Hand-rolled SVG: no chart library.
+ * cost, is filled orange. A daily series is drawn smoothed to about one point per two units of width, with its
+ * highest price kept and marked (`markHigh`). Hand-rolled SVG: no chart library.
  */
 export function PriceChart({
   points,
@@ -18,6 +21,7 @@ export function PriceChart({
   strokeWidth = 2.2,
   status = 'ready',
   young = false,
+  markHigh = false,
 }: {
   points: readonly PricePoint[];
   averageCostCents: number | null;
@@ -31,6 +35,8 @@ export function PriceChart({
   status?: 'loading' | 'ready';
   /** The records are new, so a short chart is expected rather than broken. */
   young?: boolean;
+  /** Mark the highest price with a dot and `High $126,073 · Oct 6, 2025`: for a daily series, not a few samples. */
+  markHigh?: boolean;
 }) {
   const id = useId();
   const { masked } = usePrefs();
@@ -54,7 +60,9 @@ export function PriceChart({
   const y = (cents: number) => padTop + ((hi - cents) / span) * (height - padTop - padBottom);
   const x = (ms: number) => ((ms - first.ms) / Math.max(1, lastPoint.ms - first.ms)) * width;
   const f = (n: number) => n.toFixed(1);
-  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${f(x(p.ms))} ${f(y(p.cents))}`).join(' ');
+  const peak = markHigh && points.length > 2 ? peakIndex(points) : -1;
+  const drawn = smoothLine(points, Math.round(width / 2.5), peak);
+  const line = drawn.map((p, i) => `${i === 0 ? 'M' : 'L'}${f(x(p.ms))} ${f(y(p.cents))}`).join(' ');
   const avgY = averageCostCents === null ? null : y(averageCostCents);
   const fill = avgY === null ? null : `${line} L${f(width)} ${f(avgY)} L0 ${f(avgY)} Z`;
 
@@ -63,8 +71,17 @@ export function PriceChart({
   const text = scrubText(points, shown, averageCostCents, masked);
   const cur = points[shown] as PricePoint;
   const pct = (x(cur.ms) / width) * 100;
-  const dotTop = (y(cur.cents) / height) * 100;
+  // On the drawn line, which may be smoothed; the label gives the day's own price.
+  const dotTop = (y(lineCentsAt(drawn, cur.ms)) / height) * 100;
   const flip = pct > 50;
+  const high = peak < 0 ? null : (points[peak] as PricePoint);
+  const highText = high === null ? null : (() => {
+    const price = formatMoney(high.cents, { precision: 'dollars' });
+    return `High ${masked ? maskDigits(price) : price} · ${pointDate(points, peak)}`;
+  })();
+  const highPct = high === null ? 0 : (x(high.ms) / width) * 100;
+  const highTop = high === null ? 0 : (y(high.cents) / height) * 100;
+  const rows = tableIndexes(points, peak);
   return (
     <div className="relative">
       <div
@@ -95,6 +112,20 @@ export function PriceChart({
           <path d={line} fill="none" stroke="#F7931A" strokeWidth={strokeWidth} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           {avgY !== null && <path d={`M0 ${f(avgY)} L${f(width)} ${f(avgY)}`} stroke="#C9C4BC" strokeWidth={strokeWidth * 0.55} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />}
         </svg>
+        {high !== null && (
+          <div aria-hidden="true" data-testid="chart-high" className="pointer-events-none absolute inset-0">
+            <div className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-bg bg-amber" style={{ left: `${highPct}%`, top: `${highTop}%` }} />
+            {idx === null && (
+              <span
+                data-testid="chart-high-label"
+                className={cx('absolute w-max -translate-y-1/2 rounded-md bg-surface/85 px-1 text-[11px] leading-4 tabular-nums text-soft', highPct > 55 && '-translate-x-full')}
+                style={{ left: highPct > 55 ? `calc(${highPct}% - 7px)` : `calc(${highPct}% + 7px)`, top: `max(8px, ${highTop}%)` }}
+              >
+                {highText}
+              </span>
+            )}
+          </div>
+        )}
         {idx !== null && (
           <div aria-hidden="true" data-testid="chart-scrub" className="pointer-events-none absolute inset-0">
             <div className="absolute inset-y-0 w-px bg-soft/60" style={{ left: `${pct}%` }} />
@@ -116,7 +147,7 @@ export function PriceChart({
       {/* sr-only on a <table> itself still lays out its rows in Chromium; hide a wrapper instead. */}
       <div className="sr-only">
       <table>
-        <caption>{label}</caption>
+        <caption>{highText === null ? label : `${label}. ${highText}`}</caption>
         <thead>
           <tr>
             <th scope="col">Date</th>
@@ -125,7 +156,8 @@ export function PriceChart({
           </tr>
         </thead>
         <tbody>
-          {points.map((p, i) => {
+          {rows.map((i) => {
+            const p = points[i] as PricePoint;
             const t = scrubText(points, i, averageCostCents, masked);
             return (
               <tr key={p.ms}>

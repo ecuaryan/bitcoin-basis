@@ -1,4 +1,5 @@
 import { formatAprPercent, isValidLocalDate, loanPurchases, loanSummary, parseDollars, type Loan, type LoanPurchase, type LoanSummary } from '@bitcoin-basis/engine';
+import { BackLink } from '../../ui/BackLink.tsx';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -6,7 +7,7 @@ import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { buildItems, type EntryItem, type EntryRun } from '../../lib/entry-list.ts';
 import { countOf, shortDate } from '../../lib/format.ts';
-import { breakEvenWords, purchaseWorth, statementDayText, statementToCheck } from '../../lib/loans-view.ts';
+import { breakEvenWords, goneWords, purchaseWorth, statementDayText, statementToCheck } from '../../lib/loans-view.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide } from '../../ui/AppShell.tsx';
 import { Button, buttonClasses } from '../../ui/Button.tsx';
@@ -24,7 +25,7 @@ import { useTitle } from '../../ui/use-title.ts';
 import { GainWords } from '../../ui/WorthLine.tsx';
 import { EntrySheet } from '../entry-parts.tsx';
 import { cleanNumber } from '../log/model.ts';
-import { Approx, BREAK_EVEN_HELP, BREAK_EVEN_LABEL, IncludingInterest, LOAN_ESTIMATE_HELP, SignedMoney } from './loan-parts.tsx';
+import { Approx, BREAK_EVEN_HELP, BREAK_EVEN_LABEL, IncludingInterest, LOAN_ESTIMATE_HELP, PAYOFF_HELP, SignedMoney } from './loan-parts.tsx';
 import { CloseLoanSheet, LoanSettingsSheet, PaymentSheet, RateSheet, useReopen } from './loan-sheets.tsx';
 import { ManagePurchasesSheet } from './LoanSetup.tsx';
 import { useLoanWriter } from './loan-writer.ts';
@@ -60,10 +61,12 @@ const runOf = (item: EntryItem): EntryRun => ({ item, count: 1, items: [item], n
 
 // ---- Where it stands -------------------------------------------------------------------------
 
-function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
+function Standing({ loan, s, purchases }: { loan: Loan; s: LoanSummary; purchases: readonly LoanPurchase[] }) {
   const { today } = useLedger();
   const help = useHelp('What does ≈ mean?', LOAN_ESTIMATE_HELP);
   const breakEvenHelp = useHelp('What is in the break-even price?', BREAK_EVEN_HELP);
+  const payoffHelp = useHelp('What does paying it off today use?', PAYOFF_HELP);
+  const gone = goneWords(purchases);
   const variable = loan.rates.length > 1;
   const left = s.payoffLeftoverSats;
   const rows: Row[] = [
@@ -89,7 +92,30 @@ function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
     ...(s.creditCents > 0 ? [{ k: 'Paid in advance', v: <Money cents={s.creditCents} /> }] : []),
     ...(s.availableCreditCents !== null ? [{ k: s.availableCreditCents < 0 ? 'Over the limit by' : 'Available', v: <Money cents={Math.abs(s.availableCreditCents)} /> }] : []),
     { k: 'Rate', v: `${formatAprPercent(s.aprMillionths)}${variable ? ' (variable)' : ''}` },
-    { k: s.soldSats + s.frozenSats + s.otherGoneSats > 0 ? 'Still held' : 'Bought', v: <Amount sats={s.heldSats} showUnit interactive={false} /> },
+    // Everything the purchases bought, then (when some has left or is frozen) what is still held and where the rest went.
+    { k: 'Bought', v: <Amount sats={s.boughtSats} showUnit interactive={false} /> },
+    ...(s.heldSats !== s.boughtSats
+      ? [
+          {
+            k: 'Still held',
+            v: <Amount sats={s.heldSats} showUnit interactive={false} />,
+            sub: (
+              <>
+                {gone !== null ? (
+                  <span className="block">
+                    <Amount sats={gone.sats} showUnit interactive={false} /> {gone.words}
+                  </span>
+                ) : null}
+                {s.frozenSats > 0 ? (
+                  <span className="block">
+                    <Amount sats={s.frozenSats} showUnit interactive={false} /> in a frozen wallet
+                  </span>
+                ) : null}
+              </>
+            ),
+          },
+        ]
+      : []),
     { k: 'Worth now', v: s.valueCents === null ? '—' : <Money cents={s.valueCents} /> },
     {
       k: 'Interest paid',
@@ -102,7 +128,7 @@ function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
                 {s.unallocatedInterestCents > 0 ? (
                   <>
                     {s.interestPaidThrough ? '. ' : ''}
-                    <Money cents={s.unallocatedInterestCents} /> of it was for days before any purchase, so no coin carries it
+                    <Money cents={s.unallocatedInterestCents} /> of it was for days before any purchase, so no lot carries it
                   </>
                 ) : null}
               </>
@@ -134,6 +160,7 @@ function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
       ? [
           {
             k: 'If you paid it off today',
+            help: payoffHelp,
             v: (
               <>
                 {s.owedNowEstimated ? <Approx /> : null}
@@ -147,7 +174,7 @@ function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
                 )}
               </>
             ),
-            sub: left < 0 ? 'Selling every coin it bought would not cover what you owe.' : 'Selling just enough to pay it off leaves this.',
+            sub: left < 0 ? 'Selling all of it still held would not cover what you owe.' : 'Selling just enough of what is still held to pay it off leaves this.',
           },
         ]
       : []),
@@ -544,7 +571,7 @@ export function LoanPage() {
     );
   }
   const close = () => setSheet(null);
-  const standing = <Standing loan={loan} s={s} />;
+  const standing = <Standing loan={loan} s={s} purchases={purchases} />;
   const purchaseList = <Purchases loan={loan} purchases={purchases} onManage={() => setSheet('purchases')} onOpen={setEntry} />;
   const payments = <Payments loan={loan} onPay={() => setSheet('pay')} onOpen={setEntry} />;
   const rate = <Rate loan={loan} rate={s.aprMillionths} onChange={() => setSheet('rate')} />;
@@ -553,9 +580,9 @@ export function LoanPage() {
   return (
     <div className="flex flex-col gap-5">
       <header className="flex items-center gap-3">
-        <Link to="/" aria-label="Back to Holdings" className={ROUND_BTN}>
+        <BackLink fallback="/" fallbackLabel="Back to Holdings" className={ROUND_BTN}>
           <ChevronLeftIcon size={18} />
-        </Link>
+        </BackLink>
         <h1 className="m-0 min-w-0 flex-1 truncate font-display text-[28px] font-semibold tracking-tight lg:text-4xl">{loan.name}</h1>
         {wide ? <HideButton variant="text" /> : null}
         {wide ? <LockButton variant="text" /> : null}

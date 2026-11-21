@@ -1,4 +1,4 @@
-import { formatAprPercent, type Cents, type Entry, type Sats, type Wallet } from '@bitcoin-basis/engine';
+import { formatAprPercent, RETIRED_SETTINGS, type Cents, type Entry, type Sats, type Wallet } from '@bitcoin-basis/engine';
 import { longDate } from './format.ts';
 
 /** One entry in words, for history lists and review rows. Amounts stay numbers so screens can mask them. */
@@ -27,24 +27,11 @@ const SETTING_LABELS: Record<string, string> = {
   carryforwardStCents: 'short-term losses from past years',
   carryforwardLtCents: 'long-term losses from past years',
   carryforwardYear: 'year of losses from past years',
-  givingEnabled: 'giving on or off',
-  givingName: 'giving name',
-  givingPercentBp: 'giving percent',
-  givingMode: 'giving before or after tax',
-  earlierMoneyInCents: 'earlier money in',
   timeZone: 'time zone',
 };
-/** One changed setting in words, e.g. `Giving turned on`. */
+/** One changed setting in words, e.g. `Time zone America/Boise`. */
 export function describeSettingChange(key: string, value: unknown): string {
   switch (key) {
-    case 'givingEnabled':
-      return value === true ? 'Giving turned on' : 'Giving turned off';
-    case 'givingMode':
-      return value === 'before-tax' ? 'before tax' : 'after tax';
-    case 'givingName':
-      return `Giving called ${String(value)}`;
-    case 'givingPercentBp':
-      return `Giving ${Number(value) / 100}%`;
     case 'timeZone':
       return `Time zone ${String(value).replaceAll('_', ' ')}`;
     default: {
@@ -93,7 +80,7 @@ export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>, lo
     case 'lost':
       return line('!', 'Lost', `${w(e.wallet)} · ${e.cause.replace('-', ' ')}`, { summary: 'Lost or stolen', sats: e.sats, sign: '−' });
     case 'opening-lot':
-      return line('⇩', 'Imported coins', `${w(e.wallet)} · ${e.origin}`, { summary: 'Imported coins', sats: e.sats, sign: '+', cents: e.costCents, centsLabel: 'cost' });
+      return line('⇩', 'Imported lot', `${w(e.wallet)} · ${e.origin}`, { summary: 'Imported a lot', sats: e.sats, sign: '+', cents: e.costCents, centsLabel: 'cost' });
     case 'balance-confirm':
       return line('✓', 'Balance confirmed', w(e.wallet), { summary: 'Checked the balance', sats: e.sats });
     case 'retirement-snapshot':
@@ -111,13 +98,13 @@ export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>, lo
     case 'wallet-close-out':
       return line('◇', 'Frozen wallet closed out', w(e.wallet), { summary: 'Closed out' });
     case 'settings':
-      return line('⚙', 'Settings changed', Object.keys(e.patch).map(settingLabel).join(', '));
+      return line('⚙', 'Settings changed', Object.keys(e.patch).filter((k) => !(RETIRED_SETTINGS as readonly string[]).includes(k)).map(settingLabel).join(', '));
     case 'close-year':
       return line('◼', `Year ${e.year} closed`, 'Filed');
     case 'unlock-year':
       return line('◻', `Year ${e.year} unlocked`, e.reason);
-    case 'giving-paid':
-      return line('♥', 'Giving paid', `For ${e.year}`, { cents: e.cents });
+    case 'giving-paid': // an older version's record, never listed (see entry-list)
+      return line('·', 'Older record', `For ${e.year}`, { summary: 'Older record, no longer used' });
     // Loan records (tracking only: they never change coins, cost or taxes).
     case 'loan':
       return line('⌂', 'Loan added', `${e.name} · ${formatAprPercent(e.aprMillionths)}`, { summary: `Started tracking ${e.name}` });

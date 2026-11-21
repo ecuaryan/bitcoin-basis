@@ -50,7 +50,7 @@ export function MoveForm({ initial, preset, onReview }: FormProps) {
     amount: sats === null ? 'Enter how much you moved.' : null,
     fee: feeSats === null ? 'Enter the fee as whole sats, like 2000.' : null,
     feeValue: feeSats !== null && feeSats > 0 && feeValue === null ? 'Enter what the fee was worth in dollars.' : null,
-    picks: total !== null && picks === null ? 'Choose coins that add up to the amount and fee.' : null,
+    picks: total !== null && picks === null ? 'Pick lots that add up to the amount and fee.' : null,
   };
   const valid = Object.values(errors).every((e) => e === null);
 
