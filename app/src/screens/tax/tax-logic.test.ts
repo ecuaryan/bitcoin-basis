@@ -52,21 +52,22 @@ describe('totalsByKind and yearTaxView', () => {
 });
 
 describe('losses from past years', () => {
-  const saved = { ...state.settings, carryforwardStCents: 100_000, carryforwardLtCents: 200_000 };
-  it('apply to the year they are saved for', () => {
-    expect(yearTaxView(state, { ...saved, carryforwardYear: 2025 }, 2026, DEMO_TODAY).carriedIn).toEqual({ st: 0, lt: 0 });
-    expect(yearTaxView(state, { ...saved, carryforwardYear: 2025 }, 2025, DEMO_TODAY).carriedIn).toEqual({ st: 100_000, lt: 200_000 });
-    expect(yearTaxView(state, { ...saved, carryforwardYear: 2026 }, 2026, DEMO_TODAY).carriedIn).toEqual({ st: 100_000, lt: 200_000 });
+  const amounts = { st: 100_000, lt: 200_000 };
+  it('apply to the year they are saved for, and only that year', () => {
+    expect(yearTaxView(state, { ...state.settings, carryforwardByYear: { '2025': amounts } }, 2026, DEMO_TODAY).carriedIn).toEqual({ st: 0, lt: 0 });
+    expect(yearTaxView(state, { ...state.settings, carryforwardByYear: { '2025': amounts } }, 2025, DEMO_TODAY).carriedIn).toEqual(amounts);
+    expect(yearTaxView(state, { ...state.settings, carryforwardByYear: { '2026': amounts } }, 2026, DEMO_TODAY).carriedIn).toEqual(amounts);
   });
-  it('are offered for next year when closing, unless Settings already hold them', () => {
-    const loss = { ...state.settings, carryforwardStCents: 0, carryforwardLtCents: 99_000_000, carryforwardYear: 2026 };
+  it('are offered for next year when closing, unless Settings already hold them; saving them leaves the closed year alone', () => {
+    const loss = { ...state.settings, carryforwardByYear: { '2026': { st: 0, lt: 99_000_000 } } };
     const out = nextYearLosses(state, loss, 2026, DEMO_TODAY);
     expect(out).not.toBeNull();
     if (out === null) return;
     expect(out.st + out.lt).toBeGreaterThan(0);
-    const same = { ...loss, carryforwardStCents: out.st, carryforwardLtCents: out.lt, carryforwardYear: 2027 };
+    const same = { ...loss, carryforwardByYear: { ...loss.carryforwardByYear, '2027': out } };
     expect(nextYearLosses(state, same, 2026, DEMO_TODAY)).toBeNull();
-    expect(nextYearLosses(replay([]), { ...state.settings, carryforwardLtCents: 0, carryforwardStCents: 0 }, 2019, DEMO_TODAY)).toBeNull();
+    expect(yearTaxView(state, same, 2026, DEMO_TODAY).carryOut).toEqual(out);
+    expect(nextYearLosses(replay([]), { ...state.settings, carryforwardByYear: {}, carryforwardLtCents: 0, carryforwardStCents: 0 }, 2019, DEMO_TODAY)).toBeNull();
   });
 });
 

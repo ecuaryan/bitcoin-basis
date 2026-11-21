@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS: Settings = {
   state: { kind: 'flat', state: 'ID' },
   carryforwardStCents: 0,
   carryforwardLtCents: 0,
+  carryforwardByYear: {},
   givingEnabled: false,
   givingName: 'Giving',
   givingPercentBp: 1000,

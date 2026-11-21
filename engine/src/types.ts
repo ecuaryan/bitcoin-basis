@@ -190,7 +190,10 @@ export interface LoanEntry extends EntryBase<'loan'> {
   /** Day of the month each billing cycle ends (statement closing date), 1-31; 31 means the month's last day. */
   readonly statementDay?: number;
 }
-/** Rename, change the credit limit or statement day, close/reopen, or record a rate change from `rateFrom`. */
+/**
+ * Rename, change the credit limit, close/reopen, record a rate change from `rateFrom`, or change the statement day
+ * (from this record's own date on; earlier payments keep the day in force when they were made).
+ */
 export interface LoanUpdateEntry extends EntryBase<'loan-update'> {
   readonly loan: LoanId;
   readonly name?: string;
@@ -214,6 +217,8 @@ export interface LoanDrawEntry extends EntryBase<'loan-draw'> {
 export interface LoanLinkEntry extends EntryBase<'loan-link'> {
   readonly loan: LoanId;
   readonly lot: LotId;
+  /** Other lots holding the same purchase's coins (an import that split one purchase across rows). */
+  readonly alsoLots?: readonly LotId[];
   readonly drawCents?: Cents;
   readonly drawDate?: LocalDate;
 }
@@ -289,11 +294,16 @@ export interface Settings {
   readonly filingStatus: FilingStatus;
   readonly wagesCents: Cents;
   readonly state: StateTaxSetting;
-  /** Unused losses from past years' returns, as positive cents. */
+  /** The latest losses from past years saved (positive cents) and the year they are for; also kept in `carryforwardByYear`. */
   readonly carryforwardStCents: Cents;
   readonly carryforwardLtCents: Cents;
-  /** The tax year those losses are for. Missing (older entries): the current year. */
+  /** The tax year those losses are for. In entries written before it existed, replay uses the entry's own year. */
   readonly carryforwardYear?: number;
+  /**
+   * Losses from past years per tax year they apply to (`"2026": { st, lt }`, positive cents). A settings patch writes only
+   * the years it names, so saving next year's figure never changes an earlier year's.
+   */
+  readonly carryforwardByYear: Readonly<Record<string, CarryforwardAmounts>>;
   readonly givingEnabled: boolean;
   readonly givingName: string;
   /** Giving percent in basis points (1/10000ths): 1000 = 10%. A whole number, so no float error. */
@@ -304,6 +314,10 @@ export interface Settings {
   readonly timeZone: string;
 }
 export type SettingsPatch = Partial<Settings>;
+export interface CarryforwardAmounts {
+  readonly st: Cents;
+  readonly lt: Cents;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Ledger state (output of replay)
@@ -600,6 +614,14 @@ export interface LoanDraw {
   date: LocalDate;
   cents: Cents;
   lotId: LotId | null;
+  /** Every lot the purchase's coins came in as: `lotId` plus the link's `alsoLots` (empty when `lotId` is null). */
+  lotIds: LotId[];
+}
+/** A statement closing day in force from `from` (inclusive). */
+export interface LoanStatementDay {
+  entryId: EntryId;
+  from: LocalDate;
+  day: number;
 }
 export interface LoanPayment {
   entryId: EntryId;
@@ -620,7 +642,10 @@ export interface Loan {
   opened: LocalDate;
   dayCount: DayCount;
   creditLimitCents: Cents | null;
+  /** The statement day in force now (the last of `statementDays`), or null. */
   statementDay: number | null;
+  /** Statement day history, sorted by `from`. */
+  statementDays: LoanStatementDay[];
   closed: boolean;
   /** Sorted by `from`; the first is the rate at opening. */
   rates: LoanRate[];

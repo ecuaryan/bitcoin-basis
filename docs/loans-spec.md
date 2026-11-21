@@ -14,7 +14,7 @@ Not tax advice. Estimates are labeled as estimates.
 | Daily rate | APR ÷ 365 for most lenders; some use ÷ 360 [1][3] | `dayCount`: `actual/365` (default) or `actual/360` per loan |
 | Rate | Variable: a public index (usually the WSJ prime rate) + a fixed margin; the rate can only move with an index outside the lender's control; the disclosure states how often it can change and any caps [4][1] | Rate history: each rate applies from its effective date (`rateFrom`, inclusive). APR stored in millionths so prime + a margin in eighths (7.875%) is exact |
 | Interest on a draw | Charged from the date the advance posts; Reg Z does not require a stated accrual date, and lenders word it "from the date of each advance" [5] | A draw is charged from its own day (it is in that day's end-of-day balance). A principal payment stops interest from its own day |
-| Billing | Monthly cycles; interest is billed in arrears on the statement and due about 3-4 weeks later [1] | `statementDay` (cycle closing day, 31 = month end). A payment's interest covers through the latest closing date on or before it unless the payment says otherwise (`interestThrough`) |
+| Billing | Monthly cycles; interest is billed in arrears on the statement and due about 3-4 weeks later [1] | `statementDay` (cycle closing day, 31 = month end), with a history: a change applies from its own date. A payment's interest covers through the latest closing date on or before it (by the day in force then) unless the payment says otherwise (`interestThrough`) |
 | Draw vs repayment period | Draw period: minimum payment is often interest-only (or a % of balance); repayment period: principal + interest (a % of balance or amortized). Disclosures must describe both [4][1] | No schedule is modeled: each payment records its actual interest and principal parts, so both periods work the same way |
 
 Confirmed against the owner's private statements (numbers not in this repo): monthly interest matched daily simple interest, actual/365, on a constant principal, with a variable-rate history; the first month was small because draws came in during the month.
@@ -48,8 +48,8 @@ All amounts are whole cents; APR is a whole number of millionths (`65_000` = 6.5
 | Kind | Fields | Effect |
 |---|---|---|
 | `loan` | `loan` (id), `name`, `opened`, `aprMillionths`, `dayCount?` (`actual/365`), `creditLimitCents?`, `statementDay?` (1-31) | Creates the loan; its first rate applies from `opened` |
-| `loan-update` | `loan`, `name?`, `creditLimitCents?`, `statementDay?`, `closed?`, `aprMillionths?` + `rateFrom?` (default: its own date) | Rename, limit, statement day, close/reopen, rate change. A later rate for the same day replaces the earlier one |
-| `loan-link` | `loan`, `lot` (purchase lot id = root id of a `buy` or `opening-lot`), `drawCents?`, `drawDate?` | That purchase was paid from the loan: a draw of its cost on its acquired date unless given. Unlink = `delete` the link |
+| `loan-update` | `loan`, `name?`, `creditLimitCents?`, `statementDay?`, `closed?`, `aprMillionths?` + `rateFrom?` (default: its own date) | Rename, limit, close/reopen, rate change from `rateFrom`, statement day from its own date. A later rate (or statement day) for the same day replaces the earlier one |
+| `loan-link` | `loan`, `lot` (purchase lot id = root id of a `buy` or `opening-lot`), `alsoLots?` (more lots holding the same purchase, from a CSV import that split it across rows), `drawCents?`, `drawDate?` | That purchase was paid from the loan: a draw of its lots' cost on the earliest acquired date unless given. Unlink = `delete` the link |
 | `loan-draw` | `loan`, `cents` | Money drawn that did not pay for a tracked purchase |
 | `loan-payment` | `loan`, `interestCents`, `principalCents` (total = both; not both 0), `interestThrough?` | A payment. Interest-only: principal 0. "Interest paid so far": a payment with only interest, dated when tracking starts |
 | `loan-statement` | `loan`, `balanceCents` | Lender's principal balance on that date, checked against the records |
@@ -67,12 +67,12 @@ Let draws be the links and loan-draws dated on or before the as-of date T, and p
 - **Available credit** = limit − (Σ draws − Σ principal parts), if a limit is set (negative: over the limit).
 - **Statement check**: recorded = Σ draws − Σ principal parts at the end of the statement date; difference = statement − recorded; matches if 0.
 - **Coins**: each linked purchase's coins are traced from its origin lot through every move (`originLotId`: the last part of a moved piece's id `M2:M1:L`). Held = open lots outside frozen wallets; frozen sats are reported separately; gone = sold, spent, fees, given (people and charity), lost, closed out.
-- **Value now** = round_half_up(held sats × price ÷ 10^8); each purchase's value is its share of that total by held sats (largest remainder), so the lines add up.
+- **Value now** = Σ over held lots of round_half_up(lot sats × price ÷ 10^8): each coin valued on its own, exactly as Holdings and "worth now" do, so the figures never differ by a cent; the purchase lines add up to the total.
 - **Up/down** = value − cost of the coins still held.
 - **Interest share per purchase (estimate)**: each payment's interest is split across the draws by what each generated over the days that payment covers (its period runs from the day after the previous `interestThrough` to its own): Σ end-of-day outstanding × r(d). Principal repaid is spread over the draws in proportion to what each still owes (largest remainder). A period with no balance splits by the amounts drawn by its last day; if nothing had been drawn, the interest is `unallocated`. Splits use largest remainder (exact share rounded down, leftover cents to the largest remainders, earlier first on ties): shares + unallocated = interest paid, exactly, never negative.
 - **Interest on purchases** = Σ purchase shares. When every draw is a purchase this is exactly the interest paid (less any unallocated); with other draws it is an estimate.
 - **Gain including interest** = value − held cost − interest on purchases. Per purchase: up/down − its share.
-- **Sold portions** are reported separately (sats, their cost, proceeds); they are not in held cost or value, and their gain belongs to the tax reports. **Overall result** = value + proceeds (sales and spending) − cost of every linked purchase − interest on purchases: the whole result of borrowing to buy, counting coins sold, spent, given or lost.
+- **Sold portions** are reported separately (sats, their cost, proceeds); they are not in held cost or value, and their gain belongs to the tax reports. **Recovered** = what a frozen platform paid back for the coins: each closed-out piece's share of the dollars recovered by the loss date, plus its share of later payouts (split across the close-out's pieces by cost, by sats if all cost $0, half-up with the remainder on the last, as the close-out splits them). **Overall result** = value + proceeds (sales and spending) + recovered − cost of every linked purchase − interest on purchases: the whole result of borrowing to buy, counting coins sold, spent, given, lost or closed out.
 - **Break-even price** = (held cost + interest on purchases) × 10^8 ÷ held sats, half-up (null with nothing held). All interest is charged to the coins still held.
 - **Payoff price** = ceil(owed now × 10^8 ÷ held sats): selling every held coin at this price just pays the loan off.
 - **Payoff leftover** = held sats − ceil(owed now × 10^8 ÷ price) (negative: short). `payoffLeftoverPrincipalOnlySats` uses principal owed only, like a spreadsheet that tracks paid interest.
@@ -102,10 +102,10 @@ Checked by an independent Python `Decimal` script (a plain day-by-day loop, no s
 | Available credit | **$31,000.00** |
 | Statements | both match (difference $0.00) |
 | Held | 0.18774284 BTC (P1 0.03, P2, P3, P4 less the fee); held cost **$17,998.28** (P4's fee piece cost $1.72; sold piece of P1 $2,000.00) |
-| Value now | **$17,835.57** |
-| Up/down | **−$162.71** |
-| Gain including interest | −$162.71 − $526.03 = **−$688.74** |
-| Overall result | $17,835.57 + $2,060.00 − $20,000.00 − $526.03 = **−$630.46** |
+| Value now | each coin valued on its own: $2,850.00 + $4,567.31 + $4,896.91 + $5,521.36 = **$17,835.58** |
+| Up/down | **−$162.70** |
+| Gain including interest | −$162.70 − $526.03 = **−$688.73** |
+| Overall result | $17,835.58 + $2,060.00 − $20,000.00 − $526.03 = **−$630.45** |
 | Break-even price | ($17,998.28 + $526.03) ÷ 0.18774284 = **$98,668.53** per BTC |
 | Payoff price | **$101,959.21** per BTC |
 | Payoff leftover | **−1,375,306 sats** short (principal only: −1,225,716) |
@@ -115,22 +115,30 @@ Checked by an independent Python `Decimal` script (a plain day-by-day loop, no s
 | P1 | 0.03000000 | $3,000.00 | $2,850.00 | −$150.00 | $155.12 | −$305.12 |
 | P2 | 0.04807692 | $5,000.00 | $4,567.31 | −$432.69 | $141.75 | −$574.44 |
 | P3 | 0.05154639 | $5,000.00 | $4,896.91 | −$103.09 | $123.93 | −$227.02 |
-| P4 | 0.05811953 | $4,998.28 | $5,521.35 | $523.07 | $105.23 | $417.84 |
-| Total | 0.18774284 | $17,998.28 | $17,835.57 | −$162.71 | $526.03 | −$688.74 |
+| P4 | 0.05811953 | $4,998.28 | $5,521.36 | $523.08 | $105.23 | $417.85 |
+| Total | 0.18774284 | $17,998.28 | $17,835.58 | −$162.70 | $526.03 | −$688.73 |
+
+Exporting Example L to the opening-lots CSV and importing it back gives the same draws, principal, interest, accrued interest, statements and interest shares.
 
 **Example C.** A constant $40,000.00 balance, actual/365: 31 days at 6.25% = **$212.33**; 30 days at 6.25% = **$205.48**; 31 days at 6.50% = **$220.82**; the same at actual/360 = **$223.89**.
 
+**Example P (a cycle paid in parts).** $10,000.00 from 2025-01-01 at 7.30%, statement closing day 31: January's interest is **$62.00**. After a $40.00 interest payment for that cycle, the pre-fill offers the remaining **$22.00** (never below $0.00).
+
+**Example F (frozen platform).** A loan-funded purchase A ($50,000.00, 1 BTC) and an unfunded B ($30,000.00) on a platform that froze, paid out $32,000.00 before the loss date and $8,000.00 after the close-out. A's share by cost: **$20,000.00** recovered, overall result **−$30,000.00**; after the later payout, A's share **$5,000.00** more and overall **−$25,000.00** (0% loan).
+
 ## Decisions
 
-1. **Loan records are their own kinds** (the five Log tabs never change; loan actions live on the loan page). They replay after every coin entry, loans first (like wallets, so a new loan cannot take a closed loan's name), then by `at`, then `id`.
+1. **Loan records are their own kinds** (the five Log tabs never change; loan actions live on the loan page). They replay after every coin entry in two passes: first `loan` and `loan-update` in timeline order (`at`, then id), so names are checked against the names in force at that moment (rename one loan, then create another with the old name: both exist; reopening into a name now taken is `loan-name-taken`); an update dated before its loan was created applies right after the creation. Then draws, links, payments and statements by `at`, then id, against the loans as they ended up (so a payment logged with an early date still finds a loan created later).
 2. **Unlinking is deleting the link** (no `loan-unlink` kind): one way to do it, versioned like every edit. A purchase belongs to at most one loan (`already-linked`); only buys and opening lots can be linked (`unknown-purchase` otherwise, including a deleted purchase, which leaves the link inert).
-3. **Edits.** Loan records can only be replaced by the same kind (or deleted), and coin entries cannot be replaced by loan records (`cannot-replace`), so loan tracking can never remove or change a coin record. A loan's id is fixed; a loan that any record names cannot be deleted (close it).
+3. **Edits.** An edit is judged against the first version of its chain, even through a delete: a loan record only continues a loan chain of the same kind, and a coin entry only a coin chain (`cannot-replace`), so no coin record ever depends on a loan record or the other way round. A loan record that reuses a coin entry's id is ignored and the coin entry stays (`duplicate-id` names the loan record). A loan's id is fixed; a loan that a live record names (the latest version of a chain, not a delete) cannot be deleted (close it).
 4. **Closed years do not lock loan records**: they are tracking only and change no tax result; edits stay versioned in history. The interest-by-year note for a closed year can therefore change; it is a CPA prompt, not a filed figure.
 5. **Amounts** count toward the ledger's running totals (`out-of-range` past them), after every coin entry, so they cannot make a coin entry fail.
 6. **APR units** are millionths, not basis points: HELOC rates are prime + a margin in eighths of a percent (7.875%), which basis points cannot hold.
 7. **Rounding.** Interest is summed exactly and rounded once per period, half-up (what lenders' statements showed). Value, interest shares and principal split use largest remainder so pieces add back exactly and are never negative (half-up with the remainder on the last piece can push the last piece below zero when its weight is tiny). Sats needed to pay off and the payoff price round up.
 8. **Frozen wallets.** Coins from a loan-funded purchase in a frozen wallet are reported as `frozenSats`, not held, matching Holdings.
-9. **Opening-lots CSV.** Optional `funded_by` column: a loan name (ignoring case and outer spaces, preferring open loans) that must match a loan already in the ledger or created in the same import preview (passed in `loans`); unknown or ambiguous names are row errors, and loans are never created by an import. Import returns one `loan-link` per such row. Export adds the column only when some lot is loan-funded.
+9. **Opening-lots CSV.** Optional loan columns `funded_by` (name), `funded_by_id` (loan id), `funded_draw_usd` (this row's part of the purchase's draw: the draw split across the lots still holding its coins by cost, by sats if all cost $0, largest remainder), `funded_draw_date` and `origin_id` (the purchase). Export adds them only when some lot is loan-funded. Import matches `funded_by_id` first (so a closed and an open loan with the same name never swap), else the name (ignoring case and outer spaces, preferring open loans); the loan must be in the ledger or created in the same import preview (passed in `loans`); unknown or ambiguous names and bad amounts or dates are row errors, and loans are never created by an import. Rows with the same loan and `origin_id` become one `loan-link` (the first lot plus `alsoLots`) whose draw is the rows' draws added up (or, without draw columns, the lots' cost from the earliest date). A purchase with no coins left has no row, so export warns that the CSV cannot carry its draw; the entries JSON is lossless.
+10. **Coin value** uses the same per-coin computation as Holdings and "worth now" (each lot half-up, then added), so the loan page and the rest of the app never differ by a cent.
+11. **Payments in parts.** The pre-fill subtracts interest already recorded for the same cycle (same `interestThrough`) and never goes below $0.
 
 ## Properties (fast-check)
 
@@ -138,6 +146,7 @@ Checked by an independent Python `Decimal` script (a plain day-by-day loop, no s
 2. Interest shares + unallocated = interest paid, exactly; purchase interest ≤ interest paid; yearly totals add up.
 3. Principal owed and credit are never negative and never both positive; principal owed − credit = drawn − repaid; owed now = principal + accrued.
 4. Link order, link ids and link times do not change any figure.
+7. Interest, accrual, owed and the pre-fill equal a plain day-by-day loop written from these formulas (random histories: leap day, actual/360, overpayment, payments before draws, many rates and statement days).
 5. Payoff leftover never falls as the price rises.
 6. Interest over two adjoining periods equals the whole period's within a cent.
 

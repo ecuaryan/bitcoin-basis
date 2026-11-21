@@ -46,6 +46,7 @@ export {
   incomeCsv,
   OPENING_LOT_COLUMNS,
   OPENING_LOT_FUNDED_BY_COLUMN,
+  OPENING_LOT_LOAN_COLUMNS,
   type CsvProblem,
   type JsonImportProblem,
   type OpeningLotsExport,

@@ -83,6 +83,10 @@ const isStateTax = taggedUnion('kind', {
   custom: { kind: req(isString), rate: req(isRateTenThousandths) },
 });
 
+/** `{ "2026": { st, lt } }`: four-digit tax years (1970-9999) to positive cents. */
+const isCarryforwardByYear: Check = (v) =>
+  isRecord(v) && Object.entries(v).every(([year, amounts]) => /^\d{4}$/.test(year) && isYear(Number(year)) && matches({ st: req(isCents), lt: req(isCents) })(amounts));
+
 const isSettingsPatch = matches({
   filingStatus: opt(oneOf(FILING_STATUSES)),
   wagesCents: opt(isCents),
@@ -90,6 +94,7 @@ const isSettingsPatch = matches({
   carryforwardStCents: opt(isCents),
   carryforwardLtCents: opt(isCents),
   carryforwardYear: opt(isYear),
+  carryforwardByYear: opt(isCarryforwardByYear),
   givingEnabled: opt(isBoolean),
   givingName: opt(isText),
   givingPercentBp: opt(isRateTenThousandths),
@@ -128,7 +133,7 @@ const KIND_SCHEMAS: Readonly<Record<EntryKind, Schema>> = {
   loan: { loan, name: req(isText), opened: req(isDate), aprMillionths: req(isApr), dayCount: opt(oneOf(DAY_COUNTS)), creditLimitCents: opt(isCents), statementDay: opt(isStatementDay) },
   'loan-update': { loan, name: opt(isText), creditLimitCents: opt(isCents), statementDay: opt(isStatementDay), closed: opt(isBoolean), aprMillionths: opt(isApr), rateFrom: opt(isDate) },
   'loan-draw': { loan, cents: req(intIn(1, MAX_ENTRY_CENTS)) },
-  'loan-link': { loan, lot: req(isId), drawCents: opt(isCents), drawDate: opt(isDate) },
+  'loan-link': { loan, lot: req(isId), alsoLots: opt((v) => Array.isArray(v) && v.length > 0 && v.length <= 1_000 && v.every(isId)), drawCents: opt(isCents), drawDate: opt(isDate) },
   'loan-payment': { loan, interestCents: cents, principalCents: cents, interestThrough: opt(isDate) },
   'loan-statement': { loan, balanceCents: cents },
   delete: { replaces: req(isId), reason: req(isText) },

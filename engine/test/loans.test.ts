@@ -89,12 +89,14 @@ describe('Example L: four $5,000 purchases on a 6.5% HELOC', () => {
       soldCostCents: 200_000,
       proceedsCents: 206_000,
       otherGoneSats: 2_000,
-      valueCents: 1_783_557,
-      upDownCents: -16_271,
+      valueCents: 1_783_558,
+      upDownCents: -16_270,
       interestOnPurchasesCents: 52_603,
       interestOnPurchasesEstimated: false,
-      gainIncludingInterestCents: -68_874,
-      overallResultCents: -63_046,
+      unallocatedInterestCents: 0,
+      recoveredCents: 0,
+      gainIncludingInterestCents: -68_873,
+      overallResultCents: -63_045,
       breakEvenPriceCents: 9_866_853,
       payoffPriceCents: 10_195_921,
       payoffLeftoverSats: -1_375_306,
@@ -112,13 +114,13 @@ describe('Example L: four $5,000 purchases on a 6.5% HELOC', () => {
       ['P1', 3_000_000, 300_000, 285_000, -15_000, 15_512, -30_512],
       ['P2', 4_807_692, 500_000, 456_731, -43_269, 14_175, -57_444],
       ['P3', 5_154_639, 500_000, 489_691, -10_309, 12_393, -22_702],
-      ['P4', 5_811_953, 499_828, 552_135, 52_307, 10_523, 41_784],
+      ['P4', 5_811_953, 499_828, 552_136, 52_308, 10_523, 41_785],
     ]);
     expect(rows.reduce((s, p) => s + p.interestShareCents, 0)).toBe(52_603);
-    expect(rows.reduce((s, p) => s + (p.valueCents as number), 0)).toBe(1_783_557);
+    expect(rows.reduce((s, p) => s + (p.valueCents as number), 0)).toBe(1_783_558);
     const p1 = rows[0];
     expect(p1).toMatchObject({ drawDate: '2025-01-06', drawCents: 500_000, sats: 5_000_000, costCents: 500_000, soldSats: 2_000_000, soldCostCents: 200_000, proceedsCents: 206_000, otherGoneSats: 0 });
-    expect(rows[3]).toMatchObject({ sats: 5_813_953, costCents: 500_000, otherGoneSats: 2_000 });
+    expect(rows[3]).toMatchObject({ sats: 5_813_953, costCents: 500_000, otherGoneSats: 2_000, recoveredCents: 0 });
     expect(rows[3]?.gone).toEqual([{ kind: 'fees', entryId: 'M1', date: '2025-03-20', lotId: 'P4', sats: 2_000, costCents: 172, proceedsCents: 0 }]);
   });
 
@@ -262,8 +264,8 @@ describe('loan records in replay', () => {
     const state = replay([...coins(), loan('h', '2025-01-01', 65_000), loan('g', '2025-01-01', 65_000, { id: 'loan-g', name: 'Second line' }), link('K1', 'h', 'A'), link('K2', 'g', 'A'), link('K3', 'h', 'I'), link('K4', 'h', 'missing'), link('K5', 'h', 'O'), link('K6', 'nope', 'A')]);
     expect(codes(state)).toEqual({ K2: 'already-linked', K3: 'unknown-purchase', K4: 'unknown-purchase', K6: 'unknown-loan' });
     expect(state.loans.find((l) => l.id === 'h')?.draws).toEqual([
-      { entryId: 'K5', date: '2020-05-01', cents: 99, lotId: 'O' },
-      { entryId: 'K1', date: '2025-01-10', cents: 1_000_000, lotId: 'A' },
+      { entryId: 'K5', date: '2020-05-01', cents: 99, lotId: 'O', lotIds: ['O'] },
+      { entryId: 'K1', date: '2025-01-10', cents: 1_000_000, lotId: 'A', lotIds: ['A'] },
     ]);
   });
 
@@ -282,8 +284,10 @@ describe('loan records in replay', () => {
       upd('U5', '2025-02-06', { aprMillionths: 61_000, rateFrom: '2025-02-05' }),
       upd('U6', '2025-02-07', { aprMillionths: 50_000, rateFrom: '2024-12-01' }),
     ]);
-    // Loans are created before any update (like wallets), so a new loan cannot take a closed loan's name.
-    expect(codes(state)).toEqual({ dup: 'loan-exists', 'loan-g': 'loan-name-taken', U1: 'loan-name-taken', 'loan-g2': 'loan-name-taken' });
+    // Names are checked in timeline order: g2 takes the name once h is closed, so reopening h under it is refused.
+    expect(codes(state)).toEqual({ dup: 'loan-exists', 'loan-g': 'loan-name-taken', U1: 'loan-name-taken', U3: 'loan-name-taken' });
+    expect(state.loans.find((l) => l.id === 'g2')?.name).toBe('HELOC');
+    expect(state.loans.find((l) => l.id === 'h')?.statementDays).toEqual([{ entryId: 'U2', from: '2025-02-02', day: 5 }]);
     const h = state.loans.find((l) => l.id === 'h');
     expect(h).toMatchObject({ name: 'Home line', closed: false, creditLimitCents: 100, statementDay: 5 });
     expect(h?.rates.map((r) => [r.from, r.aprMillionths])).toEqual([['2024-12-01', 50_000], ['2025-01-01', 65_000], ['2025-02-05', 61_000]]);
@@ -365,6 +369,7 @@ describe('loan edits and closed years', () => {
     const state = replay([
       ...base(),
       link('K', 'h', 'A'),
+      payment('Y', 'h', '2024-02-01', '1'),
       { ...loan('other', '2024-01-01', 1), id: 'E1', replaces: 'loan-h', reason: 'x' },
       del('D1', 'loan-h'),
       del('D2', 'K'),
@@ -372,7 +377,11 @@ describe('loan edits and closed years', () => {
       del('D3', 'loan-z'),
     ]);
     expect(codes(state)).toEqual({ E1: 'cannot-replace', D1: 'cannot-replace' });
-    expect(state.loans.map((l) => [l.id, l.draws.length])).toEqual([['h', 0]]);
+    expect(state.loans.map((l) => [l.id, l.draws.length, l.payments.length])).toEqual([['h', 0, 1]]);
+    // Once every record naming it is deleted, the loan can be deleted too.
+    const emptied = replay([loan('h', '2025-01-01', 65_000), payment('Y', 'h', '2025-02-01', '1'), del('Ydel', 'Y'), del('Zdel', 'loan-h')]);
+    expect(codes(emptied)).toEqual({});
+    expect(emptied.loans).toEqual([]);
     const renamed = replay([...base(), { ...loan('h', '2024-01-01', 70_000, { name: 'Renamed' }), id: 'E2', replaces: 'loan-h', reason: 'x' }]);
     expect(renamed.loans[0]).toMatchObject({ name: 'Renamed', rates: [{ aprMillionths: 70_000 }] });
   });
@@ -444,21 +453,22 @@ describe('opening-lots CSV: funded_by', () => {
     let n = 0;
     return () => `id-${String(++n).padStart(3, '0')}`;
   };
-  const book = replay([wallet('ex', 'exchange', 'Exchange'), loan('h', '2020-01-01', 65_000), loan('old', '2019-01-01', 1, { id: 'loan-old', name: 'Old line' }), { id: 'U', kind: 'loan-update', at: noon('2019-06-01'), tz: TZ, loan: 'old', closed: true }, loan('dup', '2019-01-01', 1, { id: 'loan-dup', name: 'Old line' })]);
+  const book = replay([wallet('ex', 'exchange', 'Exchange'), loan('h', '2020-01-01', 65_000), loan('old', '2019-01-01', 1, { id: 'loan-old', name: 'Old line' }), { id: 'U', kind: 'loan-update', at: noon('2019-06-01'), tz: TZ, loan: 'old', closed: true }, loan('dup', '2020-01-01', 1, { id: 'loan-dup', name: 'Old line' })]);
 
-  test('links imported lots to a loan named in the file (an open loan wins over a closed one with the same name)', () => {
+  test('a file with only loan names: matched by name, an open loan before a closed one with the same name', () => {
+    expect(book.errors).toEqual([]);
     const text = [HEADER, 'Exchange,2021-03-15 19:00:00,0.5,50000000,28000,,Documented,Statement,,heloc', 'Exchange,2021-03-16 19:00:00,0.1,10000000,5000,,Documented,Statement,,', 'Exchange,2021-03-17 19:00:00,0.1,10000000,5000,,Documented,Statement,,Old line'].join('\n');
     const pending = [...book.loans, { id: 'new', name: 'Pending', closed: false }];
     const r = importOpeningLotsCsv(text, { wallets: book.wallets, tz: TZ, newId: ids(), loans: pending });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.links).toEqual([{ id: 'id-002', kind: 'loan-link', at: '2021-03-15T19:00:00Z', tz: TZ, loan: 'h', lot: 'id-001' }, { id: 'id-005', kind: 'loan-link', at: '2021-03-17T19:00:00Z', tz: TZ, loan: 'dup', lot: 'id-004' }]);
+    expect(r.value.links).toEqual([{ id: 'id-004', kind: 'loan-link', at: '2021-03-15T19:00:00Z', tz: TZ, loan: 'h', lot: 'id-001' }, { id: 'id-005', kind: 'loan-link', at: '2021-03-17T19:00:00Z', tz: TZ, loan: 'dup', lot: 'id-003' }]);
     const state = replay([wallet('ex', 'exchange', 'Exchange'), loan('h', '2020-01-01', 65_000), ...r.value.entries, ...r.value.links.filter((l) => l.loan === 'h')]);
     expect(loanSummary(state, 'h', PRICE, '2021-03-20')).toMatchObject({ drawnCents: 2_800_000, heldSats: 50_000_000 });
     const out = exportOpeningLotsCsv(state).csv.split(/\r?\n/);
-    expect(out[0]).toBe(HEADER);
-    expect(out[1]?.endsWith(',America/Boise,HELOC')).toBe(true);
-    expect(out[2]?.endsWith(',America/Boise,')).toBe(true);
+    expect(out[0]).toBe(`${HEADER},funded_by_id,funded_draw_usd,funded_draw_date,origin_id`);
+    expect(out[1]?.endsWith(',America/Boise,HELOC,h,28000.00,2021-03-15,id-001')).toBe(true);
+    expect(out[2]?.endsWith(',America/Boise,,,,,')).toBe(true);
     expect(exportOpeningLotsCsv(replay([wallet('ex', 'exchange', 'Exchange'), ...r.value.entries])).csv.split(/\r?\n/)[0]).toBe(HEADER.replace(',funded_by', ''));
   });
 
@@ -469,5 +479,83 @@ describe('opening-lots CSV: funded_by', () => {
     expect(r.ok ? [] : r.error).toEqual([{ row: 2, message: 'no loan named "Nope" (add the loan first)' }, { row: 3, message: 'more than one loan is named "TWIN"' }]);
     const r2 = importOpeningLotsCsv(text, { wallets: book.wallets, tz: TZ, newId: ids() });
     expect(r2.ok ? [] : r2.error.length).toBe(2);
+    const bad = [`${HEADER},funded_draw_usd,funded_draw_date`, 'Exchange,2021-03-15 19:00:00,,1,1,,Documented,,,HELOC,abc,2021-02-30'].join('\n');
+    const r3 = importOpeningLotsCsv(bad, { wallets: book.wallets, tz: TZ, newId: ids(), loans: book.loans });
+    expect(r3.ok ? [] : r3.error.map((p) => p.message)).toEqual(['funded_draw_usd "abc" is not a dollar amount', 'funded_draw_date "2021-02-30" is not a date like 2025-01-31']);
+  });
+
+  test('Example L round trip: one link per purchase with its whole draw, so drawn, owed, interest and statements match', () => {
+    const state = replay([...exampleCoins(), ...exampleLoan()]);
+    const before = loanSummary(state, 'h', PRICE, AS_OF);
+    const exported = exportOpeningLotsCsv(state);
+    expect(exported.warnings).toEqual([]);
+    const r = importOpeningLotsCsv(exported.csv, { wallets: state.wallets, tz: TZ, newId: ids(), loans: state.loans });
+    if (!r.ok) throw new Error(JSON.stringify(r.error));
+    expect(r.value.links.map((l) => [l.drawCents, l.drawDate, l.alsoLots?.length ?? 0]).sort((a, b) => String(a[1]).localeCompare(String(b[1])))).toEqual([
+      [500_000, '2025-01-06', 0],
+      [500_000, '2025-01-21', 0],
+      [500_000, '2025-02-10', 0],
+      [500_000, '2025-03-03', 0],
+    ]);
+    const after = replay([wallet('ex'), wallet('cold', 'self-custody'), ...r.value.entries, ...r.value.links, ...exampleLoan().filter((e) => e.kind !== 'loan-link')]);
+    expect(after.errors).toEqual([]);
+    const s = loanSummary(after, 'h', PRICE, AS_OF);
+    const pick = (x: typeof s): unknown => x === null ? null : { a: x.purchaseCount, b: x.drawnCents, c: x.principalOwedCents, d: x.owedNowCents, e: x.interestPaidCents, f: x.accruedInterestCents, g: x.statements.map((t) => t.differenceCents), h: x.heldSats, i: x.heldCostCents, j: x.valueCents, k: x.breakEvenPriceCents, l: x.payoffLeftoverSats };
+    expect(pick(s)).toEqual(pick(before));
+    expect(loanPurchases(after, 'h', PRICE, AS_OF).map((p) => p.interestShareCents)).toEqual([15_512, 14_175, 12_393, 10_523]);
+  });
+
+  test('a purchase split across rows re-imports as one link; a purchase with no coins left is a warning', () => {
+    const state = replay([
+      wallet('ex', 'exchange', 'Exchange'),
+      wallet('cold', 'self-custody', 'Cold'),
+      buy('A', 'ex', '2024-01-10', '0.3', '1000'),
+      buy('B', 'ex', '2024-01-11', '0.1', '500'),
+      move('M', 'ex', 'cold', '2024-02-01', sats('0.1'), 0, '0', [pick('A', '0.1')]),
+      sell('S', 'ex', '2024-03-01', [pick('B', '0.1')], '600'),
+      loan('h', '2024-01-01', 65_000),
+      link('K1', 'h', 'A', { drawCents: cents('1000.01') }),
+      link('K2', 'h', 'B'),
+    ]);
+    const exported = exportOpeningLotsCsv(state);
+    expect(exported.warnings).toEqual(['Purchase B was paid with HELOC, but none of its coins are left, so the CSV cannot carry its $500.00 draw. Use the entries JSON.']);
+    const r = importOpeningLotsCsv(exported.csv, { wallets: state.wallets, tz: TZ, newId: ids(), loans: state.loans });
+    if (!r.ok) throw new Error(JSON.stringify(r.error));
+    expect(r.value.links).toHaveLength(1);
+    expect(r.value.links[0]).toMatchObject({ drawCents: cents('1000.01'), drawDate: '2024-01-10', alsoLots: [expect.any(String)] });
+    const after = replay([wallet('ex', 'exchange', 'Exchange'), wallet('cold', 'self-custody', 'Cold'), loan('h', '2024-01-01', 65_000), ...r.value.entries, ...r.value.links]);
+    expect(loanSummary(after, 'h', PRICE, '2024-12-31')).toMatchObject({ purchaseCount: 1, drawnCents: cents('1000.01'), heldSats: sats('0.3') });
+    expect(loanByPurchase(after).size).toBe(2);
+  });
+
+  test('without draw columns, a purchase split across rows draws the cost of its lots from the earliest date', () => {
+    const text = [`${HEADER},origin_id`, 'Exchange,2021-03-16 19:00:00,,1,2,,Documented,,,HELOC,P', 'Exchange,2021-03-15 19:00:00,,1,3,,Documented,,,HELOC,P'].join('\n');
+    const r = importOpeningLotsCsv(text, { wallets: book.wallets, tz: TZ, newId: ids(), loans: book.loans });
+    if (!r.ok) throw new Error(JSON.stringify(r.error));
+    expect(r.value.links).toEqual([{ id: 'id-003', kind: 'loan-link', at: '2021-03-16T19:00:00Z', tz: TZ, loan: 'h', lot: 'id-001', alsoLots: ['id-002'] }]);
+    const after = replay([wallet('ex', 'exchange', 'Exchange'), loan('h', '2020-01-01', 65_000), ...r.value.entries, ...r.value.links]);
+    expect(after.loans[0]?.draws).toEqual([{ entryId: 'id-003', date: '2021-03-15', cents: 500, lotId: 'id-001', lotIds: ['id-001', 'id-002'] }]);
+  });
+
+  test('coins that cost $0 share their draw by sats', () => {
+    const state = replay([wallet('ex', 'exchange', 'Exchange'), wallet('cold', 'self-custody', 'Cold'), buy('A', 'ex', '2024-01-10', '0.3', '0'), move('M', 'ex', 'cold', '2024-02-01', sats('0.1'), 0, '0', [pick('A', '0.1')]), loan('h', '2024-01-01', 65_000), link('K', 'h', 'A', { drawCents: cents('3') })]);
+    const rows = exportOpeningLotsCsv(state).csv.split(/\r?\n/).slice(1, 3);
+    expect(rows.map((r) => r.split(',')[11]).sort()).toEqual(['1.00', '2.00']);
+  });
+
+  test('a lot paid by a closed loan goes back to that loan, not to an open loan that now has its name', () => {
+    const entries: Entry[] = [
+      wallet('ex', 'exchange', 'Exchange'),
+      buy('B', 'ex', '2024-02-01', '0.1', '5000'),
+      loan('old', '2024-01-01', 65_000, { id: 'loan-old' }),
+      link('K', 'old', 'B'),
+      { id: 'close-old', kind: 'loan-update', at: noon('2024-06-01'), tz: TZ, loan: 'old', closed: true },
+      loan('new', '2024-01-01', 70_000, { id: 'loan-new', name: 'Second' }),
+      { id: 'rename-new', kind: 'loan-update', at: noon('2024-07-01'), tz: TZ, loan: 'new', name: 'HELOC' },
+    ];
+    const state = replay(entries);
+    expect(state.errors).toEqual([]);
+    const r = importOpeningLotsCsv(exportOpeningLotsCsv(state).csv, { wallets: state.wallets, tz: TZ, newId: ids(), loans: state.loans });
+    expect(r.ok ? r.value.links.map((l) => l.loan) : r.error).toEqual(['old']);
   });
 });

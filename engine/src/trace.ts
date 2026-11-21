@@ -4,8 +4,8 @@
  */
 import { sum } from './book.ts';
 import { compareStrings } from './order.ts';
-import type { Cents, Sats } from './money.ts';
-import type { EntryId, LedgerState, LocalDate, Lot, LotId } from './types.ts';
+import { splitProportional, type Cents, type Sats } from './money.ts';
+import type { CloseOut, EntryId, LedgerState, LocalDate, Lot, LotId } from './types.ts';
 
 /**
  * The lot a piece came from: a lot id is the root id of the entry that created the coins, and a moved piece is
@@ -25,8 +25,20 @@ export interface GonePiece {
   lotId: LotId;
   sats: Sats;
   costCents: Cents;
-  /** Sale proceeds or the value of what was bought (sold, spent); 0 for every other kind. */
+  /**
+   * Sale proceeds or the value of what was bought (sold, spent), or this piece's share of what a frozen platform paid
+   * back by the loss date (closed out); 0 for fees, gifts and losses.
+   */
   proceedsCents: Cents;
+}
+
+/** This purchase's share of a payout from a frozen platform after its close-out (a recovery). */
+export interface RecoveredPiece {
+  entryId: EntryId;
+  date: LocalDate;
+  /** The closed-out piece the share is for. */
+  lotId: LotId;
+  cents: Cents;
 }
 
 export interface TracedCoins {
@@ -36,6 +48,8 @@ export interface TracedCoins {
   frozen: Lot[];
   /** Pieces that have left, by date (same date: sales, spending and fees, then gifts, losses, close-outs). */
   gone: GonePiece[];
+  /** Shares of payouts after a close-out, split across its pieces the way the close-out split what it recovered. */
+  recovered: RecoveredPiece[];
   heldSats: Sats;
   heldCostCents: Cents;
   frozenSats: Sats;
@@ -56,18 +70,29 @@ export function traceCoins(state: LedgerState, ids: readonly string[]): TracedCo
   const held = open.filter((l) => !frozenWallets.has(l.wallet));
   const frozen = open.filter((l) => frozenWallets.has(l.wallet));
   const gone: GonePiece[] = [];
-  const take = (kind: GoneKind, entryId: EntryId, date: LocalDate, picks: readonly { lotId: LotId; sats: Sats; costCents: Cents; proceedsCents?: Cents }[]): void => {
-    for (const p of picks) if (mine(p.lotId)) gone.push({ kind, entryId, date, lotId: p.lotId, sats: p.sats, costCents: p.costCents, proceedsCents: kind === 'sold' || kind === 'spent' ? (p.proceedsCents as Cents) : 0 });
+  const take = (kind: GoneKind, entryId: EntryId, date: LocalDate, picks: readonly { lotId: LotId; sats: Sats; costCents: Cents; proceedsCents?: Cents; recoveredCents?: Cents }[]): void => {
+    for (const p of picks) if (mine(p.lotId)) gone.push({ kind, entryId, date, lotId: p.lotId, sats: p.sats, costCents: p.costCents, proceedsCents: kind === 'fees' ? 0 : (p.proceedsCents ?? p.recoveredCents ?? 0) });
   };
   for (const d of state.disposals) take(d.kind === 'sell' ? 'sold' : d.kind === 'spend' ? 'spent' : 'fees', d.entryId, d.date, d.picks);
   for (const g of [...state.gifts, ...state.charityGifts]) take('given', g.entryId, g.date, g.picks);
   for (const l of state.lost) take('lost', l.entryId, l.date, l.picks);
   for (const c of state.closeOuts) take('closed-out', c.entryId, c.lossDate, c.pieces);
   gone.sort((a, b) => compareStrings(a.date, b.date));
+  const recovered: RecoveredPiece[] = [];
+  // Only coins closed out on a frozen platform can have later payouts.
+  for (const r of gone.some((g) => g.kind === 'closed-out') ? state.recoveries : []) {
+    const c = state.closeOuts.find((x) => x.entryId === r.closeOutEntryId) as CloseOut;
+    const anyCost = c.pieces.some((p) => p.costCents > 0);
+    const shares = splitProportional(r.gainCents, c.pieces.map((p) => (anyCost ? p.costCents : p.sats)));
+    c.pieces.forEach((p, i) => {
+      if (mine(p.lotId)) recovered.push({ entryId: r.entryId, date: r.date, lotId: p.lotId, cents: shares[i] as Cents });
+    });
+  }
   return {
     held,
     frozen,
     gone,
+    recovered,
     heldSats: sum(held.map((l) => l.sats)),
     heldCostCents: sum(held.map((l) => l.costCents)),
     frozenSats: sum(frozen.map((l) => l.sats)),

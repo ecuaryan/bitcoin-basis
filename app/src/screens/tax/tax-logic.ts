@@ -174,6 +174,7 @@ export function yearLockHistory(entries: readonly Entry[]): { id: string; year: 
 export function nextYearLosses(state: LedgerState, settings: Settings, year: number, today: string): { st: Cents; lt: Cents } | null {
   const out = yearTaxView(state, settings, year, today).carryOut;
   if (out.st + out.lt === 0) return null;
-  const saved = settings.carryforwardYear === year + 1 && settings.carryforwardStCents === out.st && settings.carryforwardLtCents === out.lt;
+  const next = settings.carryforwardByYear[String(year + 1)];
+  const saved = next !== undefined && next.st === out.st && next.lt === out.lt;
   return saved ? null : out;
 }

@@ -8,8 +8,9 @@
  */
 import { sum } from './book.ts';
 import { dateOfDay, dayNumber, latestMonthDay } from './dates.ts';
-import { divRoundHalfUp, mulDivOrNull, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
+import { divRoundHalfUp, mulDivOrNull, mulDivRoundHalfUp, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
 import { compareStrings } from './order.ts';
+import { statementDayOn } from './loan-book.ts';
 import { traceCoins, type GonePiece, type TracedCoins } from './trace.ts';
 import type { LedgerState, LocalDate, Loan, LoanDraw, LoanId, LoanPayment, LoanStatement, LotId } from './types.ts';
 
@@ -149,8 +150,10 @@ export interface PaymentSuggestion {
   fromDate: LocalDate;
   throughDate: LocalDate;
   days: number;
-  /** ESTIMATE of the interest the statement will show; the user confirms it from the statement. */
+  /** ESTIMATE of the interest still to pay for the cycle (the cycle's interest − `alreadyPaidCents`); confirm from the statement. */
   interestCents: Cents;
+  /** Interest already recorded for this same cycle (a payment made in parts). */
+  alreadyPaidCents: Cents;
   /** Principal owed at the end of `throughDate` (for an interest-only line, the balance the interest is on). */
   principalOwedCents: Cents;
   aprMillionths: number;
@@ -159,20 +162,24 @@ export interface PaymentSuggestion {
 /**
  * Pre-fill for logging a payment made on `payDate`: the billing cycle it pays (ending on the latest statement
  * closing date on or before `payDate`, or on `payDate` if the loan has no statement day), starting the day after
- * the last day an earlier payment's interest covered (or when the loan started). Null for an unknown loan.
+ * the last day an earlier payment's interest covered (or when the loan started), less interest already recorded for
+ * that cycle. Uses the statement day in force on `payDate`. Null for an unknown loan.
  */
 export function suggestLoanPayment(state: LedgerState, loanId: LoanId, payDate: LocalDate): PaymentSuggestion | null {
   const loan = findLoan(state, loanId);
   if (loan === null) return null;
-  const throughDate = loan.statementDay === null ? payDate : latestMonthDay(payDate, loan.statementDay);
-  const covered = loan.payments.filter((p) => p.interestCents > 0 && p.interestThrough < throughDate).map((p) => p.interestThrough).sort(compareStrings);
-  const last = covered.at(-1);
+  const day = statementDayOn(loan, payDate);
+  const throughDate = day === null ? payDate : latestMonthDay(payDate, day);
+  const withInterest = loan.payments.filter((p) => p.interestCents > 0);
+  const last = withInterest.map((p) => p.interestThrough).filter((d) => d < throughDate).sort(compareStrings).at(-1);
   const fromDate = last === undefined ? dateOfDay(startDay(loan, loan.draws.filter((d) => d.date <= throughDate))) : dateOfDay(dayNumber(last) + 1);
+  const alreadyPaidCents = sum(withInterest.filter((p) => p.interestThrough === throughDate).map((p) => p.interestCents));
   return {
     fromDate,
     throughDate,
     days: Math.max(0, dayNumber(throughDate) - dayNumber(fromDate) + 1),
-    interestCents: estimateLoanInterest(state, loanId, fromDate, throughDate),
+    interestCents: Math.max(0, estimateLoanInterest(state, loanId, fromDate, throughDate) - alreadyPaidCents),
+    alreadyPaidCents,
     principalOwedCents: Math.max(0, netPrincipalOn(loan, throughDate)),
     aprMillionths: aprOn(loan, throughDate),
   };
@@ -248,6 +255,8 @@ export interface LoanPurchase {
   proceedsCents: Cents;
   /** Coins paid as fees, given, lost or closed out. */
   otherGoneSats: Sats;
+  /** What a frozen platform paid back for its coins: its share of the close-out's recovered dollars and of later payouts. */
+  recoveredCents: Cents;
   gone: GonePiece[];
   valueCents: Cents | null;
   /** Price-based: value − held cost. */
@@ -309,6 +318,9 @@ export interface LoanSummary {
   soldCostCents: Cents;
   proceedsCents: Cents;
   otherGoneSats: Sats;
+  /** Paid back by frozen platforms for these coins (see `LoanPurchase.recoveredCents`). */
+  recoveredCents: Cents;
+  /** Each held coin valued on its own at the price (half-up), summed. */
   valueCents: Cents | null;
   /** Price-based: value − held cost. */
   upDownCents: Cents | null;
@@ -322,7 +334,7 @@ export interface LoanSummary {
   unallocatedInterestCents: Cents;
   /** value − held cost − interest on purchases. */
   gainIncludingInterestCents: Cents | null;
-  /** value + proceeds − cost of every purchase − interest on purchases: the whole result of borrowing to buy. */
+  /** value + proceeds + recovered − cost of every purchase − interest on purchases: the whole result of borrowing to buy. */
   overallResultCents: Cents | null;
   /** (held cost + interest on purchases) ÷ held BTC, cents per BTC, half-up. Null with nothing held. */
   breakEvenPriceCents: Cents | null;
@@ -357,19 +369,16 @@ function analyzeLoan(loan: Loan, onDate: LocalDate): Analysis {
 
 function purchasesOf(state: LedgerState, a: Analysis, priceCents: Cents | null): LoanPurchase[] {
   const { draws, allocation } = a;
-  const traced = draws.map((d) => (d.lotId === null ? null : traceCoins(state, [d.lotId])));
-  const heldSats = traced.map((t) => t?.heldSats ?? 0);
-  const totalHeld = sum(heldSats);
-  const totalValue = priceCents === null ? null : Number(divRoundHalfUp(BigInt(totalHeld) * BigInt(priceCents), BigInt(SATS_PER_BTC)));
-  // Each purchase's value is its share of the total (so the lines add up to the total exactly).
-  const values = totalValue === null ? null : totalHeld === 0 ? heldSats.map(() => 0) : splitByWeights(totalValue, heldSats.map(BigInt));
+  const traced = draws.map((d) => (d.lotId === null ? null : traceCoins(state, d.lotIds)));
   const purchases: LoanPurchase[] = [];
   draws.forEach((d, i) => {
     const t = traced[i] as TracedCoins | null;
     if (t === null) return;
     const sold = t.gone.filter((g) => g.kind === 'sold' || g.kind === 'spent');
     const gone = sum(t.gone.map((g) => g.sats));
-    const valueCents = values === null ? null : (values[i] as number);
+    // Each coin valued on its own, half-up, as everywhere else in the app (so the figures never differ by a cent).
+    const valueCents = priceCents === null ? null : sum(t.held.map((l) => mulDivRoundHalfUp(l.sats, priceCents, SATS_PER_BTC)));
+    const closedOut = t.gone.filter((g) => g.kind === 'closed-out');
     const upDownCents = valueCents === null ? null : valueCents - t.heldCostCents;
     const interestShareCents = allocation.shares[i] as number;
     purchases.push({
@@ -386,6 +395,7 @@ function purchasesOf(state: LedgerState, a: Analysis, priceCents: Cents | null):
       soldCostCents: sum(sold.map((g) => g.costCents)),
       proceedsCents: sum(sold.map((g) => g.proceedsCents)),
       otherGoneSats: gone - sum(sold.map((g) => g.sats)),
+      recoveredCents: sum(closedOut.map((g) => g.proceedsCents)) + sum(t.recovered.map((r) => r.cents)),
       gone: t.gone,
       valueCents,
       upDownCents,
@@ -426,6 +436,7 @@ export function loanSummary(state: LedgerState, loanId: LoanId, priceCents: Cent
   const heldSats = total((p) => p.heldSats);
   const heldCostCents = total((p) => p.heldCostCents);
   const proceedsCents = total((p) => p.proceedsCents);
+  const recoveredCents = total((p) => p.recoveredCents);
   const purchasesCostCents = total((p) => p.costCents);
   const valueCents = priceCents === null ? null : total((p) => p.valueCents as number);
   const upDownCents = valueCents === null ? null : valueCents - heldCostCents;
@@ -474,7 +485,8 @@ export function loanSummary(state: LedgerState, loanId: LoanId, priceCents: Cent
     interestOnPurchasesEstimated: otherDrawsCents !== 0 || allocation.unallocatedCents !== 0,
     unallocatedInterestCents: allocation.unallocatedCents,
     gainIncludingInterestCents: upDownCents === null ? null : upDownCents - interestOnPurchasesCents,
-    overallResultCents: valueCents === null ? null : valueCents + proceedsCents - purchasesCostCents - interestOnPurchasesCents,
+    recoveredCents,
+    overallResultCents: valueCents === null ? null : valueCents + proceedsCents + recoveredCents - purchasesCostCents - interestOnPurchasesCents,
     breakEvenPriceCents: perBtc(heldCostCents + interestOnPurchasesCents),
     payoffPriceCents: heldSats === 0 ? null : Number(ceilDiv(BigInt(owedNowCents) * BigInt(SATS_PER_BTC), BigInt(heldSats))),
     payoffLeftoverSats: priceCents === null || priceCents <= 0 ? null : heldSats - satsFor(owedNowCents, priceCents),
@@ -523,5 +535,5 @@ export function loanInterestByYear(state: LedgerState, loanId?: LoanId): LoanInt
 
 /** The loan each loan-funded purchase belongs to, keyed by purchase lot id (use `originLotId` for moved pieces). */
 export function loanByPurchase(state: LedgerState): Map<LotId, LoanId> {
-  return new Map(state.loans.flatMap((l) => l.draws.flatMap((d) => (d.lotId === null ? [] : [[d.lotId, l.id] as const]))));
+  return new Map(state.loans.flatMap((l) => l.draws.flatMap((d) => d.lotIds.map((id) => [id, l.id] as const))));
 }

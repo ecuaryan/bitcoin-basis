@@ -37,6 +37,8 @@ import type {
   ReceiveEntry,
   Recovery,
   SellEntry,
+  Settings,
+  SettingsPatch,
   Term,
   WalletCloseOutEntry,
   WalletId,
@@ -251,6 +253,18 @@ export function applyBalanceConfirm(book: Book, e: BalanceConfirmEntry, date: Lo
   return null;
 }
 
+/**
+ * Merge a settings patch. `carryforwardByYear` merges year by year. The single-year fields (`carryforwardStCents`,
+ * `carryforwardLtCents`, `carryforwardYear`) write their year too: the patch's year, else the year already saved, else
+ * the entry's own year (`entryYear`), so a figure saved for one year never changes another year's.
+ */
+export function applySettingsPatch(settings: Settings, patch: SettingsPatch, entryYear: number): Settings {
+  const next = { ...settings, ...patch, carryforwardByYear: { ...settings.carryforwardByYear, ...patch.carryforwardByYear } };
+  if (patch.carryforwardStCents === undefined && patch.carryforwardLtCents === undefined && patch.carryforwardYear === undefined) return next;
+  const year = next.carryforwardYear ?? entryYear;
+  return { ...next, carryforwardYear: year, carryforwardByYear: { ...next.carryforwardByYear, [String(year)]: { st: next.carryforwardStCents, lt: next.carryforwardLtCents } } };
+}
+
 const nameTakenProblem = (name: string): Problem => problem('wallet-name-taken', `another wallet is already named "${name.trim()}"`);
 
 /** Apply any entry kind. */
@@ -304,7 +318,7 @@ export function applyEntry(book: Book, e: CoinEntry, date: LocalDate): Problem |
       return null;
     }
     case 'settings':
-      book.state.settings = { ...book.state.settings, ...e.patch };
+      book.state.settings = applySettingsPatch(book.state.settings, e.patch, yearOf(date));
       return null;
     case 'giving-paid': {
       const bad = addVolume(book, 0, e.cents);

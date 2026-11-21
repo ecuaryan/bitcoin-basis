@@ -76,14 +76,15 @@ function loansUsed(e: Entry): string[] {
 }
 
 /**
- * Why `e` may not replace `target` on loan grounds, or null. Loan records only replace loan records of the same
- * kind (so loan tracking can never remove or change a coin record), a loan's id is fixed, and a loan that any
- * record names cannot be deleted (close it instead).
+ * Why `e` may not replace `target` on loan grounds, or null. Judged against `root`, the first version of the chain
+ * (a delete in between does not change what the chain is): loan records only continue loan chains of the same kind
+ * and coin records only coin chains, so a coin record never depends on a loan record or the other way round. A
+ * loan's id is fixed, and a loan that a live record names cannot be deleted (close it instead).
  */
-function loanEditProblem(e: Entry, target: Entry, used: ReadonlySet<string>): string | null {
+function loanEditProblem(e: Entry, target: Entry, root: Entry, used: ReadonlySet<string>): string | null {
   if (e.kind === 'delete') return target.kind === 'loan' && used.has(target.loan) ? 'a loan with records cannot be deleted (close it instead)' : null;
-  if ((LOAN_KIND_SET.has(e.kind) || LOAN_KIND_SET.has(target.kind)) && e.kind !== target.kind) return 'a loan record can only be replaced by the same kind of record';
-  if (e.kind === 'loan' && target.kind === 'loan' && e.loan !== target.loan) return "a loan's id cannot change; create a new loan instead";
+  if ((LOAN_KIND_SET.has(e.kind) || LOAN_KIND_SET.has(root.kind)) && e.kind !== root.kind) return 'loan records and coin records cannot replace each other; a loan record only replaces the same kind of record';
+  if (e.kind === 'loan' && root.kind === 'loan' && e.loan !== root.loan) return "a loan's id cannot change; create a new loan instead";
   return null;
 }
 
@@ -103,10 +104,12 @@ function idOf(raw: unknown): string {
   return typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string' ? (raw as { id: string }).id : '';
 }
 
-/** Validate and de-duplicate. Identical copies of one id are fine; different contents reject the id. */
+/**
+ * Validate and de-duplicate. Identical copies of one id are fine; different contents reject the id, except that a loan
+ * record never displaces a coin record: if one coin record shares its id only with loan records, the coin record stays.
+ */
 function validEntries(raw: readonly unknown[], errors: LedgerError[]): Map<EntryId, Entry> {
-  const entries = new Map<EntryId, Entry>();
-  const duplicates = new Set<EntryId>();
+  const versions = new Map<EntryId, Map<string, Entry>>();
   for (const item of raw) {
     const parsed = parseEntry(item);
     if (!parsed.ok) {
@@ -114,13 +117,19 @@ function validEntries(raw: readonly unknown[], errors: LedgerError[]): Map<Entry
       continue;
     }
     const e = parsed.value;
-    const existing = entries.get(e.id);
-    if (existing === undefined) entries.set(e.id, e);
-    else if (canonicalJson(existing) !== canonicalJson(e)) duplicates.add(e.id);
+    const copies = versions.get(e.id) ?? new Map<string, Entry>();
+    copies.set(canonicalJson(e), e);
+    versions.set(e.id, copies);
   }
-  for (const id of duplicates) {
-    entries.delete(id);
-    errors.push({ entryId: id, code: 'duplicate-id', message: 'two different entries share this id' });
+  const entries = new Map<EntryId, Entry>();
+  for (const [id, copies] of versions) {
+    const all = [...copies.values()];
+    const coins = all.filter((e) => !LOAN_KIND_SET.has(e.kind));
+    if (all.length === 1) entries.set(id, all[0] as Entry);
+    else if (coins.length === 1) {
+      entries.set(id, coins[0] as Entry);
+      errors.push({ entryId: id, code: 'duplicate-id', message: 'a loan record reused the id of a coin record; the loan record is ignored' });
+    } else errors.push({ entryId: id, code: 'duplicate-id', message: 'two different entries share this id' });
   }
   return entries;
 }
@@ -172,12 +181,16 @@ function openingLotYears(e: Entry, entries: ReadonlyMap<EntryId, Entry>): number
  */
 function rejectLockedChanges(entries: Map<EntryId, Entry>, closedAt: (year: number, asOf: EntryId) => boolean, errors: LedgerError[]): void {
   const used = new Set([...entries.values()].flatMap(walletsUsed));
-  const usedLoans = new Set([...entries.values()].flatMap(loansUsed));
+  // Loans named by live records: the latest version of each chain (not a delete).
+  const replaced = new Set([...entries.values()].flatMap((e) => (e.replaces === undefined ? [] : [e.replaces])));
+  const usedLoans = new Set([...entries.values()].filter((e) => !replaced.has(e.id)).flatMap(loansUsed));
   const roots = chainRoots(entries);
+  // Every version as validated, so a chain's root is known even after a later check drops it.
+  const all = new Map(entries);
   const chain = (root: EntryId): Entry[] => [...entries.values()].filter((v) => roots.get(v.id) === root);
   for (const e of [...entries.values()].sort(byId)) {
     const target = e.replaces === undefined ? undefined : entries.get(e.replaces);
-    const cannot = target === undefined ? null : target.kind === 'close-year' || target.kind === 'unlock-year' ? 'closing or unlocking a year cannot be edited' : (walletEditProblem(e, target, used) ?? loanEditProblem(e, target, usedLoans));
+    const cannot = target === undefined ? null : target.kind === 'close-year' || target.kind === 'unlock-year' ? 'closing or unlocking a year cannot be edited' : (walletEditProblem(e, target, used) ?? loanEditProblem(e, target, all.get(roots.get(e.id) as EntryId) as Entry, usedLoans));
     if (cannot !== null) {
       entries.delete(e.id);
       errors.push({ entryId: e.id, code: 'cannot-replace', message: cannot });
