@@ -15,16 +15,18 @@ interface AmountProps {
   countUp?: boolean;
   /** Compact form for lists: `1.1802` (4 decimals) instead of 8. */
   short?: boolean;
+  /** Always BTC, whatever unit was picked (for a BTC figure beside its own dollar worth, where sats would wrap the line). */
+  alwaysBtc?: boolean;
   className?: string;
 }
 
 /** A BTC amount. Shows `0.0074 2665` (8 decimals in two groups) and cycles BTC, sats, USD when tapped. Honors hide-amounts. */
-export function Amount({ sats, showUnit = false, interactive = true, countUp = false, short = false, className }: AmountProps) {
+export function Amount({ sats, showUnit = false, interactive = true, countUp = false, short = false, alwaysBtc = false, className }: AmountProps) {
   const { masked, unit, cycleUnit } = usePrefs();
   const { quote } = usePrice();
   const peek = usePeekHandlers();
   // USD needs a price; without one the amount stays in BTC.
-  const effective = unit === 'usd' && quote === null ? 'btc' : unit;
+  const effective = alwaysBtc || (unit === 'usd' && quote === null) ? 'btc' : unit;
   const target = effective === 'usd' && quote !== null ? satsToCents(sats, quote.usdCents) : sats;
   const shown = useCountUp(target, countUp);
 

@@ -166,7 +166,7 @@ test('keyboard only: log a purchase, Esc closes, focus returns', async ({ page, 
   await tabTo(page, 'Save purchase');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByText('3.3767 2105 BTC')).toBeVisible();
+  await expect(page.getByText('3.7267 2105 BTC')).toBeVisible();
 });
 
 test('keyboard only: log a sale, tab stays inside the sheet, Esc and focus return', async ({ page, isMobile }) => {

@@ -29,7 +29,7 @@ for (const [size, viewport, extra] of sizes) {
   await page.addInitScript(() => window.localStorage.setItem('bb.hide', '0'));
   await page.goto(base);
   await page.getByRole('button', { name: 'Try the demo' }).click();
-  await page.getByText('Your Bitcoin is worth', { exact: true }).waitFor();
+  await page.getByText('All your Bitcoin is worth', { exact: true }).waitFor();
   for (const [name, path] of pages) {
     await page.goto(base + path);
     await page.waitForTimeout(700);

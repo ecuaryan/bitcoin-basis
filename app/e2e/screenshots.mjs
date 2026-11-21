@@ -20,7 +20,7 @@ for (const [name, viewport, extra] of [
   await page.addInitScript(() => window.localStorage.setItem('bb.hide', '0'));
   await page.goto(base);
   await page.getByRole('button', { name: 'Try the demo' }).click();
-  await page.getByText('Your Bitcoin is worth', { exact: true }).waitFor();
+  await page.getByText('All your Bitcoin is worth', { exact: true }).waitFor();
   await page.waitForTimeout(400);
   await page.screenshot({ path: join(out, `${name}.png`) });
   await page.screenshot({ path: join(out, `${name}-full.png`), fullPage: true });

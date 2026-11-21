@@ -272,6 +272,10 @@ export function WalletRow({ w }: { w: WalletCard }) {
 
 // ---- Extra cards (below the design's first screen) -------------------------------------
 
+/** Targets for the split rows under the hero. */
+const HELD_APART_ID = 'held-apart';
+const TAXABLE_ID = 'taxable';
+
 export function DocumentationCard({ view }: { view: HoldingsView }) {
   const total = Math.max(1, view.totalSats);
   const tiers = TIER_ORDER.filter((t) => view.mix[t] > 0);
@@ -348,12 +352,24 @@ function HeldApartRow({ id, name, sats, children }: { id: string; name: string; 
   );
 }
 
+/** What the Held apart card says it leaves out. With retirement coins the total at the top includes them; frozen wallets never. */
+function heldApartNote(view: HoldingsView): string {
+  if (view.all === null) return 'Not counted in what your Bitcoin is worth or in your average cost.';
+  return `Not counted in your taxable figures or average cost. Retirement is in the total at the top${view.frozen.length > 0 ? '; frozen wallets are not' : ''}.`;
+}
+
 export function RetirementCard({ view }: { view: HoldingsView }) {
   if (view.retirement.length === 0 && view.frozen.length === 0) return null;
   return (
-    <Card as="section" aria-label="Held apart from your total" className="flex flex-col gap-3">
+    <Card
+      as="section"
+      id={HELD_APART_ID}
+      tabIndex={-1}
+      aria-label={view.all === null ? 'Held apart from your total' : 'Held apart from tax'}
+      className="flex scroll-mt-6 flex-col gap-3 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
       <h2 className="m-0 text-[15px] font-semibold">Held apart</h2>
-      <p className="m-0 text-xs text-muted">Not counted in what your Bitcoin is worth or in your average cost.</p>
+      <p className="m-0 text-xs text-muted">{heldApartNote(view)}</p>
       <ul className="m-0 flex list-none flex-col p-0">
         {view.retirement.map((r) => (
           <HeldApartRow key={r.id} id={r.id} name={r.name} sats={r.sats}>
@@ -393,68 +409,126 @@ export function RetirementCard({ view }: { view: HoldingsView }) {
   );
 }
 
-// ---- Taxable, retirement and all together -------------------------------------------------
 
-function AllRow({ label, sub, worth, strong, wide }: { label: string; sub: string; worth: Worth; strong?: boolean; wide: boolean }) {
-  return (
-    <div className={cx('flex gap-3', wide ? 'flex-col border-l border-line pl-5 first:border-l-0 first:pl-0' : 'items-start justify-between border-b border-line py-3 first:pt-1 last:border-b-0 last:pb-0')}>
-      <dt className="flex flex-col gap-0.5">
-        <span className={cx('text-sm', strong ? 'font-semibold text-text' : 'text-soft')}>{label}</span>
-        <span className="text-xs text-muted">{sub}</span>
-      </dt>
-      <dd className={cx('m-0 flex flex-col gap-0.5', !wide && 'items-end text-right')}>
-        <span className={cx('font-semibold', strong ? 'font-display text-2xl tracking-[-0.02em] text-accent' : 'text-lg')}>{worth.valueCents === null ? '—' : <Money cents={worth.valueCents} precision="dollars" />}</span>
-        <span className="text-xs text-soft">
-          <Amount sats={worth.sats} short showUnit interactive={false} />
-        </span>
-        <span className="text-xs">{worth.gainCents === null ? <span className="text-muted">Gain not known</span> : <GainWords worth={worth} precision="dollars" className="font-semibold" />}</span>
-      </dd>
-    </div>
-  );
+// ---- All your Bitcoin: the hero total and its taxable / retirement split -------------------
+
+/** Move to a section on this screen and put focus there (for screen readers and keyboards), without a second scroll. */
+function jumpTo(id: string) {
+  const el = document.getElementById(id);
+  el?.scrollIntoView({ block: 'start' });
+  el?.focus({ preventScroll: true });
 }
-
-const ALL_BITCOIN_ID = 'all-your-bitcoin';
 
 /**
- * One quiet line under the hero: everything including retirement, which jumps to the All your Bitcoin card. The hero
- * itself stays taxable. Nothing when no retirement wallet holds coins.
+ * What the hero shows. With retirement coins it is all your Bitcoin (taxable plus retirement, from the engine's
+ * `allBitcoin`); without, exactly the taxable figures, as before.
  */
-export function WithRetirementLine({ view, className }: { view: HoldingsView; className?: string }) {
-  const total = view.all?.total.valueCents ?? null;
-  if (total === null) return null;
-  const jump = () => {
-    const card = document.getElementById(ALL_BITCOIN_ID);
-    card?.scrollIntoView({ block: 'start' });
-    card?.focus({ preventScroll: true });
-  };
+export function heroFigures(view: HoldingsView): { all: boolean; label: string; region: string; worthCents: number | null; sats: number } {
+  if (view.all === null) return { all: false, label: 'Your Bitcoin is worth', region: 'What your Bitcoin is worth', worthCents: view.worthCents, sats: view.totalSats };
+  return { all: true, label: 'All your Bitcoin is worth', region: 'What all your Bitcoin is worth', worthCents: view.all.total.valueCents, sats: view.all.total.sats };
+}
+
+/** `up $197,603 (+127%) unrealized` under the all-Bitcoin hero. Nothing without retirement coins or without a gain. */
+export function HeroGainLine({ view, className }: { view: HoldingsView; className?: string }) {
+  const total = view.all?.total;
+  if (total === undefined || total.gainCents === null) return null;
   return (
-    <button type="button" onClick={jump} className={cx('-my-3 inline-flex min-h-11 items-center gap-0.5 bg-transparent p-0 text-muted hover:text-soft', className)}>
-      <PlainMoney cents={total} precision="dollars" />
-      &nbsp;with retirement
-      <ChevronRightIcon size={14} className="flex-none" />
-    </button>
+    <span className={className}>
+      <GainWords worth={total} precision="dollars" className="font-semibold" /> <span className="text-muted">unrealized</span>
+    </span>
   );
 }
 
-/** Taxable plus retirement, labeled so the taxable figures above stay the ones that count for tax. Only with retirement coins. */
-export function AllBitcoinCard({ view, wide }: { view: HoldingsView; wide: boolean }) {
-  const help = useHelp('What is counted here?', 'Taxable is everything above: the coins that count for tax. Retirement is what your retirement accounts hold; it never enters tax math. All Bitcoin adds the two. Frozen wallets are left out, as above.');
+function SplitRowBody({ swatch, label, sub, worth, wide }: { swatch: string; label: string; sub: ReactNode; worth: Worth; wide: boolean }) {
+  return (
+    <>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-center gap-2 text-sm font-semibold">
+          <span className={cx('size-2.5 flex-none rounded-[3px]', swatch)} aria-hidden="true" />
+          {label}
+        </span>
+        <span className="text-xs text-muted">{sub}</span>
+      </span>
+      <span className="flex flex-none flex-col items-end gap-0.5 text-right">
+        <span className="text-[15px] font-semibold">{worth.valueCents === null ? '—' : <PlainMoney cents={worth.valueCents} precision="dollars" />}</span>
+        {worth.valueCents === null ? null : worth.gainCents === null ? (
+          <span className="text-xs text-muted">Gain not known</span>
+        ) : (
+          <GainWords worth={worth} plain precision="dollars" showPercent={wide} className="text-xs font-semibold" />
+        )}
+      </span>
+      <ChevronRightIcon size={16} className="-ml-1 flex-none text-muted" />
+    </>
+  );
+}
+
+const SPLIT_ROW = 'press-soft flex min-h-11 w-full items-center gap-3 rounded-xl bg-transparent px-2 py-2.5 text-left text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2';
+
+/**
+ * Right under the all-Bitcoin hero: how it splits into taxable and retirement, as a thin bar and two rows. Taxable
+ * jumps to the taxable figures below; Retirement opens the one retirement wallet, or jumps to the Held apart list when
+ * there are several. Only with retirement coins.
+ */
+export function SplitCard({ view, wide }: { view: HoldingsView; wide: boolean }) {
   const all = view.all;
   if (all === null) return null;
   const unknown = all.retirement.unknownCostSats > 0;
+  const only = view.retirement.length === 1 ? view.retirement[0] : undefined;
+  // Always BTC: the dollars are already at the right, and sats would wrap the line.
+  const satsLine = (sats: number) => <Amount sats={sats} short showUnit alwaysBtc interactive={false} />;
+  const retirement = (
+    <SplitRowBody
+      swatch="bg-cream"
+      label="Retirement"
+      sub={
+        <>
+          {unknown ? 'Some cost not logged' : 'Kept apart from tax'} · {satsLine(all.retirement.sats)}
+        </>
+      }
+      worth={all.retirement}
+      wide={wide}
+    />
+  );
   return (
-    <Card as="section" id={ALL_BITCOIN_ID} tabIndex={-1} aria-label="All your Bitcoin" className="flex scroll-mt-6 flex-col gap-3 outline-none focus-visible:ring-2 focus-visible:ring-accent">
-      <h2 className="m-0 flex items-baseline gap-1 text-[15px] font-semibold">
-        All your Bitcoin
-        {help.button}
-      </h2>
-      {help.panel}
-      <dl className={cx('m-0', wide ? 'grid grid-cols-3 gap-5' : 'flex flex-col')}>
-        <AllRow label="Taxable" sub="Counts for tax" worth={all.taxable} wide={wide} />
-        <AllRow label="Retirement" sub={unknown ? 'Some cost not logged' : 'Kept apart from tax'} worth={all.retirement} wide={wide} />
-        <AllRow label="All Bitcoin" sub="Both together" worth={all.total} strong wide={wide} />
-      </dl>
-      {unknown ? <p className="m-0 text-xs text-muted">Gain counts only coins with a logged cost. Log a retirement account&apos;s purchases to include it.</p> : null}
+    <Card as="section" aria-label="Taxable and retirement" className="flex flex-col gap-2 !px-2.5 !pt-3.5 !pb-2 lg:!px-3">
+      {/* Shares by BTC. The rows below carry the figures, so the bar itself is decoration. */}
+      <div className="mx-2 flex h-1.5 gap-0.5" aria-hidden="true">
+        <span className="min-w-0.5 rounded-full bg-accent" style={{ flexGrow: all.taxable.sats, flexBasis: 0 }} />
+        <span className="min-w-0.5 rounded-full bg-cream" style={{ flexGrow: all.retirement.sats, flexBasis: 0 }} />
+      </div>
+      <ul className={cx('m-0 list-none p-0', wide ? 'grid grid-cols-2 gap-2' : 'flex flex-col divide-y divide-line')}>
+        <li className={cx(!wide && 'pb-0.5')}>
+          <button type="button" onClick={() => jumpTo(TAXABLE_ID)} className={SPLIT_ROW}>
+            <SplitRowBody swatch="bg-accent" label="Taxable" sub={<>Counts for tax · {satsLine(all.taxable.sats)}</>} worth={all.taxable} wide={wide} />
+            <span className="sr-only">Go to the taxable figures.</span>
+          </button>
+        </li>
+        <li className={cx(wide ? 'border-l border-line pl-2' : 'pt-0.5')}>
+          {only ? (
+            <Link to={`/wallet/${only.id}`} className={SPLIT_ROW}>
+              {retirement}
+              <span className="sr-only">Open {only.name}.</span>
+            </Link>
+          ) : (
+            <button type="button" onClick={() => jumpTo(HELD_APART_ID)} className={SPLIT_ROW}>
+              {retirement}
+              <span className="sr-only">Go to your retirement wallets.</span>
+            </button>
+          )}
+        </li>
+      </ul>
+      {unknown ? <p className="m-0 px-2 pb-1 text-xs text-muted">Gain counts only coins with a logged cost. Log a retirement account&apos;s purchases to include it.</p> : null}
     </Card>
+  );
+}
+
+/** The quiet label that starts the taxable figures under the all-Bitcoin hero. Only with retirement coins. */
+export function TaxableDivider({ view }: { view: HoldingsView }) {
+  if (view.all === null) return null;
+  return (
+    <h2 id={TAXABLE_ID} tabIndex={-1} className="m-0 -mb-1 flex scroll-mt-6 items-center gap-3 rounded-md pt-1 text-[11px] font-bold uppercase tracking-[0.1em] text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent">
+      Taxable
+      <span className="h-px flex-1 bg-line" aria-hidden="true" />
+    </h2>
   );
 }

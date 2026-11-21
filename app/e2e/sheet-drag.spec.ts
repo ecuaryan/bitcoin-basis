@@ -65,7 +65,7 @@ test('a big drag on the title row closes it and focus goes back', async ({ page 
   const dialog = await openLog(page);
   await dragFromTitle(page, dialog, 600);
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
+  await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toBeVisible();
 });
 
 test('a swipe down in the body at the top closes it; text fields are left alone', async ({ page }) => {
@@ -122,5 +122,5 @@ test("the back gesture closes the sheet without touching history (close watcher)
   await expect(page).toHaveURL(/\/what-if/);
   await page.goBack();
   await expect(page).toHaveURL(url);
-  await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
+  await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toBeVisible();
 });

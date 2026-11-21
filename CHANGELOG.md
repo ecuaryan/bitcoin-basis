@@ -6,10 +6,14 @@
 
 - **Retirement purchases**: a retirement wallet can now record purchases (date, BTC, cost with fees), edited and removed like any entry. Its page lists each purchase with its cost, worth now, gain or loss and time held, and the wallet shows its total cost, gain and average cost. A new entry kind, `retirement-buy`, kept apart from lots: it never reaches gains, Form 8949, tax estimates, the planners or loans (a property test checks this).
 - **Balance notes check the purchases**: with purchases logged, a retirement wallet's balance is their total; its latest balance note is checked against the purchases up to that date and any difference is shown. Wallets with notes only look as before.
-- **All your Bitcoin** on Holdings: Taxable, Retirement and All Bitcoin side by side (BTC, worth, gain where the cost is known), reached from a quiet "with retirement" line under the hero. The taxable figures are unchanged.
+- **All your Bitcoin** at the top of Holdings: with a retirement wallet that holds coins, the hero is everything you have ("All your Bitcoin is worth", total BTC, and the unrealized gain), with a split card right under it: a thin bar and two rows, Taxable (counts for tax) and Retirement (kept apart from tax), each with its BTC, worth and gain. Taxable jumps to the taxable figures, which follow under a small "Taxable" label exactly as before; Retirement opens the retirement wallet (or the Held apart list when there are several). Without retirement coins Holdings looks as it did. The separate All your Bitcoin card and the "with retirement" line are gone.
 - Hide amounts now also hides gain percentages and the cost-per-BTC hint while logging a purchase.
 - **Import and export**: rows in the coins spreadsheet whose wallet is one of your retirement wallets become retirement purchases (leave tier and the loan columns empty on those rows; if the wallet is new, the preview asks whether it is a retirement account and never assumes it). The spreadsheet export includes them, and the backup file carries them with their history.
 - The demo's retirement account has three made-up purchases.
+
+### Changed
+
+- **"Unrealized" instead of "on paper"**: Holdings' gain card is now "Unrealized gain", with a "?" that says what it means (what you would gain if you sold today; no tax is due until you sell), and wallet pages say "unrealized" too.
 
 ### Fixed
 

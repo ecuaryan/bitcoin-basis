@@ -23,12 +23,14 @@ import { PriceChart } from '../ui/PriceChart.tsx';
 import {
   DocumentationCard,
   GainText,
+  HeroGainLine,
+  heroFigures,
   MoneyCard,
   PriceLine,
-  AllBitcoinCard,
   RetirementCard,
-  WithRetirementLine,
+  SplitCard,
   StackColumns,
+  TaxableDivider,
   StackRows,
   TIER_COLORS_HELP,
   TierLegend,
@@ -85,6 +87,13 @@ function useHoldingsView(): { view: HoldingsView } {
   const priceCents = quote?.usdCents ?? null;
   const view = useMemo(() => buildHoldingsView(state, holdings, priceCents, today), [state, holdings, priceCents, today]);
   return { view };
+}
+
+const UNREALIZED_HELP = 'Unrealized: what you would gain if you sold today. No tax is due until you sell.';
+
+/** The "?" beside "Unrealized gain". */
+function useUnrealizedHelp() {
+  return useHelp('What is an unrealized gain?', UNREALIZED_HELP);
 }
 
 /** The unused losses from earlier returns, with a "?" that says what they are. */
@@ -217,27 +226,33 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
   const tierHelp = useHelp('What do the colors mean?', TIER_COLORS_HELP);
+  const gainHelp = useUnrealizedHelp();
+  const hero = heroFigures(view);
   return (
     <div className="flex flex-col gap-4">
-      <section aria-label="What your Bitcoin is worth" className="flex flex-col gap-1.5">
-        <span className="text-[13px] tracking-[0.02em] text-muted">Your Bitcoin is worth</span>
+      <section aria-label={hero.region} className="flex flex-col gap-1.5">
+        <span className="text-[13px] tracking-[0.02em] text-muted">{hero.label}</span>
         <span className="font-display text-[46px] font-semibold leading-none tracking-[-0.03em] text-accent">
-          {view.worthCents === null ? <WorthPlaceholder loading={status === 'loading'} /> : <Money cents={view.worthCents} precision="dollars" countUp />}
+          {hero.worthCents === null ? <WorthPlaceholder loading={status === 'loading'} /> : <Money cents={hero.worthCents} precision="dollars" countUp />}
         </span>
         {/* Two lines, always: inline, a longer amount (sats, dollars, or hidden) would wrap the price line and move the page. */}
         <div className="mt-1 flex flex-col items-start gap-0.5">
           <span className="text-[17px] font-semibold">
-            <Amount sats={view.totalSats} showUnit countUp className="-my-2.5 inline-flex min-h-11 items-center" />
+            <Amount sats={hero.sats} showUnit countUp className="-my-2.5 inline-flex min-h-11 items-center" />
           </span>
           <span className="flex flex-wrap items-baseline gap-x-2.5">
             <PriceLine quote={quote} status={status} error={error} className="text-[13px]" />
           </span>
-          <WithRetirementLine view={view} className="text-[13px]" />
+          <HeroGainLine view={view} className="text-[13px]" />
         </div>
       </section>
 
+      <SplitCard view={view} wide={false} />
+
       <BalanceNudge />
       <LoanNudge />
+
+      <TaxableDivider view={view} />
 
       <Card as="section" aria-label="Average cost versus price" className="flex flex-col gap-3">
         <div className="flex items-start justify-between">
@@ -246,10 +261,14 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
             <span className="text-xl font-semibold">{view.averageCostCentsPerBtc === null ? '—' : <Money cents={view.averageCostCentsPerBtc} />}</span>
           </div>
           <div className="flex flex-col items-end gap-0.5">
-            <span className="text-xs text-muted">Gain on paper</span>
+            <span className="flex items-baseline gap-1 text-xs text-muted">
+              Unrealized gain
+              {gainHelp.button}
+            </span>
             <GainText cents={view.gainCents} className="text-xl font-semibold" />
           </div>
         </div>
+        {gainHelp.panel}
         <PriceChart points={series} averageCostCents={view.averageCostCentsPerBtc} width={320} height={84} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} />
         <ChartFooter points={series} className="text-[11px]" />
         <LossesStat view={view} variant="row" />
@@ -279,7 +298,6 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
 
       <MoneyCard view={view} />
       <RetirementCard view={view} />
-      <AllBitcoinCard view={view} wide={false} />
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>
   );
@@ -296,21 +314,23 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
   const picked = view.stack.find((r) => r.year === year) ?? null;
   const avg = view.averageCostCentsPerBtc;
   const tierHelp = useHelp('What do the colors mean?', TIER_COLORS_HELP);
+  const gainHelp = useUnrealizedHelp();
+  const hero = heroFigures(view);
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
-        <section aria-label="What your Bitcoin is worth" className="flex flex-col gap-2">
-          <span className="text-sm text-muted">Your Bitcoin is worth</span>
+        <section aria-label={hero.region} className="flex flex-col gap-2">
+          <span className="text-sm text-muted">{hero.label}</span>
           <span className="font-display text-[64px] font-semibold leading-none tracking-[-0.03em] text-accent">
-            {view.worthCents === null ? <WorthPlaceholder loading={status === 'loading'} /> : <Money cents={view.worthCents} precision="dollars" countUp />}
+            {hero.worthCents === null ? <WorthPlaceholder loading={status === 'loading'} /> : <Money cents={hero.worthCents} precision="dollars" countUp />}
           </span>
           <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
             <span className="text-xl font-semibold">
-              <Amount sats={view.totalSats} showUnit countUp className="-my-2 inline-flex min-h-11 items-center" />
+              <Amount sats={hero.sats} showUnit countUp className="-my-2 inline-flex min-h-11 items-center" />
             </span>
             <PriceLine quote={quote} status={status} error={error} className="text-sm" />
           </div>
-          <WithRetirementLine view={view} className="self-start text-sm" />
+          <HeroGainLine view={view} className="text-sm" />
         </section>
         <div className="flex items-center gap-2.5">
           <SyncIndicator />
@@ -319,8 +339,12 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
         </div>
       </header>
 
+      <SplitCard view={view} wide />
+
       <BalanceNudge />
       <LoanNudge />
+
+      <TaxableDivider view={view} />
 
       <div className="grid grid-cols-3 gap-4">
         <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
@@ -328,8 +352,12 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
           <span className="text-2xl font-semibold">{avg === null ? '—' : <Money cents={avg} />}</span>
         </Card>
         <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
-          <span className="text-[13px] text-muted">Gain on paper</span>
+          <span className="flex items-baseline gap-1 text-[13px] text-muted">
+            Unrealized gain
+            {gainHelp.button}
+          </span>
           <GainText cents={view.gainCents} className="text-2xl font-semibold" />
+          {gainHelp.panel}
         </Card>
         <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
           <LossesStat view={view} variant="tile" />
@@ -382,7 +410,6 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
         <DocumentationCard view={view} />
         <RetirementCard view={view} />
       </div>
-      <AllBitcoinCard view={view} wide />
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>
   );

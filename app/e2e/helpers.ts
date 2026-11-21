@@ -6,7 +6,7 @@ export async function openDemo(page: Page): Promise<void> {
   await page.addInitScript(() => window.localStorage.setItem('bb.hide', '0'));
   await page.goto('/');
   await page.getByRole('button', { name: 'Try the demo' }).click();
-  await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
+  await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toBeVisible();
 }
 
 export async function expectNoViolations(page: Page): Promise<void> {

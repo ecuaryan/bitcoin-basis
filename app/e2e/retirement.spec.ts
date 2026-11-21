@@ -48,14 +48,17 @@ test('Retirement: log a purchase, see its gain, edit and remove it; Holdings sho
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(purchases).toContainText('3 purchases');
 
-  // Holdings: the taxable hero is unchanged; the overall card adds retirement.
+  // Holdings: the hero is all your Bitcoin, split into taxable and retirement right under it.
   await go(page, '/');
-  const all = page.getByRole('region', { name: 'All your Bitcoin' });
-  await expect(all).toContainText('Taxable');
-  await expect(all).toContainText('Counts for tax');
-  await expect(all).toContainText('All Bitcoin');
-  await expect(all).toContainText('$33,184');
-  await expect(page.getByRole('region', { name: 'Held apart from your total' })).toContainText('up $17,274');
+  await expect(page.getByRole('region', { name: 'What all your Bitcoin is worth' })).toContainText('$352,391');
+  const split = page.getByRole('region', { name: 'Taxable and retirement' });
+  await expect(split.getByRole('button', { name: /^Taxable/ })).toContainText('Counts for tax · 3.3667 BTC');
+  const retirement = split.getByRole('link', { name: /^Retirement/ });
+  await expect(retirement).toContainText('Kept apart from tax · 0.3500 BTC');
+  await expect(retirement).toContainText('$33,184');
+  await expect(retirement).toContainText('up $17,274');
+  await expect(page.getByRole('region', { name: 'All your Bitcoin', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Held apart from tax' })).toContainText('up $17,274');
   await expectNoViolations(page);
 });
 
@@ -78,7 +81,7 @@ test('Retirement: a spreadsheet row for a retirement wallet becomes a retirement
   await expectNoViolations(page);
   await status.getByRole('button', { name: 'Create wallet and add 1 coin and 1 retirement purchase' }).click();
   await expect(page.getByText('Added 1 coin, 1 retirement purchase and 1 wallet.')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'All your Bitcoin' })).toContainText('Retirement');
+  await expect(page.getByRole('region', { name: 'Taxable and retirement' })).toContainText('Retirement');
 });
 
 test('Retirement: a new wallet in the spreadsheet written as retirement purchases is asked about, then made as Retirement', async ({ page }) => {
@@ -94,5 +97,5 @@ test('Retirement: a new wallet in the spreadsheet written as retirement purchase
   await expect(status).toContainText('1 retirement purchase will be added');
   await status.getByRole('button', { name: /^Create wallets and add/ }).click();
   await expect(page.getByText(/Added 1 coin, 1 retirement purchase and 2 wallets/)).toBeVisible();
-  await expect(page.getByRole('region', { name: 'All your Bitcoin' })).toContainText('Retirement');
+  await expect(page.getByRole('region', { name: 'Taxable and retirement' })).toContainText('Retirement');
 });

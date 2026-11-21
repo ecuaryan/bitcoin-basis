@@ -4,7 +4,7 @@ async function openBought(page: Page): Promise<Locator> {
   await page.addInitScript(() => window.localStorage.setItem('bb.hide', '0'));
   await page.goto('/');
   await page.getByRole('button', { name: 'Try the demo' }).click();
-  await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
+  await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const d = page.getByRole('dialog', { name: 'Log' });
   await expect(d).toBeVisible();

@@ -6,7 +6,7 @@ async function demo(page: Page): Promise<void> {
   await page.addInitScript(() => window.localStorage.setItem('bb.hide', '0'));
   await page.goto('/');
   await page.getByRole('button', { name: 'Try the demo' }).click();
-  await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
+  await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toBeVisible();
 }
 
 async function openLog(page: Page, tab: string): Promise<void> {
@@ -32,7 +32,7 @@ test('log a buy: review shows no tax, saving raises the total', async ({ page })
   await axeClean(page);
   await d.getByRole('button', { name: 'Save purchase' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByText('3.3767 2105 BTC')).toBeVisible();
+  await expect(page.getByText('3.7267 2105 BTC')).toBeVisible();
 });
 
 test('log a move with a network fee', async ({ page }) => {
@@ -342,9 +342,9 @@ test('double-clicking Save on a purchase logs it once', async ({ page }) => {
     b.click();
   });
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  // 3.3667 2105 + 0.01 once, not twice.
-  await expect(page.getByText('3.3767 2105 BTC')).toBeVisible();
-  await expect(page.getByText('3.3867 2105 BTC')).toHaveCount(0);
+  // All Bitcoin 3.7167 2105 + 0.01 once, not twice.
+  await expect(page.getByText('3.7267 2105 BTC')).toBeVisible();
+  await expect(page.getByText('3.7367 2105 BTC')).toHaveCount(0);
 });
 
 test('the Log sheet footer button stays put across tabs and from form to review', async ({ page }) => {

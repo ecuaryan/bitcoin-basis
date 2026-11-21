@@ -45,6 +45,16 @@ describe('Amount', () => {
     await click(btn());
     expect(text()).toBe('0.0074 2665');
   });
+  it('stays in BTC with alwaysBtc, whatever unit was picked', async () => {
+    window.localStorage.setItem('bb.unit', 'sats');
+    app = await renderApp(
+      <>
+        <Amount sats={742_665} />
+        <Amount sats={742_665} short showUnit alwaysBtc interactive={false} />
+      </>,
+    );
+    expect(text()).toBe('742,6650.0074 BTC');
+  });
   it('is plain text, not a button, when not interactive', async () => {
     app = await renderApp(<Amount sats={742_665} interactive={false} />);
     expect(app.container.querySelector('button')).toBeNull();

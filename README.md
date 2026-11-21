@@ -7,7 +7,7 @@ A self-hosted, local-first, end-to-end encrypted cost-basis and records app for 
 <!-- TODO: 60-second demo GIF (open the app, Try the demo, Holdings, Log a purchase, Sell comparison, Tax season). Save as docs/screenshots/demo.gif and embed here. -->
 
 <p>
-  <img src="docs/screenshots/holdings-phone.png" alt="Holdings on a phone: what your Bitcoin is worth, average cost, gain on paper, stack by year" width="220">
+  <img src="docs/screenshots/holdings-phone.png" alt="Holdings on a phone: what your Bitcoin is worth, average cost, unrealized gain, stack by year" width="220">
   <img src="docs/screenshots/sell-phone.png" alt="Sell on a phone: oldest coins first compared with lowest tax" width="220">
   <img src="docs/screenshots/tax-season-phone.png" alt="Tax season on a phone: gains for the year and downloads for a CPA" width="220">
 </p>
@@ -36,7 +36,7 @@ If you hold your own coins, nobody sends you a tax statement, yet the IRS still 
 
 ## What it does
 
-- **Holdings:** what your Bitcoin is worth, average cost, gain on paper, a stack by year, and balances per wallet. Every lot is tagged Documented, Reconstructed, Estimated or Unknown, so you can see how well each cost is backed up.
+- **Holdings:** what your Bitcoin is worth, average cost, unrealized gain, a stack by year, and balances per wallet. Every lot is tagged Documented, Reconstructed, Estimated or Unknown, so you can see how well each cost is backed up.
 - **Log:** buy, receive (income, gift, inherited, payout from a frozen platform), move between wallets (with the fee), sell or spend, give, and record lost coins.
 - **Wallet by wallet:** coins are tracked per wallet, as the 2025 IRS rules ask (Rev. Proc. 2024-28). Saved coin choices: every sale remembers exactly which lots it used, so adding an older purchase later never changes a past sale.
 - **Sell and Borrow planners:** compare oldest first with lowest tax (coins used, short- and long-term gain, tax this adds, losses left for next year). Borrow shows loan-to-value, margin-call and liquidation prices, and the tax a liquidation would add.

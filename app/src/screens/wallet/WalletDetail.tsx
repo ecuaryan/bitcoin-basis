@@ -90,7 +90,7 @@ function Balance({ wallet, sats, costCents, avg, priceCents }: { wallet: Wallet;
         <>
           {worth !== null && counted ? (
             <span className="text-sm">
-              <Money cents={worth} precision="dollars" /> · <GainText cents={worth - costCents} className="font-semibold" /> <span className="text-muted">on paper</span>
+              <Money cents={worth} precision="dollars" /> · <GainText cents={worth - costCents} className="font-semibold" /> <span className="text-muted">unrealized</span>
             </span>
           ) : null}
           <span className="text-[13px] text-muted">Average cost {avg === null ? '—' : <Money cents={avg} />} per BTC</span>
@@ -517,7 +517,7 @@ function RetirementBalance({ holding, worth }: { holding: RetirementHolding | un
         <>
           {worth.valueCents !== null ? (
             <span className="text-sm">
-              <Money cents={worth.valueCents} precision="dollars" /> · <GainWords worth={worth} precision="dollars" className="font-semibold" /> <span className="text-muted">on paper</span>
+              <Money cents={worth.valueCents} precision="dollars" /> · <GainWords worth={worth} precision="dollars" className="font-semibold" /> <span className="text-muted">unrealized</span>
             </span>
           ) : null}
           <span className="text-[13px] text-muted">
