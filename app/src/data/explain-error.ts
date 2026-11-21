@@ -21,6 +21,14 @@ export function explainError(e: unknown): string {
         return 'There is no passkey on this device yet. Use your recovery code.';
       case 'offline':
         return 'You are offline, and this step needs a connection. Try again when you are back online.';
+      case 'timeout':
+        return 'Your server is taking too long to answer. Check your connection and try again.';
+      case 'passkey-timeout':
+        return 'The passkey prompt did not open. Tap Unlock to try again.';
+      case 'aborted':
+        return 'Cancelled. Tap to try again.';
+      case 'storage-blocked':
+        return 'Bitcoin Basis is busy in another window or tab. Close the others, then try again.';
       case 'needs-session':
         return 'Sign in again to sync. Tap Connect.';
       case 'no-vault':
@@ -36,13 +44,15 @@ export function explainError(e: unknown): string {
     }
   }
   if (e instanceof PasskeyError) {
-    if (e.code === 'cancelled') return 'That was cancelled. Try again when you are ready.';
+    if (e.code === 'cancelled' || e.code === 'aborted') return 'That was cancelled. Try again when you are ready.';
+    if (e.code === 'timeout') return 'The passkey prompt did not open. Try again.';
     if (e.code === 'unsupported') return 'Passkeys are not available in this browser. Use your recovery code instead.';
     if (e.code === 'prf-unavailable') return 'This passkey cannot unlock records. Use your recovery code.';
     return 'The passkey did not work. Try again.';
   }
   if (e instanceof ApiError) {
     if (e.kind === 'network') return 'Could not reach your server. Check your connection and try again.';
+    if (e.kind === 'timeout') return 'Your server is taking too long to answer. Check your connection and try again.';
     if (e.kind === 'rate-limited') return 'Too many tries. Wait a minute and try again.';
     return 'Your server did not accept that. Try again in a minute.';
   }

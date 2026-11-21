@@ -17,7 +17,7 @@ const CSP = [
   "script-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
-  "frame-ancestors 'none'",
+  // frame-ancestors only works as a header (public/_headers and the Worker send it); in a <meta> browsers ignore it and log an error.
   "require-trusted-types-for 'script'",
   // The only Trusted Types policy: `sw` in src/register-sw.ts (allows exactly /sw.js).
   'trusted-types sw',
@@ -28,6 +28,26 @@ function cspMeta(): Plugin {
     name: 'bb-csp',
     apply: 'build',
     transformIndexHtml: () => [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP }, injectTo: 'head-prepend' }],
+  };
+}
+
+/**
+ * Preloads the Latin display font (headlines and the big numbers), so they appear once in their real typeface
+ * instead of swapping in. Inter is left to load normally: preloading it too costs the first paint more than it
+ * saves on slow phones (Lighthouse LCP). After the first visit the service worker serves both. Same origin, CSP unchanged.
+ */
+function displayFontPreload(): Plugin {
+  return {
+    name: 'bb-font-preload',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler: (_html, ctx) =>
+        Object.keys(ctx.bundle ?? {})
+          .filter((f) => /(^|\/)space-grotesk-latin-wght-normal-[\w-]+\.woff2$/.test(f))
+          .sort()
+          .map((f) => ({ tag: 'link', attrs: { rel: 'preload', as: 'font', type: 'font/woff2', href: `/${f}`, crossorigin: '' }, injectTo: 'head' as const })),
+    },
   };
 }
 
@@ -43,7 +63,7 @@ function serviceWorkerManifest(): Plugin {
     writeBundle(_options, bundle) {
       // Latin font subsets only; other unicode ranges are cached when first used.
       const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && (!f.endsWith('.woff2') || f.includes('-latin-wght-')));
-      const statics = ['/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-48.png', '/icons/favicon-32.png', '/icons/favicon-16.png', '/icons/icon-maskable-512.png', '/icons/logo-mark.webp'];
+      const statics = ['/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-48.png', '/icons/favicon-32.png', '/icons/favicon-16.png', '/icons/icon-maskable-512.png', '/icons/logo-mark.webp', '/icons/brand-112.webp'];
       const urls = [...files.filter((f) => f !== 'index.html').map((f) => `/${f}`), ...statics].sort();
       const version = createHash('sha256').update(urls.join('\n')).digest('hex').slice(0, 12);
       const path = resolve(outDir, 'sw.js');
@@ -57,7 +77,7 @@ export default defineConfig(({ mode }) => ({
   // The fake server and authenticator exist only in `--mode fake` (the e2e build). Every other mode gets `false`,
   // so the bundler removes them. There is deliberately no environment variable that can switch this on.
   define: { __BB_FAKE__: JSON.stringify(mode === 'fake') },
-  plugins: [react(), tailwindcss(), cspMeta(), serviceWorkerManifest()],
+  plugins: [react(), tailwindcss(), cspMeta(), displayFontPreload(), serviceWorkerManifest()],
   build: { outDir: 'dist', sourcemap: false, target: 'es2023' },
   server: { host: '127.0.0.1' },
   preview: { host: '127.0.0.1' },

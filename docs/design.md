@@ -53,7 +53,7 @@ Type: hero 46px (phone) / 64px (desktop) Space Grotesk 600, tracking -0.03em, `l
 - `Amount({ sats, showUnit, short, interactive, countUp })`: BTC with 8 decimals grouped `0.0074 2665`; tap cycles BTC, sats, USD (global choice, saved). `short` = 4 decimals for lists.
 - `Money({ cents, precision: 'cents'|'dollars', signed, countUp })`: `$1,234.56`.
 - `PriceChart`: hand-rolled SVG price line with dashed average-cost line and orange gap fill.
-- `useCountUp`, `useMediaQuery` (`motion.ts`); `Toast` (`useToast().show(msg)`, polite live region); `ComingSoon` placeholder.
+- `useCountUp`, `useMediaQuery` (`motion.ts`); `Toast` (`useToast().show(msg)`, polite live region).
 - Hide amounts: `usePrefs()` gives `hidden`, `masked`, `toggleHidden`. Holding any masked amount (pointer or Space/Enter) or the eye button shows everything until release.
 
 Documentation tiers (`TIER_BG`, `TIER_LABEL` in `screens/holdings-parts.tsx` and `lib/origin.ts`): Documented orange, Reconstructed cream, Estimated tan, Unknown grey. Always show the tier by color plus text.

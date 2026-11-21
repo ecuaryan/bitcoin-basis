@@ -11,7 +11,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
 
 /** 44px minimum touch target. Primary is the one orange button on a screen. */
 export function buttonClasses(variant: ButtonVariant = 'secondary', extra?: string): string {
-  return cx('inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-[15px] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50', VARIANTS[variant], extra);
+  return cx('press inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-[15px] disabled:cursor-not-allowed disabled:opacity-50', VARIANTS[variant], extra);
 }
 
 export function Button({ variant = 'secondary', className, type = 'button', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {

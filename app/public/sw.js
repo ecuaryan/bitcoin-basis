@@ -1,7 +1,9 @@
 // Bitcoin Basis service worker: caches the built app shell so it opens offline.
 // The build step replaces the PRECACHE list and VERSION below (see vite.config.ts).
 // - hashed assets under /assets/ and icons: cache-first (their names change when content changes)
-// - navigations: network-first, falling back to the cached shell
+// - navigations: network-first, falling back to this version's cached shell
+// - on activate, the newest older cache is kept (older ones deleted): a page still running the previous
+//   version (an installed app left open across a deploy) can still load its lazy chunks until it reloads
 // - /api/* (the sync API and the price) and anything else: left to the network, never cached
 // Only a genuine response is ever stored: status 200 and the content type the file should have. An error
 // page, an API answer or the single-page-app fallback (index.html under a .js name) is never cached.
@@ -68,8 +70,9 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then(async (keys) => {
+        // caches.keys() lists in creation order: keep the newest older one for pages still on it.
         const old = keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE);
-        await Promise.all(old.map((k) => caches.delete(k)));
+        await Promise.all(old.slice(0, -1).map((k) => caches.delete(k)));
         await self.clients.claim();
         // An update (an older version was installed): tell open pages, so they can offer a reload.
         if (old.length > 0) {
@@ -97,7 +100,13 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match('/').then((r) => r || Response.error())),
+        .catch(() =>
+          caches
+            .open(CACHE)
+            .then((c) => c.match('/'))
+            .then((r) => r || caches.match('/'))
+            .then((r) => r || Response.error()),
+        ),
     );
     return;
   }

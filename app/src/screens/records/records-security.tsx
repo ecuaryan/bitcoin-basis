@@ -16,6 +16,7 @@ import { SelectBox } from '../../ui/Field.tsx';
 import { QrCode } from '../../ui/QrCode.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 import { useToast } from '../../ui/Toast.tsx';
+import { useHelp } from '../../ui/Help.tsx';
 
 const LOCK_CHOICES = [1, 5, 15, 30, 0] as const;
 
@@ -29,6 +30,19 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 }
 
 const P = 'm-0 text-[13px] leading-[1.45] text-soft';
+
+/** "Passkey" stays (the browser uses the word), explained once behind a "?". */
+function PasskeyLine() {
+  const help = useHelp('What is a passkey?', 'A passkey lets this device open your records with its fingerprint or screen lock. Nothing to type or remember.');
+  return (
+    <>
+      <p className={cx(P, 'flex items-center gap-1')}>
+        Passkey on this device ✓{help.button}
+      </p>
+      {help.panel}
+    </>
+  );
+}
 
 /** Records → Security: sync, this device, adding another device, the recovery code and locking. */
 export function SecurityView() {
@@ -129,7 +143,7 @@ function RealSecurity() {
               onClick={() =>
                 void run('connect', async () => {
                   const r = await vault.connect();
-                  toast.show(r.ok ? 'Connected and synced.' : 'Connected, but the sync did not finish.');
+                  toast.show(r.ok ? 'Connected and synced.' : 'Connected, but the sync did not finish.', { success: r.ok });
                 })
               }
             >
@@ -143,7 +157,7 @@ function RealSecurity() {
               onClick={() =>
                 void run('sync', async () => {
                   const r = await vault.sync();
-                  toast.show(r.ok ? 'Synced.' : 'Could not sync right now.');
+                  toast.show(r.ok ? 'Synced.' : 'Could not sync right now.', { success: r.ok });
                 })
               }
               className="flex min-h-11 items-center bg-transparent px-1 text-sm font-semibold text-amber underline-offset-2 hover:underline disabled:opacity-50"
@@ -156,7 +170,7 @@ function RealSecurity() {
 
       <Group title="This device">
         {status.passkeyUnlock ? (
-          <p className={P}>Passkey on this device ✓</p>
+          <PasskeyLine />
         ) : (
           <>
             <p className={P}>No passkey on this device yet.</p>
@@ -166,7 +180,7 @@ function RealSecurity() {
                 onClick={() =>
                   void run('passkey', async () => {
                     await vault.addPasskey();
-                    toast.show('Passkey added on this device.');
+                    toast.show('Passkey added on this device.', { success: true });
                   })
                 }
               >

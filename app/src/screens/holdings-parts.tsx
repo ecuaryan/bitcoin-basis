@@ -12,6 +12,7 @@ import { PlainMoney } from '../ui/plain-money.tsx';
 import { Card } from '../ui/Card.tsx';
 import { Sheet } from '../ui/Sheet.tsx';
 import { ChevronRightIcon } from '../ui/icons.tsx';
+import { useHelp } from '../ui/Help.tsx';
 
 export const TIER_BG: Record<Tier, string> = {
   documented: 'bg-accent',
@@ -60,7 +61,7 @@ export function StackRows({ stack, onPick }: { stack: StackYear[]; onPick(year: 
           <button
             type="button"
             onClick={() => onPick(row.year)}
-            className="flex min-h-6 w-full items-center gap-2.5 rounded-lg bg-transparent p-0 text-left text-text hover:bg-surface-2/60"
+            className="press-soft flex min-h-6 w-full items-center gap-2.5 rounded-lg bg-transparent p-0 text-left text-text hover:bg-surface-2/60 active:bg-surface-2/60"
           >
             <span className="w-9 text-xs text-muted">{row.year}</span>
             <span className="flex h-3.5 flex-1 overflow-hidden rounded-[7px] bg-surface-2" aria-hidden="true">
@@ -93,7 +94,7 @@ export function StackColumns({ stack, onPick }: { stack: StackYear[]; onPick(yea
           <button
             type="button"
             onClick={() => onPick(row.year)}
-            className="flex h-full w-full flex-col items-center justify-end gap-2 rounded-xl bg-transparent p-0 text-text hover:bg-surface-2/50"
+            className="press-soft flex h-full w-full flex-col items-center justify-end gap-2 rounded-xl bg-transparent p-0 text-text hover:bg-surface-2/50"
           >
             <span className="text-xs font-semibold">
               <ShortBtc sats={row.sats} />
@@ -125,6 +126,9 @@ export function TierLegend({ tiers, mix, className }: { tiers: Tier[]; mix?: Rec
     </div>
   );
 }
+
+/** What the four colours mean, for a "?" next to a legend. */
+export const TIER_COLORS_HELP = 'The colour says how sure the cost is. Documented: a receipt or export backs it up. Reconstructed: rebuilt from statements. Estimated: a best guess. Unknown: no cost yet.';
 
 /** Tiers that actually have coins, documented first. */
 export function tiersPresent(mix: Record<Tier, number>): Tier[] {
@@ -208,15 +212,16 @@ export function YearSheet({ row, onClose }: { row: StackYear | null; onClose(): 
 
 export function WalletLinkCard({ w }: { w: WalletCard }) {
   return (
-    <Link to={`/wallet/${w.id}`} className="flex min-h-11 items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 text-text no-underline transition-colors hover:bg-surface-2 hover:text-text">
+    <Link to={`/wallet/${w.id}`} className="press-soft flex min-h-11 items-center justify-between gap-3 rounded-2xl border border-line bg-surface py-3 pl-3.5 pr-2.5 text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2">
       <span className="flex flex-col gap-0.5">
         <span className="text-sm font-semibold">{w.name}</span>
         <span className={cx('text-xs normal-nums', w.needsAttention ? 'text-amber' : 'text-muted')}>
           {w.typeLabel} · {w.needsAttention ? 'needs a check' : w.confirmedLabel}
         </span>
       </span>
-      <span className="text-sm font-semibold">
+      <span className="flex items-center gap-1.5 text-sm font-semibold">
         <Amount sats={w.sats} interactive={false} />
+        <ChevronRightIcon size={16} className="flex-none text-muted" />
       </span>
     </Link>
   );
@@ -225,7 +230,7 @@ export function WalletLinkCard({ w }: { w: WalletCard }) {
 /** The desktop card is narrow, so the check status sits under the amount instead of after the type. */
 export function WalletRow({ w }: { w: WalletCard }) {
   return (
-    <Link to={`/wallet/${w.id}`} className="flex min-h-14 items-center justify-between gap-3 border-b border-line text-text no-underline last:border-b-0 hover:text-text">
+    <Link to={`/wallet/${w.id}`} className="group -mx-2 flex min-h-14 items-center justify-between gap-3 rounded-xl border-b border-line px-2 text-text no-underline transition-colors last:border-b-0 hover:bg-surface-2 hover:text-text">
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-sm font-semibold">{w.name}</span>
         <span className="text-xs normal-nums text-muted">{w.typeLabel}</span>
@@ -236,6 +241,7 @@ export function WalletRow({ w }: { w: WalletCard }) {
         </span>
         <span className={cx('text-xs', w.needsAttention ? 'text-amber' : 'text-muted')}>{w.needsAttention ? 'Needs a check' : capitalize(w.confirmedLabel)}</span>
       </span>
+      <ChevronRightIcon size={16} className="-ml-1 flex-none text-muted transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
 }
@@ -278,21 +284,13 @@ export function DocumentationCard({ view }: { view: HoldingsView }) {
 }
 
 export function MoneyCard({ view }: { view: HoldingsView }) {
-  const [help, setHelp] = useState(false);
+  const help = useHelp('What do these mean?', 'In is what you paid for coins. Out is what sales, spending and fees paid in BTC brought in.');
   return (
     <Card as="section" aria-label="Money in and out" className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="m-0 text-[15px] font-semibold">Money in and out</h2>
-        <button
-          type="button"
-          aria-expanded={help}
-          aria-label="What do these mean?"
-          onClick={() => setHelp((h) => !h)}
-          className="-my-3 -mr-2 flex size-11 items-center justify-center rounded-full bg-transparent text-sm font-semibold text-muted hover:text-text"
-        >
-          <span aria-hidden="true">?</span>
-        </button>
-      </div>
+      <h2 className="m-0 flex items-baseline gap-1 text-[15px] font-semibold">
+        Money in and out
+        {help.button}
+      </h2>
       <dl className="m-0 grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-0.5">
           <dt className="text-xs text-muted">Put in</dt>
@@ -307,7 +305,7 @@ export function MoneyCard({ view }: { view: HoldingsView }) {
           </dd>
         </div>
       </dl>
-      {help && <p className="m-0 text-xs text-muted">In is what you paid for coins. Out is what sales, spending and fees paid in BTC brought in.</p>}
+      {help.panel}
     </Card>
   );
 }
@@ -331,8 +329,9 @@ export function RetirementCard({ view, priceCents }: { view: HoldingsView; price
                   </span>
                 )}
               </span>
-              <span className="text-sm font-semibold">
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
                 <Amount sats={r.sats} interactive={false} />
+                <ChevronRightIcon size={16} className="flex-none text-muted" />
               </span>
             </Link>
           </li>
@@ -347,8 +346,9 @@ export function RetirementCard({ view, priceCents }: { view: HoldingsView; price
                   Cost <PlainMoney cents={w.costCents} precision="dollars" />
                 </span>
               </span>
-              <span className="text-sm font-semibold">
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
                 <Amount sats={w.sats} interactive={false} />
+                <ChevronRightIcon size={16} className="flex-none text-muted" />
               </span>
             </Link>
           </li>

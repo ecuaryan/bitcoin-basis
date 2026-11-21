@@ -65,3 +65,32 @@ describe('api client', () => {
     expect(() => fromBase64Url('AB')).toThrow(TypeError); // non-zero trailing bits
   });
 });
+
+describe('api client: never hangs', () => {
+  const never = () => new Promise<Response>(() => undefined);
+
+  test('a request with no answer becomes a timeout error', async () => {
+    const api = createApiClient({ fetch: never, timeoutMs: 20 });
+    await expect(api.status()).rejects.toMatchObject({ kind: 'timeout' });
+    // A tighter per-call timeout wins.
+    const slow = createApiClient({ fetch: never, timeoutMs: 60_000 });
+    await expect(slow.loginOptions({ timeoutMs: 20 })).rejects.toMatchObject({ kind: 'timeout' });
+  });
+
+  test("the caller's signal aborts a request (and reaches fetch)", async () => {
+    let seen: AbortSignal | null = null;
+    const api = createApiClient({
+      fetch: (_url, init) => {
+        seen = init.signal ?? null;
+        return never();
+      },
+    });
+    const ctrl = new AbortController();
+    const p = api.logout({ signal: ctrl.signal });
+    ctrl.abort();
+    const err = await p.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ kind: 'aborted' });
+    expect((seen as AbortSignal | null)?.aborted).toBe(true);
+  });
+});

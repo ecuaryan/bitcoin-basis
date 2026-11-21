@@ -1,7 +1,7 @@
 import { createContext, lazy, useEffect, Suspense, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { NavLink } from 'react-router';
+import { NavLink, useLocation } from 'react-router';
 import { PullToSync } from './PullToSync.tsx';
-import { ReadyOutlet } from './ready-gate.tsx';
+import { LoadingSkeleton, ReadyOutlet } from './ready-gate.tsx';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { useVaultOptional } from '../data/vault-provider.tsx';
 import { cx } from '../lib/cx.ts';
@@ -36,7 +36,7 @@ export function useLogSheet(): { open(preset?: LogPreset): void } {
 
 // ---- Header buttons --------------------------------------------------------------------
 
-const ICON_BUTTON = 'flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-soft transition-colors hover:text-text';
+const ICON_BUTTON = 'press flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-soft hover:text-text';
 const HOLD_MS = 350;
 
 /** Toggles hide-amounts. Holding it down shows everything for as long as it is held. */
@@ -68,7 +68,7 @@ export function HideButton({ variant = 'icon' }: { variant?: 'icon' | 'text' }) 
   const common = { type: 'button' as const, onPointerDown: down, onPointerUp: up, onPointerLeave: up, onPointerCancel: up, onClick: click };
   if (variant === 'text') {
     return (
-      <button {...common} className="min-h-11 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-text hover:bg-surface-2">
+      <button {...common} className="press min-h-11 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-text hover:bg-surface-2">
         {label}
       </button>
     );
@@ -90,7 +90,7 @@ export function LockButton({ variant = 'icon' }: { variant?: 'icon' | 'text' }) 
   };
   if (variant === 'text') {
     return (
-      <button type="button" onClick={lock} className="min-h-11 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-text hover:bg-surface-2">
+      <button type="button" onClick={lock} className="press min-h-11 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-text hover:bg-surface-2">
         Lock
       </button>
     );
@@ -105,7 +105,7 @@ export function LockButton({ variant = 'icon' }: { variant?: 'icon' | 'text' }) 
 export function Brand({ size = 32, className }: { size?: number; className?: string }) {
   return (
     <span className={cx('flex items-center gap-2.5', className)}>
-      <img src="/icons/icon-192.png" width={size} height={size} alt="" className="block flex-none rounded-[22%]" />
+      <img src="/icons/brand-112.webp" width={size} height={size} alt="" className="block flex-none rounded-[22%]" />
       <span className="font-display font-semibold tracking-[-0.01em]" style={{ fontSize: size >= 34 ? 18 : 17 }}>
         Bitcoin Basis
       </span>
@@ -121,7 +121,7 @@ export function ExitDemoButton({ variant = 'link', className }: { variant?: 'lin
       type="button"
       onClick={() => void clearAll()}
       className={cx(
-        variant === 'primary' ? 'min-h-11 rounded-xl bg-accent px-4 text-[15px] font-bold text-bg hover:bg-amber' : 'min-h-11 bg-transparent px-3 text-xs font-semibold text-amber underline-offset-2 hover:underline',
+        variant === 'primary' ? 'press min-h-11 rounded-xl bg-accent px-4 text-[15px] font-bold text-bg hover:bg-amber' : 'min-h-11 bg-transparent px-3 text-xs font-semibold text-amber underline-offset-2 hover:underline',
         className,
       )}
     >
@@ -156,13 +156,13 @@ export function DesktopCenter({ children, maxWidth = 'lg:max-w-[560px]', classNa
 
 // ---- Shell -----------------------------------------------------------------------------
 
-function PhoneTab({ to, label, icon, end }: { to: string; label: string; icon: ReactNode; end?: boolean }) {
+function PhoneTab({ to, label, icon, end, also = false }: { to: string; label: string; icon: ReactNode; end?: boolean; also?: boolean }) {
   return (
     <NavLink
       to={to}
       end={end ?? false}
       className={({ isActive }) =>
-        cx('flex min-h-11 w-full min-w-0 flex-col items-center justify-center gap-1 text-[11px] no-underline', isActive ? 'font-semibold text-accent' : 'font-medium text-muted hover:text-soft')
+        cx('press flex min-h-11 w-full min-w-0 flex-col items-center justify-center gap-1 text-[11px] no-underline', isActive || also ? 'font-semibold text-accent' : 'font-medium text-muted hover:text-soft')
       }
     >
       {icon}
@@ -171,7 +171,13 @@ function PhoneTab({ to, label, icon, end }: { to: string; label: string; icon: R
   );
 }
 
+/** A wallet page belongs to Holdings, so that tab stays lit there. */
+function useInWallet(): boolean {
+  return useLocation().pathname.startsWith('/wallet/');
+}
+
 function PhoneShell({ onLog }: { onLog(): void }) {
+  const inWallet = useInWallet();
   return (
     <div className="relative mx-auto flex min-h-dvh max-w-[560px] flex-col overflow-x-clip">
       <div aria-hidden="true" className="pointer-events-none absolute -top-[180px] left-1/2 h-[420px] w-[520px] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(247_147_26/0.20),rgb(247_147_26/0))]" />
@@ -186,14 +192,14 @@ function PhoneShell({ onLog }: { onLog(): void }) {
       <PullToSync />
       <DemoBanner className="mx-5 mt-3" />
       <main className="relative flex flex-1 flex-col px-5 pb-[130px] pt-6">
-        <Suspense fallback={null}>
+        <Suspense fallback={<LoadingSkeleton />}>
           <ReadyOutlet />
         </Suspense>
       </main>
       <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 mx-auto grid h-[92px] max-w-[560px] grid-cols-5 items-center justify-items-center bg-[linear-gradient(180deg,rgb(11_11_12/0),#0b0b0c_30%)] px-3 pb-[max(20px,env(safe-area-inset-bottom))] pt-2">
-        <PhoneTab to="/" end label="Holdings" icon={<HoldingsIcon size={22} />} />
+        <PhoneTab to="/" end also={inWallet} label="Holdings" icon={<HoldingsIcon size={22} />} />
         <PhoneTab to="/what-if" label="What if" icon={<WhatIfIcon size={22} />} />
-        <button type="button" onClick={onLog} aria-label="Log something" className="-mt-[18px] flex size-[60px] items-center justify-center rounded-full bg-accent text-bg shadow-fab transition-transform active:scale-95">
+        <button type="button" onClick={onLog} aria-label="Log something" className="-mt-[18px] flex size-[60px] items-center justify-center rounded-full bg-accent text-bg shadow-fab transition-transform duration-150 active:scale-[0.92]">
           <PlusIcon size={28} />
         </button>
         <PhoneTab to="/tax" label="Tax" icon={<TaxIcon size={22} />} />
@@ -203,13 +209,13 @@ function PhoneShell({ onLog }: { onLog(): void }) {
   );
 }
 
-function SideLink({ to, label, end }: { to: string; label: string; end?: boolean }) {
+function SideLink({ to, label, end, also = false }: { to: string; label: string; end?: boolean; also?: boolean }) {
   return (
     <NavLink
       to={to}
       end={end ?? false}
       className={({ isActive }) =>
-        cx('flex min-h-11 items-center rounded-xl px-3 text-[15px] no-underline transition-colors', isActive ? 'bg-accent/12 font-semibold text-amber' : 'font-medium text-soft hover:bg-surface')
+        cx('press flex min-h-11 items-center rounded-xl px-3 text-[15px] no-underline', isActive || also ? 'bg-accent/12 font-semibold text-amber' : 'font-medium text-soft hover:bg-surface')
       }
     >
       {label}
@@ -218,24 +224,25 @@ function SideLink({ to, label, end }: { to: string; label: string; end?: boolean
 }
 
 function DesktopShell({ onLog }: { onLog(): void }) {
+  const inWallet = useInWallet();
   return (
     <div className="relative flex min-h-dvh overflow-x-clip">
       <div aria-hidden="true" className="pointer-events-none absolute -top-[260px] left-[30%] h-[620px] w-[900px] bg-[radial-gradient(closest-side,rgb(247_147_26/0.16),rgb(247_147_26/0))]" />
       <nav aria-label="Main" className="sticky top-0 flex h-dvh w-[220px] flex-none flex-col gap-1.5 border-r border-line-soft px-[18px] py-7">
         <Brand size={34} className="px-2.5 pb-[22px]" />
-        <SideLink to="/" end label="Holdings" />
+        <SideLink to="/" end also={inWallet} label="Holdings" />
         <SideLink to="/what-if" label="What if" />
         <SideLink to="/tax" label="Tax season" />
         <SideLink to="/records" label="Records" />
         <div className="flex-1" />
-        <button type="button" onClick={onLog} className="flex min-h-12 items-center justify-center gap-2 rounded-[14px] bg-accent text-[15px] font-bold text-bg transition-colors hover:bg-amber">
+        <button type="button" onClick={onLog} className="press flex min-h-12 items-center justify-center gap-2 rounded-[14px] bg-accent text-[15px] font-bold text-bg hover:bg-amber">
           <PlusIcon size={18} />
           Log
         </button>
       </nav>
       <main className="relative min-w-0 flex-1 px-10 pb-10 pt-8">
         <DemoBanner className="mb-4" />
-        <Suspense fallback={null}>
+        <Suspense fallback={<LoadingSkeleton />}>
           <ReadyOutlet />
         </Suspense>
       </main>

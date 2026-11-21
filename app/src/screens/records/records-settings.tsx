@@ -47,7 +47,7 @@ export function SettingsView() {
     const patch = relabelYear ? { ...r.patch, carryforwardYear: thisYear } : r.patch;
     if (Object.keys(patch).length === 0) return;
     await write({ kind: 'settings', patch });
-    toast.show('Saved.');
+    toast.show('Saved.', { success: true });
   }
   /** A choice (select or switch): set it and save it. */
   const pick = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => {

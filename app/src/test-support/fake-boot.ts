@@ -35,7 +35,9 @@ export async function openFakeVault(): Promise<Vault> {
   const client = server.client();
   const vault = await Vault.open({
     db: createMemoryDb(),
-    api: createApiClient({ fetch: client.fetch }),
+    // Shorter than production (15 s, 8 s) so the hanging-server e2e tests run quickly.
+    api: createApiClient({ fetch: client.fetch, timeoutMs: 5_000 }),
+    unlockNetworkMs: 1_500,
     credentials: auth,
     prfSupport: () => Promise.resolve('supported'),
     origin: window.location.origin,

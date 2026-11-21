@@ -15,11 +15,12 @@ import { loadScenarios, parsePercentBp, priceScale, roomPercent, saveScenarios, 
 import { hasLosses } from '../../lib/losses.ts';
 import { Note } from './sell-parts.tsx';
 import { percentFromBp, rangeLabel } from './sell-logic.ts';
+import { useHelp } from '../../ui/Help.tsx';
 
 function Bar({ plan, todayCents }: { plan: { liquidationPriceCents: number; marginCallPriceCents: number }; todayCents: number }) {
   const s = priceScale(plan, todayCents);
   const markers = [
-    { key: 'liq', label: 'Liquidation', cents: plan.liquidationPriceCents, at: s.liquidation },
+    { key: 'liq', label: 'Lender sells', cents: plan.liquidationPriceCents, at: s.liquidation },
     { key: 'mc', label: 'Margin call', cents: plan.marginCallPriceCents, at: s.marginCall },
     { key: 'now', label: 'Today', cents: todayCents, at: s.today },
   ].sort((a, b) => a.cents - b.cents);
@@ -66,6 +67,7 @@ export function Borrow() {
   const [marginCall, setMarginCall] = useState(DEFAULTS.marginCall);
   const [liquidation, setLiquidation] = useState(DEFAULTS.liquidation);
   const [saved, setSaved] = useState<SavedScenario[]>(() => loadScenarios());
+  const limitsHelp = useHelp('What are these limits?', 'Margin call: the lender asks you to add coins or pay some back. Lender sells: it sells your coins to cover the loan. Both are set by your lender.');
 
   const loanCents = parseDollars(loan);
   const pledgedSats = parseBtc(pledge);
@@ -101,7 +103,7 @@ export function Borrow() {
     const next = [...saved, { id, wallet: wallet.wallet, loan, pledge, rate, marginCall, liquidation }];
     setSaved(next);
     saveScenarios(next);
-    toast.show('Scenario saved until you lock.');
+    toast.show('Scenario saved until you lock.', { success: true });
   }
   function load(s: SavedScenario) {
     setWalletId(s.wallet);
@@ -137,7 +139,10 @@ export function Borrow() {
         <PercentInput label="Margin call at" value={marginCall} onChange={setMarginCall} />
         <PercentInput label="Lender sells at" value={liquidation} onChange={setLiquidation} />
       </div>
-      <p className="m-0 text-xs text-muted">Your lender's limits, as a % of the loan to the coins' value.</p>
+      <p className="m-0 text-xs text-muted">
+        Your lender's limits, as a % of the loan to the coins' value. {limitsHelp.button}
+      </p>
+      {limitsHelp.panel}
       <SelectBox label="Coins put up from" value={wallet.wallet} onChange={(e) => setWalletId(e.target.value)}>
         {wallets.map((w) => (
           <option key={w.wallet} value={w.wallet}>
@@ -164,7 +169,7 @@ export function Borrow() {
     const rows: [string, ReactNode][] = [
       ['Interest a year', <Money key="i" cents={plan.interestPerYearCents} precision="dollars" />],
       [
-        'If liquidated, lender sells',
+        'If the lender sells',
         <span key="s">
           <Amount sats={plan.liquidation.satsSold} showUnit interactive={false} />, your oldest ({rangeLabel(sale.coinsFrom, sale.coinsTo)})
         </span>,
@@ -188,7 +193,7 @@ export function Borrow() {
             <div className="flex flex-col items-end gap-0.5">
               <span className="text-xs text-soft">Price could fall</span>
               <span className="text-xl font-bold">{roomPercent(plan.dropToLiquidationBp)}%</span>
-              <span className="text-xs text-soft">before liquidation</span>
+              <span className="text-xs text-soft">before the lender sells</span>
             </div>
           </div>
           <Bar plan={plan} todayCents={price} />
@@ -212,7 +217,7 @@ export function Borrow() {
       <div className="flex flex-col gap-3">{inputs}</div>
       <div className="flex flex-col gap-3">
         {results}
-        <Note>Planning only. A liquidation is a sale, so it uses up coins and can create tax. Lenders differ: check how yours picks coins. Estimates, not tax advice.</Note>
+        <Note>Planning only. If the lender sells your coins, that is a sale, so it uses them up and can create tax. Lenders differ: check how yours picks coins. Estimates, not tax advice.</Note>
         <div className="flex gap-2.5">
           <Button className="min-h-[54px] flex-1 !rounded-2xl" onClick={save} disabled={outcome.kind !== 'plan'}>
             Save this scenario

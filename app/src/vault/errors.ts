@@ -23,6 +23,14 @@ export type VaultErrorCode =
   /** Passkeys are not available in this browser. */
   | 'passkeys-unsupported'
   | 'offline'
+  /** The server did not answer in time (it may be slow, or the connection stalled). */
+  | 'timeout'
+  /** The passkey prompt never answered (the browser showed nothing, or it was left open too long). */
+  | 'passkey-timeout'
+  /** This attempt was abandoned: a newer unlock started, or the person pressed "Try again". Not an error to show. */
+  | 'aborted'
+  /** On-device storage (IndexedDB) is held by another window of this app, or did not answer. */
+  | 'storage-blocked'
   /** The server needs a fresh sign-in (call `connect()`). */
   | 'needs-session'
   /**

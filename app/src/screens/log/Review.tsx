@@ -111,7 +111,7 @@ export function Review({ draft, onBack, onSaved, showTitle = true }: { draft: Dr
     setBusy(true);
     const final = draft.build(reasonText);
     await append(final);
-    toast.show(draft.savedMessage);
+    toast.show(draft.savedMessage, { success: true });
     onSaved(final);
   }
 

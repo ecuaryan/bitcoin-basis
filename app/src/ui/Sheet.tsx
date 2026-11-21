@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cx } from '../lib/cx.ts';
 import { CloseIcon } from './icons.tsx';
 import { ChevronLeftIcon } from './more-icons.tsx';
 import { prefersReducedMotion } from './motion.ts';
+import { trackSheet } from './sheet-history.ts';
 import { backdropOpacity, dragOffset, releaseVelocity, shouldCloseOnRelease } from './sheet-drag.ts';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -47,6 +48,26 @@ export function Sheet({
   const gesture = useRef<Gesture | null>(null);
   const timers = useRef<number[]>([]);
 
+  // After `open` turns false the sheet stays on screen for a moment, sliding away (no exit under reduced motion,
+  // or after a drag, which already moved it off). It is inert and hidden from assistive tech while it goes.
+  const [rendered, setRendered] = useState(open);
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [skipExit, setSkipExit] = useState(false);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setRendered(true);
+      setSkipExit(false);
+    } else if (skipExit || prefersReducedMotion()) {
+      setRendered(false);
+    }
+  }
+  useEffect(() => {
+    if (open || !rendered) return;
+    const t = window.setTimeout(() => setRendered(false), 180);
+    return () => window.clearTimeout(t);
+  }, [open, rendered]);
+
   // A drag in the body must stop the browser from scrolling or pulling to refresh, which only a non-passive touchmove can do.
   useEffect(() => {
     const el = panel.current;
@@ -73,7 +94,9 @@ export function Sheet({
     document.body.style.overflow = 'hidden';
     const el = panel.current;
     if (el) (focusables(el)[0] ?? el).focus();
+    const untrack = trackSheet(() => onCloseRef.current());
     return () => {
+      untrack();
       for (const id of pending) window.clearTimeout(id);
       pending.length = 0;
       gesture.current = null;
@@ -84,7 +107,8 @@ export function Sheet({
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open && !rendered) return null;
+  const closing = !open;
 
   function setPosition(offset: number, animate: boolean) {
     const el = panel.current;
@@ -198,6 +222,7 @@ export function Sheet({
         }, 60),
       );
     };
+    setSkipExit(true);
     if (prefersReducedMotion()) {
       onCloseRef.current();
       settle();
@@ -235,20 +260,22 @@ export function Sheet({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" onKeyDown={onKeyDown}>
-      <div ref={backdrop} className="absolute inset-0 animate-fade-in bg-black/60" onClick={onClose} aria-hidden="true" />
+    <div className={cx('fixed inset-0 z-50 flex items-end justify-center sm:items-center', closing && 'pointer-events-none')} onKeyDown={closing ? undefined : onKeyDown} inert={closing} aria-hidden={closing || undefined}>
+      <div ref={backdrop} className={cx('absolute inset-0 bg-black/60', closing ? 'animate-fade-out' : 'animate-fade-in')} onClick={closing ? undefined : onClose} aria-hidden="true" />
       <div
         ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
+        role={closing ? undefined : 'dialog'}
+        aria-modal={closing ? undefined : true}
+        aria-labelledby={closing ? undefined : titleId}
         tabIndex={-1}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={(e) => endDrag(e, false)}
         onPointerCancel={(e) => endDrag(e, true)}
         className={cx(
-          'relative flex max-h-[88dvh] w-full animate-sheet-in flex-col rounded-t-[28px] border border-b-0 border-line bg-surface pb-[max(20px,env(safe-area-inset-bottom))] outline-none sm:max-w-lg sm:rounded-[28px] sm:border-b',
+          'relative flex max-h-[88dvh] w-full flex-col rounded-t-[28px] shadow-[0_-12px_40px_rgb(0_0_0/0.35)] sm:shadow-[0_24px_64px_rgb(0_0_0/0.55)]',
+          closing ? 'animate-sheet-out sm:animate-fade-out' : 'animate-sheet-in sm:animate-sheet-pop',
+          'border border-b-0 border-line bg-surface pb-[max(20px,env(safe-area-inset-bottom))] outline-none sm:max-w-lg sm:rounded-[28px] sm:border-b',
           className,
         )}
       >
@@ -256,14 +283,14 @@ export function Sheet({
           <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-line sm:hidden" aria-hidden="true" />
           <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-3">
             {onBack ? (
-              <button type="button" onClick={onBack} aria-label="Back" className="-ml-2 flex size-11 flex-none items-center justify-center rounded-xl text-soft hover:text-text">
+              <button type="button" onClick={onBack} aria-label="Back" className="press -ml-2 flex size-11 flex-none items-center justify-center rounded-xl text-soft hover:text-text">
                 <ChevronLeftIcon size={20} />
               </button>
             ) : null}
             <h2 id={titleId} className="min-w-0 flex-1 font-display text-xl font-semibold tracking-tight">
               {title}
             </h2>
-            <button type="button" onClick={onClose} aria-label="Close" className="flex size-11 items-center justify-center rounded-xl border border-line bg-bg text-soft hover:text-text">
+            <button type="button" onClick={onClose} aria-label="Close" className="press flex size-11 items-center justify-center rounded-xl border border-line bg-bg text-soft hover:text-text">
               <CloseIcon />
             </button>
           </div>

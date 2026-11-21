@@ -25,7 +25,7 @@ const CAUSES: { value: LostCause; label: string }[] = [
 
 function MenuRow({ title, sub, onClick, icon, last, id }: { title: string; sub: string; onClick(): void; icon: ReactNode; last?: boolean; id?: string }) {
   return (
-    <button type="button" data-row={id} onClick={onClick} className={`flex min-h-[60px] w-full items-center gap-3 bg-transparent py-2 text-left text-text ${last ? '' : 'border-b border-line'}`}>
+    <button type="button" data-row={id} onClick={onClick} className={`press-soft flex min-h-[60px] w-full items-center gap-3 bg-transparent py-2 text-left text-text ${last ? '' : 'border-b border-line'}`}>
       <span className="flex size-9 flex-none items-center justify-center rounded-xl bg-surface-2 text-soft" aria-hidden="true">
         {icon}
       </span>
@@ -65,7 +65,7 @@ function useWalletSave(onDone: () => void) {
   const toast = useToast();
   return async (entry: Entry, message: string) => {
     await append([entry]);
-    toast.show(message);
+    toast.show(message, { success: true });
     onDone();
   };
 }
@@ -125,7 +125,7 @@ function MenuBody({ wallet, view, setView, onClose, onCloseOut, holdingSats }: {
     <div ref={menuRef} className="flex flex-col gap-4 pb-2">
       <div className="flex flex-col">
         <MenuRow id="rename" title="Rename" sub={wallet.name} icon={ICONS.pencil} onClick={() => setView('rename')} />
-        <MenuRow id="proof" title="Where proof usually is" sub={wallet.defaultProof || 'Not set'} icon={ICONS.mail} onClick={() => setView('proof')} last />
+        <MenuRow id="proof" title="Where receipts usually are" sub={wallet.defaultProof || 'Not set'} icon={ICONS.mail} onClick={() => setView('proof')} last />
       </div>
       {!retirement ? (
         <div className="flex flex-col gap-1">
@@ -196,12 +196,12 @@ function ProofView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void
       onSubmit={(e) => {
         e.preventDefault();
         if (head === undefined) return;
-        const entry: WalletEntry = { ...head, id: uuidv7(), defaultProof: proof.trim(), replaces: head.id, reason: 'Changed where the proof usually is' };
+        const entry: WalletEntry = { ...head, id: uuidv7(), defaultProof: proof.trim(), replaces: head.id, reason: 'Changed where receipts usually are' };
         void save(entry, 'Saved.');
       }}
     >
       <BackLink onClick={onBack} />
-      <TextField label="Where proof usually is" value={proof} onChange={(e) => setProof(e.target.value)} hint="New purchases and receives in this wallet start with this. Coins already logged keep theirs." autoComplete="off" />
+      <TextField label="Where receipts usually are" value={proof} onChange={(e) => setProof(e.target.value)} hint="New purchases and receives in this wallet start with this. Coins already logged keep theirs." autoComplete="off" />
       <Button type="submit" variant="primary" disabled={head === undefined} className="min-h-14 rounded-[18px] text-[17px]">
         Save
       </Button>

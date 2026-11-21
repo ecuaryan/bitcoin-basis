@@ -43,7 +43,7 @@ export function AmountInput({ amount, label = 'Amount', error, needsPrice }: { a
         {UNITS.map((u) => {
           const on = amount.unit === u.value;
           return (
-            <button key={u.value} type="button" aria-pressed={on} onClick={() => amount.setUnit(u.value)} className="flex min-h-11 items-center bg-transparent px-1">
+            <button key={u.value} type="button" aria-pressed={on} onClick={() => amount.setUnit(u.value)} className="press flex min-h-11 items-center bg-transparent px-1">
               <span className={cx('flex h-8 items-center rounded-2xl border px-3 text-xs font-semibold', on ? 'border-accent bg-accent/12 text-amber' : 'border-line text-muted')}>{u.label}</span>
             </button>
           );

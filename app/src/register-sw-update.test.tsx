@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { onServiceWorkerMessage, UPDATE_TEXT, UPDATED_MESSAGE, useServiceWorkerUpdateToast } from './register-sw.ts';
+import { entryScript, isStaleShell, onServiceWorkerMessage, safeToReload, UPDATE_TEXT, UPDATED_MESSAGE, useServiceWorkerUpdateToast } from './register-sw.ts';
 import { click, renderApp, type Rendered } from './test/render.tsx';
+import { deviceWithVault, renderWithVault } from './test/vault-fixture.tsx';
+import { settle } from './vault/test/harness.ts';
 import { ToastProvider } from './ui/Toast.tsx';
 
 let app: Rendered | null = null;
@@ -11,8 +13,9 @@ afterEach(() => {
   app = null;
 });
 
-function Probe({ reload }: { reload: () => void }) {
-  useServiceWorkerUpdateToast(reload);
+const stale = () => Promise.resolve(true as boolean | null);
+function Probe({ reload, check = stale }: { reload: () => void; check?: () => Promise<boolean | null> }) {
+  useServiceWorkerUpdateToast(reload, check);
   return null;
 }
 
@@ -41,4 +44,55 @@ it('an update that arrived before the app mounted is shown once it does', async 
     </ToastProvider>,
   );
   expect(document.body.textContent).toContain(UPDATE_TEXT);
+});
+
+it('a page that already runs the new build shows nothing', async () => {
+  const reload = vi.fn();
+  app = await renderApp(
+    <ToastProvider>
+      <Probe reload={reload} check={() => Promise.resolve(false)} />
+    </ToastProvider>,
+  );
+  await act(async () => onServiceWorkerMessage({ type: UPDATED_MESSAGE }));
+  expect(document.body.textContent).not.toContain(UPDATE_TEXT);
+  expect(reload).not.toHaveBeenCalled();
+});
+
+it('an older build on the Unlock screen (vault locked, nothing typed) reloads by itself', async () => {
+  const { device } = await deviceWithVault('locked');
+  const reload = vi.fn();
+  app = await renderWithVault(
+    <ToastProvider>
+      <Probe reload={reload} />
+    </ToastProvider>,
+    device,
+  );
+  await act(async () => {
+    onServiceWorkerMessage({ type: UPDATED_MESSAGE });
+    await settle();
+  });
+  expect(reload).toHaveBeenCalledTimes(1);
+  expect(document.body.textContent).not.toContain(UPDATE_TEXT);
+});
+
+it('never reloads by itself while unlocked or with something typed: it asks', async () => {
+  const { device } = await deviceWithVault('unlocked');
+  expect(safeToReload(device.vault)).toBe(false);
+  device.vault.lock();
+  expect(safeToReload(device.vault)).toBe(true);
+  document.body.innerHTML = '<input value="half a recovery code">';
+  expect(safeToReload(device.vault)).toBe(false);
+  expect(safeToReload(null)).toBe(false);
+  document.body.innerHTML = '';
+});
+
+it('reads the entry script of a built index.html and compares with the server', async () => {
+  const page = (src: string) => `<!doctype html><html><head><script type="module" crossorigin src="${src}"></script><link rel="modulepreload" href="/assets/x.js"></head><body></body></html>`;
+  expect(entryScript(page('/assets/index-abc.js'))).toBe('/assets/index-abc.js');
+  expect(entryScript('<script src="/legacy.js"></script>')).toBeNull();
+  const doc = new DOMParser().parseFromString(page('/assets/index-old.js'), 'text/html');
+  const server = (src: string) => () => Promise.resolve(new Response(page(src), { status: 200 }));
+  expect(await isStaleShell(server('/assets/index-new.js'), doc)).toBe(true);
+  expect(await isStaleShell(server('/assets/index-old.js'), doc)).toBe(false);
+  expect(await isStaleShell(() => Promise.reject(new TypeError('offline')), doc)).toBeNull();
 });

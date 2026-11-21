@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { explainError, wasCancelled } from '../../data/explain-error.ts';
 import { PasskeyError } from '../../vault/passkey.ts';
+import { VaultError } from '../../vault/errors.ts';
 import { incomingRecovery } from '../../data/recovery-handoff.ts';
 import { currentPlatform, type Platform } from '../../data/platform.ts';
 import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
-import type { LockReason } from '../../vault/index.ts';
+import type { LockReason, UnlockOptions, UnlockStep } from '../../vault/index.ts';
 import { FaceIdIcon, FingerprintIcon, KeyIcon } from '../../ui/auth-icons.tsx';
 import { ShieldIcon } from '../../ui/more-icons.tsx';
 import { BigButton, ErrorLine, Frame, Glow, LogoMark, NotSeedPhrase, TextButton } from './parts.tsx';
@@ -44,12 +45,50 @@ export function resetAutoPrompt(): void {
   autoPromptUsed = false;
 }
 
+/** After this long on one step, offer "Taking too long? Try again". */
+export const SLOW_AFTER_MS = 20_000;
+
 /**
- * Once per page load, on a fresh start (nobody pressed Lock, no idle lock), the passkey prompt opens by itself so unlocking
- * is one touch. Chromium allows that without a tap; Safari refuses, and then the Unlock button is the way in.
+ * Once per page load, on a fresh start (nobody pressed Lock, no idle or background lock), the
+ * passkey prompt opens by itself so unlocking is one touch, but only while the page is visible and
+ * focused: a prompt asked for from a page that isn't (a home-screen app still launching, a tab in
+ * the background) may never show, and must not hold the button up. If the browser refuses it
+ * (Safari, Android without a tap) the Unlock button is the way in, with no error.
  */
-export function shouldAutoPrompt(o: { passkeyOk: boolean; lockReason: LockReason | null; used: boolean; showingPasskey: boolean }): boolean {
-  return o.passkeyOk && o.lockReason === null && !o.used && o.showingPasskey;
+export function shouldAutoPrompt(o: { passkeyOk: boolean; lockReason: LockReason | null; used: boolean; showingPasskey: boolean; visible: boolean; focused: boolean }): boolean {
+  return o.passkeyOk && o.lockReason === null && !o.used && o.showingPasskey && o.visible && o.focused;
+}
+
+function pageActive(): { visible: boolean; focused: boolean } {
+  if (typeof document === 'undefined') return { visible: false, focused: false };
+  return { visible: document.visibilityState === 'visible', focused: typeof document.hasFocus === 'function' && document.hasFocus() };
+}
+
+/** What the Unlock button says while an unlock runs. Never names Face ID on Android. */
+export function stepText(step: UnlockStep, platform: Platform): string {
+  switch (step) {
+    case 'connecting':
+      return 'Connecting…';
+    case 'passkey':
+      if (platform === 'android') return 'Waiting for your fingerprint…';
+      if (platform === 'ios') return 'Waiting for Face ID…';
+      if (platform === 'macos') return 'Waiting for Touch ID…';
+      return 'Waiting for your passkey…';
+    case 'signing-in':
+      return 'Signing in…';
+    case 'opening':
+      return 'Opening your records…';
+  }
+}
+
+/** Abandoned on purpose (a newer attempt, or Try again): nothing to show. */
+function wasAbandoned(e: unknown): boolean {
+  return (e instanceof VaultError && e.code === 'aborted') || (e instanceof PasskeyError && e.code === 'aborted');
+}
+
+/** An automatic prompt that didn't happen is not an error: the button is right there. */
+function quietAutoFailure(e: unknown): boolean {
+  return wasCancelled(e) || wasAbandoned(e) || (e instanceof PasskeyError && e.code === 'unsupported') || (e instanceof VaultError && (e.code === 'passkeys-unsupported' || e.code === 'passkey-timeout'));
 }
 
 /** Shown in place of the app while the vault is locked. */
@@ -61,35 +100,73 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
   const [useCode, setUseCode] = useState(() => !passkeyOk || incomingRecovery.peek() !== null);
   const [value, setValue] = useState(() => incomingRecovery.take() ?? '');
   const [valid, setValid] = useState(false);
-  const [busy, setBusy] = useState(false);
+  /** The step of the unlock in progress, `null` when idle. */
+  const [step, setStep] = useState<UnlockStep | null>(null);
+  /** The step that has been showing for `SLOW_AFTER_MS` (then "Taking too long?" appears). */
+  const [slowStep, setSlowStep] = useState<UnlockStep | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const attempt = useRef<AbortController | null>(null);
   const reason = lockReasonText(status.lockReason, status.autoLockMinutes);
   useTitle('Unlock');
 
-  const run = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
+  const run = async (first: UnlockStep, fn: (o: UnlockOptions) => Promise<unknown>, auto = false) => {
+    attempt.current?.abort(); // a tap while a prompt is pending (perhaps one the phone never showed) starts over
+    const ctrl = new AbortController();
+    attempt.current = ctrl;
+    const current = () => attempt.current === ctrl && !ctrl.signal.aborted;
     setError(null);
+    setStep(first);
     try {
-      await fn();
+      await fn({ signal: ctrl.signal, onStep: (s) => current() && setStep(s) });
     } catch (e) {
+      if (!current() || wasAbandoned(e)) return;
+      if (auto && quietAutoFailure(e)) return;
       setError(wasCancelled(e) ? 'Cancelled. Tap to try again.' : explainError(e));
     } finally {
-      setBusy(false);
+      if (attempt.current === ctrl) {
+        attempt.current = null;
+        setStep(null);
+      }
     }
   };
 
+  const tryAgain = () => {
+    attempt.current?.abort();
+    attempt.current = null;
+    vault.cancelUnlock();
+    setStep(null);
+    setError(null);
+  };
+
+  const unlockWithPasskey = (auto = false) => run('connecting', (o) => vault.unlockWithPasskey(o), auto);
+
   useEffect(() => {
-    if (!shouldAutoPrompt({ passkeyOk, lockReason: status.lockReason, used: autoPromptUsed, showingPasskey: !useCode })) return;
-    autoPromptUsed = true; // set before asking: never a second automatic prompt (cancel, refusal or a remount)
-    vault
-      .unlockWithPasskey()
-      .catch((e: unknown) => {
-        // The browser refusing a prompt nobody tapped for (or the person dismissing it) is not an error: the button is right there.
-        if (wasCancelled(e) || (e instanceof PasskeyError && e.code === 'unsupported')) return;
-        setError(explainError(e));
-      });
+    if (step === null) return;
+    const t = setTimeout(() => setSlowStep(step), SLOW_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [step]);
+  const slow = step !== null && slowStep === step;
+
+  useEffect(() => {
+    const ok = () => shouldAutoPrompt({ passkeyOk, lockReason: status.lockReason, used: autoPromptUsed, showingPasskey: !useCode, ...pageActive() });
+    if (!ok()) return;
+    // A tick later, so a remount (React's development double effects) doesn't spend the one try.
+    const t = setTimeout(() => {
+      if (!ok()) return;
+      autoPromptUsed = true; // set before asking: never a second automatic prompt (cancel, refusal or a remount)
+      void unlockWithPasskey(true);
+    }, 0);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on arrival
   }, []);
+
+  // Before the prompt has answered, the button stays live: tapping it starts over with a fresh tap.
+  const canRestart = step === null || step === 'connecting' || step === 'passkey';
+  const slowLine = slow && (
+    <TextButton onClick={tryAgain} className="self-center">
+      Taking too long? Try again
+    </TextButton>
+  );
 
   return (
     <Frame glowTop={null} className="items-center pb-9">
@@ -110,21 +187,22 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
             className="flex flex-col gap-3.5"
             onSubmit={(e) => {
               e.preventDefault();
-              if (valid) void run(() => vault.unlockWithRecoveryCode(value));
+              if (valid && step === null) void run('signing-in', (o) => vault.unlockWithRecoveryCode(value, o));
             }}
           >
             {!passkeyOk && <p className="m-0 text-center text-[13px] leading-[1.45] text-muted">This device has no passkey for these records yet, so unlock with your recovery code. You can add a passkey afterwards.</p>}
             <RecoveryInput value={value} onChange={setValue} onValid={setValid} autoFocus />
             <NotSeedPhrase />
             <ErrorLine>{error}</ErrorLine>
-            <BigButton type="submit" disabled={!valid || busy}>
-              {busy ? 'Unlocking…' : 'Unlock'}
+            <BigButton type="submit" disabled={!valid || step !== null}>
+              {step !== null ? stepText(step, detected) : 'Unlock'}
             </BigButton>
+            {slowLine}
             {passkeyOk && (
               <TextButton
                 onClick={() => {
+                  tryAgain();
                   setUseCode(false);
-                  setError(null);
                 }}
               >
                 Use my passkey instead
@@ -134,15 +212,15 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
         ) : (
           <>
             <ErrorLine>{error}</ErrorLine>
-            <BigButton onClick={() => void run(() => vault.unlockWithPasskey())} disabled={busy}>
+            <BigButton onClick={() => void unlockWithPasskey()} disabled={!canRestart} aria-live="polite">
               <UnlockIcon platform={detected} />
-              {busy ? 'Waiting for you…' : 'Unlock'}
+              {step !== null ? stepText(step, detected) : 'Unlock'}
             </BigButton>
-            <p className="m-0 text-center text-xs text-muted">{unlockCaption(detected)}</p>
+            {slowLine || <p className="m-0 text-center text-xs text-muted">{unlockCaption(detected)}</p>}
             <TextButton
               onClick={() => {
+                tryAgain();
                 setUseCode(true);
-                setError(null);
               }}
             >
               Use my recovery code instead

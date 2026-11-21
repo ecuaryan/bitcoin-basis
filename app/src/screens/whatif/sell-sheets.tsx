@@ -308,7 +308,7 @@ export function PrepareSaleSheet({
     if (result === null) return;
     const entry: MoveEntry = { ...result.draft, id: newIdGenerator(entries)(), at: entryInstant(isDemo, today), tz: state.settings.timeZone, note: 'Prepared a sale from What if', proof: wallet?.defaultProof ?? '' };
     await append([entry]);
-    toast.show(`Move logged. Sell on ${destName}, then log the sale here.`);
+    toast.show(`Move logged. Sell on ${destName}, then log the sale here.`, { success: true });
     onSaved(dest);
     onClose();
   }

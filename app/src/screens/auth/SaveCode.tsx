@@ -5,7 +5,7 @@ import { KeyIcon } from '../../ui/auth-icons.tsx';
 import { CopyIcon, ShareIcon } from '../../ui/save-icons.tsx';
 import { CODE_LABEL, saveToPasswordManager } from './save-code.ts';
 
-const BTN = 'flex min-h-12 items-center justify-center gap-2 rounded-[14px] border border-line bg-surface text-[15px] font-semibold text-text transition-colors hover:bg-surface-2';
+const BTN = 'press flex min-h-12 items-center justify-center gap-2 rounded-[14px] border border-line bg-surface text-[15px] font-semibold text-text hover:bg-surface-2';
 
 /**
  * Save, copy and share the recovery code. The hidden form is what Safari and Firefox read when
@@ -23,7 +23,7 @@ export function SaveCode({ code, className }: { code: string; className?: string
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(code);
-      toast.show('Copied. Paste it somewhere safe.');
+      toast.show('Copied. Paste it somewhere safe.', { success: true });
     } catch {
       toast.show('Couldn’t copy. Select the code and copy it by hand.');
     }

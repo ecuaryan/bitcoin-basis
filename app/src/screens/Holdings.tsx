@@ -6,7 +6,6 @@ import { usePrice } from '../data/price-provider.tsx';
 import { demoPriceAt } from '../demo/demo-data.ts';
 import { cx } from '../lib/cx.ts';
 import { buildHoldingsView, type HoldingsView } from '../lib/holdings-view.ts';
-import { countOf } from '../lib/format.ts';
 import { BalanceNudge } from './BalanceNudge.tsx';
 import { LOSSES_HELP, LOSSES_TITLE } from '../lib/losses.ts';
 import { useHelp } from '../ui/Help.tsx';
@@ -26,6 +25,7 @@ import {
   RetirementCard,
   StackColumns,
   StackRows,
+  TIER_COLORS_HELP,
   TierLegend,
   tiersPresent,
   WalletLinkCard,
@@ -64,6 +64,12 @@ function usePriceSeries(): { points: PricePoint[]; loading: boolean } {
     return [...past, { ms: quote.fetchedAt, cents: quote.usdCents }];
   }, [past, quote, isDemo]);
   return { points, loading: !loaded };
+}
+
+/** No price yet: a soft placeholder the size of the number while it loads, a dash if it could not be fetched. */
+function WorthPlaceholder({ loading }: { loading: boolean }) {
+  if (loading) return <span role="img" aria-label="Getting the price" className="inline-block h-[0.9em] w-[4.6em] animate-pulse rounded-xl bg-surface-2 align-[-0.05em]" />;
+  return <span aria-label="No price right now">$—</span>;
 }
 
 function useHoldingsView(): { view: HoldingsView; priceCents: number | null } {
@@ -121,7 +127,7 @@ function FirstRun() {
       <Card className="flex flex-col items-start gap-4">
         <p className="m-0 font-display text-2xl font-semibold tracking-tight">Know what your Bitcoin cost.</p>
         <p className="m-0 text-[15px] leading-relaxed text-muted">Start with the wallet or exchange you use most.</p>
-        <Button variant="primary" onClick={() => setOpen(true)}>
+        <Button variant="primary" onClick={() => setOpen(true)} className="w-full sm:w-auto">
           Add a wallet
         </Button>
       </Card>
@@ -140,11 +146,11 @@ function WalletReady({ view }: { view: HoldingsView }) {
       <Card className="flex flex-col items-start gap-4">
         <p className="m-0 font-display text-2xl font-semibold tracking-tight">{title}</p>
         <p className="m-0 text-[15px] leading-relaxed text-muted">Log what you bought, or bring in your history.</p>
-        <div className="flex flex-wrap gap-2.5">
+        <div className="flex w-full flex-col gap-2.5 sm:flex-row">
           <Button variant="primary" onClick={() => log.open({ kind: 'buy', ...(first ? { wallet: first.id } : {}) })}>
             Log a purchase
           </Button>
-          <Link to="/records?v=io" className={buttonClasses('secondary', 'no-underline hover:text-text')}>
+          <Link to="/records?v=io" className={buttonClasses('secondary', 'text-text no-underline hover:text-text')}>
             Import history
           </Link>
         </div>
@@ -186,12 +192,13 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
   const young = isYoung(view, today);
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
+  const tierHelp = useHelp('What do the colours mean?', TIER_COLORS_HELP);
   return (
     <div className="flex flex-col gap-4">
       <section aria-label="What your Bitcoin is worth" className="flex flex-col gap-1.5">
         <span className="text-[13px] tracking-[0.02em] text-muted">Your Bitcoin is worth</span>
         <span className="font-display text-[46px] font-semibold leading-none tracking-[-0.03em] text-accent">
-          {view.worthCents === null ? <span aria-label="Waiting for the price">$—</span> : <Money cents={view.worthCents} precision="dollars" countUp />}
+          {view.worthCents === null ? <WorthPlaceholder loading={status === 'loading'} /> : <Money cents={view.worthCents} precision="dollars" countUp />}
         </span>
         <div className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
           <span className="text-[17px] font-semibold">
@@ -220,12 +227,13 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
       </Card>
 
       <Card as="section" aria-label="Your coins by age" className="flex flex-col gap-2.5">
-        <div className="flex items-baseline justify-between">
-          <h2 className="m-0 text-[15px] font-semibold">Your stack</h2>
-          <span className="text-xs text-muted">{countOf(view.lotCount, 'lot')}</span>
-        </div>
+        <h2 className="m-0 text-[15px] font-semibold">Your stack, by year bought</h2>
         <StackRows stack={view.stack} onPick={setYear} />
-        <TierLegend tiers={tiersPresent(view.mix)} mix={view.mix} className="mt-0.5" />
+        <div className="mt-0.5 flex items-center gap-1">
+          <TierLegend tiers={tiersPresent(view.mix)} mix={view.mix} />
+          {tierHelp.button}
+        </div>
+        {tierHelp.panel}
       </Card>
 
       <section aria-label="Wallets" className="flex flex-col gap-2">
@@ -252,13 +260,14 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
   const avg = view.averageCostCentsPerBtc;
+  const tierHelp = useHelp('What do the colours mean?', TIER_COLORS_HELP);
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <section aria-label="What your Bitcoin is worth" className="flex flex-col gap-2">
           <span className="text-sm text-muted">Your Bitcoin is worth</span>
           <span className="font-display text-[64px] font-semibold leading-none tracking-[-0.03em] text-accent">
-            {view.worthCents === null ? <span aria-label="Waiting for the price">$—</span> : <Money cents={view.worthCents} precision="dollars" countUp />}
+            {view.worthCents === null ? <WorthPlaceholder loading={status === 'loading'} /> : <Money cents={view.worthCents} precision="dollars" countUp />}
           </span>
           <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
             <span className="text-xl font-semibold">
@@ -314,13 +323,17 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
       </div>
 
       <Card as="section" aria-label="Your coins by age" className="flex flex-col gap-3.5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="m-0 text-[15px] font-semibold">Your stack, by year bought</h2>
-          <TierLegend tiers={tiersPresent(view.mix)} />
+          <div className="flex items-center gap-1">
+            <TierLegend tiers={tiersPresent(view.mix)} />
+            {tierHelp.button}
+          </div>
         </div>
+        {tierHelp.panel}
         <StackColumns stack={view.stack} onPick={setYear} />
         <span className="text-xs text-muted">
-          {countOf(view.lotCount, 'lot')} · {view.documentedPercent}% documented. Pick a year to see each coin and where it came from.
+          {view.documentedPercent}% documented. Pick a year to see each coin and where it came from.
         </span>
       </Card>
 

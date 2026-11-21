@@ -75,7 +75,7 @@ export function GiftNoteActions({ gift, onOpen }: { gift: GiftGiven; onOpen?(): 
   async function copy() {
     try {
       await navigator.clipboard.writeText(giftNoteText(gift));
-      toast.show('Gift note copied.');
+      toast.show('Gift note copied.', { success: true });
     } catch {
       toast.show('Could not copy. Open the note and print it instead.');
     }
@@ -138,7 +138,7 @@ export function GiftNotePage() {
             void navigator.clipboard.writeText(giftNoteText(gift)).then(
               () => {
                 setCopied(true);
-                toast.show('Gift note copied.');
+                toast.show('Gift note copied.', { success: true });
               },
               () => toast.show('Could not copy.'),
             );

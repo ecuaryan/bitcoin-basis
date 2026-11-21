@@ -3,7 +3,7 @@ import { cx } from '../lib/cx.ts';
 
 /** The look of every text box: a dark well with a 14px radius (matches the Log design). */
 export const INPUT_CLASSES =
-  'w-full min-h-[52px] rounded-[14px] border border-line bg-bg px-3.5 text-[15px] text-text placeholder:text-muted/70 focus-visible:border-accent disabled:opacity-60';
+  'w-full min-h-[52px] rounded-[14px] border border-line bg-bg px-3.5 text-base text-text placeholder:text-muted/70 focus-visible:border-accent disabled:opacity-60';
 
 /** A box that wraps an input (prefix, unit, trailing text): the box draws the one focus ring; the input inside draws none. */
 export const FRAME_FOCUS = 'focus-within:border-accent focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-amber';

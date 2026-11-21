@@ -26,10 +26,10 @@ export function Glow({ style, className }: { style?: CSSProperties; className?: 
 }
 
 export function LogoMark({ size = 80 }: { size?: number }) {
-  return <img src="/icons/logo-mark.webp" width={size} height={size} alt="" className="block flex-none drop-shadow-[0_18px_40px_rgb(247_147_26/0.45)]" />;
+  return <img src="/icons/logo-mark.webp" width={size} height={size} alt="" fetchPriority="high" decoding="async" className="block flex-none drop-shadow-[0_18px_40px_rgb(247_147_26/0.45)]" />;
 }
 
-const BIG = 'flex w-full items-center justify-center gap-2.5 rounded-[18px] px-4 transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+const BIG = 'press flex w-full items-center justify-center gap-2.5 rounded-[18px] px-4 disabled:cursor-not-allowed disabled:opacity-50';
 const PRIMARY = 'min-h-[58px] text-[17px] font-bold bg-accent text-bg no-underline shadow-[0_10px_30px_rgb(247_147_26/0.35)] hover:bg-amber hover:text-bg';
 const SECOND = 'min-h-[52px] rounded-2xl border border-line bg-surface text-[15px] font-semibold text-text no-underline hover:bg-surface-2 hover:text-text';
 

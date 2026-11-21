@@ -72,7 +72,7 @@ export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>): E
     case 'lost':
       return line('!', 'Lost', `${w(e.wallet)} · ${e.cause.replace('-', ' ')}`, { summary: 'Lost or stolen', sats: e.sats, sign: '−' });
     case 'opening-lot':
-      return line('⇩', 'Imported lot', `${w(e.wallet)} · ${e.origin}`, { summary: 'Imported coins', sats: e.sats, sign: '+', cents: e.costCents, centsLabel: 'cost' });
+      return line('⇩', 'Imported coins', `${w(e.wallet)} · ${e.origin}`, { summary: 'Imported coins', sats: e.sats, sign: '+', cents: e.costCents, centsLabel: 'cost' });
     case 'balance-confirm':
       return line('✓', 'Balance confirmed', w(e.wallet), { summary: 'Checked the balance', sats: e.sats });
     case 'retirement-snapshot':

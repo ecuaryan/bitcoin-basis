@@ -10,8 +10,14 @@
  * the passkey's non-extractable ECDH private key (to receive the next epoch's key), and the
  * non-extractable KEK plus wrapping of the current DK (to wrap new copies for an added passkey or a
  * rotation). Raw key bytes and PRF outputs are wiped as soon as they are used, on every path.
+ *
+ * Unlocking can never hang: every passkey prompt and network call takes the attempt's
+ * `AbortSignal` and has a timeout, a new attempt aborts the one before it (which releases the
+ * serial queue at once), and a device that holds the vault opens its local copy when the server
+ * is slow or unreachable (passkey PRF only), syncing later.
  */
-import { ApiError, createApiClient, type ApiClient, type DeliveryJSON, type StepUp } from './api.ts';
+import { isAborted, linkedController, raceAbort, settleWithin } from './abort.ts';
+import { ApiError, createApiClient, isUnreachable, type ApiClient, type ChallengeOptions, type DeliveryJSON, type LoginResult, type RequestOptions, type StepUp } from './api.ts';
 import { concatBytes, fromBase64Url, randomBytes, toBase64Url, wipe, type Bytes } from './bytes.ts';
 import { EncryptedLedgerStore, type SyncResult, type SyncStatus } from './encrypted-store.ts';
 import { defaultChannel, realScheduler, type BroadcastLike, type Scheduler } from './env.ts';
@@ -42,12 +48,34 @@ import {
   wrapCredentialKey,
   wrapDataKey,
 } from './keys.ts';
-import { browserCredentials, createPasskey, detectPrfSupport, evaluatePrf, getAssertion, PasskeyError, type CredentialsLike, type PrfSupport } from './passkey.ts';
+import { browserCredentials, createPasskey, detectPrfSupport, evaluatePrf, getAssertion, PasskeyError, type CredentialsLike, type PrfSupport, type PublicKeyCredentialRequestOptionsJSON } from './passkey.ts';
 import { RECORD_FORMAT, RECORD_KEY, parseRecord, type StoredCredential, type StoredDelivery, type StoredRecovery, type VaultRecord } from './record.ts';
 import { generateRecoveryCode, parseRecoveryCode } from './recovery-code.ts';
 
 export type VaultState = 'empty' | 'locked' | 'unlocked';
 export type LockReason = 'user' | 'idle' | 'hidden';
+
+/** What an unlock is doing right now, for the Unlock screen. */
+export type UnlockStep =
+  /** Asking the server for a sign-in challenge. */
+  | 'connecting'
+  /** Waiting for the passkey prompt (fingerprint, face, screen lock). */
+  | 'passkey'
+  /** Checking the sign-in (or the recovery code) with the server. */
+  | 'signing-in'
+  /** Decrypting the local copy. */
+  | 'opening';
+
+export interface UnlockOptions {
+  /** Abort this attempt (also aborted by any newer unlock attempt, or `cancelUnlock()`). */
+  readonly signal?: AbortSignal;
+  readonly onStep?: (step: UnlockStep) => void;
+}
+
+/** How long an unlock waits for the server before the prompt (then it opens the local copy offline). */
+export const UNLOCK_NETWORK_MS = 8_000;
+/** After the server timed out, unlocks skip it for this long and go straight to the prompt. */
+export const SLOW_SERVER_MS = 60_000;
 
 export interface VaultStatus {
   /** `empty`: no vault on this device (set up or restore). */
@@ -103,6 +131,8 @@ export interface VaultOptions {
   readonly channel?: BroadcastLike | null;
   /** Default 60 s. */
   readonly pollIntervalMs?: number;
+  /** How long an unlock waits for the server before the prompt. Default `UNLOCK_NETWORK_MS`. */
+  readonly unlockNetworkMs?: number;
 }
 
 /** A non-extractable KEK and the wrapping it opens: produces the current DK's raw bytes briefly, to wrap new copies. */
@@ -144,6 +174,12 @@ export class Vault {
   private lockGen = 0;
   private logoutInFlight: Promise<void> | null = null;
   private logoutPending = false;
+  /** Bumped by every sign-in: a logout that fails after a newer sign-in must not be queued (it would end the new session). */
+  private signIns = 0;
+  /** The unlock attempt in progress (aborted by the next one). */
+  private unlockCtrl: AbortController | null = null;
+  /** Until when unlocks skip the server (it just timed out). */
+  private serverSlowUntil = 0;
   private refreshing: Promise<void> | null = null;
   private readonly listeners = new Set<(s: VaultStatus) => void>();
   private lockReason: LockReason | null = null;
@@ -159,6 +195,7 @@ export class Vault {
   private readonly origin: string;
   private readonly prfSupport: () => Promise<PrfSupport>;
   private readonly env: VaultEnvironment | null;
+  private readonly unlockNetworkMs: number;
   private cachedStatus: VaultStatus | null = null;
 
   /** Open the vault stored on this device (or an empty one). */
@@ -182,6 +219,7 @@ export class Vault {
     this.origin = options.origin ?? (typeof location === 'undefined' ? '' : location.origin);
     this.prfSupport = options.prfSupport ?? (() => detectPrfSupport());
     this.autoLockMinutes = options.autoLockMinutes ?? 5;
+    this.unlockNetworkMs = options.unlockNetworkMs ?? UNLOCK_NETWORK_MS;
     this.env =
       options.environment === undefined
         ? { document: typeof document === 'undefined' ? null : document, window: typeof window === 'undefined' ? null : window }
@@ -227,6 +265,17 @@ export class Vault {
   /** True while a data key (or the KEK that can recover it) is in memory. For tests and diagnostics. */
   holdsKeyMaterial(): boolean {
     return this.session !== null || this.store.unlocked;
+  }
+
+  /** An unlock attempt is running (e.g. a passkey prompt is open). */
+  get unlocking(): boolean {
+    return this.unlockCtrl !== null;
+  }
+
+  /** Abandon the unlock attempt in progress, if any (its promise rejects with `aborted`). */
+  cancelUnlock(): void {
+    this.unlockCtrl?.abort();
+    this.unlockCtrl = null;
   }
 
   /** Whether the server already has a vault (Welcome: "Set up" vs "Restore"). */
@@ -339,41 +388,71 @@ export class Vault {
 
   /**
    * Unlock with a passkey. Online: one prompt gives both a server session and the PRF output,
-   * also on a fresh device with a synced passkey (the PRF input is a constant). Offline: a local
-   * challenge, PRF only, no session.
+   * also on a fresh device with a synced passkey (the PRF input is a constant). Offline, or when
+   * the server is slow or down: a local challenge, PRF only, no session (sync signs in later).
+   * Starting this aborts any unlock attempt still in progress.
    */
-  unlockWithPasskey(): Promise<UnlockResult> {
+  unlockWithPasskey(opts: UnlockOptions = {}): Promise<UnlockResult> {
     // Taken now, not when the queued work starts: a lock() issued after this call must win.
     const gen = this.lockGen;
-    return this.exclusive(async () => {
+    const ctrl = this.newUnlockAttempt(opts.signal);
+    const signal = ctrl.signal;
+    const step = (s: UnlockStep) => {
+      if (!signal.aborted) opts.onStep?.(s);
+    };
+    return this.attempt(ctrl, async () => {
       if (this.session !== null) return { via: this.session.via, sync: null };
       const creds = this.requireCredentials();
       const known = this.knownCredentials();
-      if (this.isOnline()) await this.flushLogout();
-      const online = this.isOnline() ? await this.api.loginOptions().catch((e: unknown) => (e instanceof ApiError && e.kind === 'network' ? null : Promise.reject(mapApi(e)))) : null;
-
-      if (online === null) {
-        if (this.record === null) throw new VaultError('offline');
-        if (known.length === 0) throw new VaultError('no-passkey');
-        const { credentialId, prfOutput } = await evaluatePrf(creds, known).catch((e: unknown) => {
-          throw mapPasskey(e);
-        });
-        const stored = this.record.credentials.find((c) => c.id === credentialId) as StoredCredential;
-        const history = this.record.histories[String(stored.delivery.epoch)] ?? null;
-        const session = await this.openWithPasskey(this.record.vaultId, stored, prfOutput, history);
-        this.assertGen(gen);
-        await this.begin(session);
-        return { via: 'passkey', sync: null };
+      const prompt = { signal };
+      let online: ChallengeOptions<PublicKeyCredentialRequestOptionsJSON> | null = null;
+      let unreachable: VaultError | null = this.isOnline() ? null : new VaultError('offline');
+      if (unreachable === null && this.serverSlow()) unreachable = new VaultError('timeout', 'the server was too slow a moment ago');
+      if (unreachable === null) {
+        step('connecting');
+        const net = { signal, timeoutMs: this.unlockNetworkMs };
+        if (!(await this.flushLogout(net))) unreachable = new VaultError('timeout');
+        else {
+          online = await this.api.loginOptions(net).catch((e: unknown) => {
+            if (fallsBack(e) && this.knownCredentials().length > 0) {
+              unreachable = this.unreachable(e);
+              return null;
+            }
+            throw mapApi(e);
+          });
+        }
       }
 
-      const assertion = await getAssertion(creds, online.options, known).catch((e: unknown) => {
-        throw mapPasskey(e);
-      });
+      if (online === null) {
+        if (this.record === null) throw unreachable ?? new VaultError('offline');
+        if (known.length === 0) throw new VaultError('no-passkey');
+        step('passkey');
+        const { credentialId, prfOutput } = await evaluatePrf(creds, known, undefined, prompt).catch(rethrowPasskey);
+        step('opening');
+        return this.openLocally(credentialId, prfOutput, gen, signal);
+      }
+
+      step('passkey');
+      const assertion = await getAssertion(creds, online.options, known, prompt).catch(rethrowPasskey);
       let prfOutput = assertion.prfOutput;
       try {
-        const login = await this.api.loginVerify({ response: assertion.response, challengeToken: online.challengeToken }).catch((e: unknown) => {
-          throw e instanceof ApiError && (e.kind === 'unauthorized' || e.kind === 'not-found') ? new VaultError('passkey-rejected', undefined, { cause: e }) : mapApi(e);
-        });
+        step('signing-in');
+        let login: LoginResult;
+        try {
+          login = await this.api.loginVerify({ response: assertion.response, challengeToken: online.challengeToken }, { signal });
+        } catch (e) {
+          if (e instanceof ApiError && (e.kind === 'unauthorized' || e.kind === 'not-found')) throw new VaultError('passkey-rejected', undefined, { cause: e });
+          // The server went quiet after the prompt: this device holds the vault, and this same prompt
+          // gave the PRF output, so open the local copy now and sign in when syncing later.
+          if (fallsBack(e) && prfOutput !== null && this.record?.credentials.some((c) => c.id === assertion.credentialId) === true) {
+            this.unreachable(e);
+            step('opening');
+            const out = prfOutput;
+            prfOutput = null;
+            return await this.openLocally(assertion.credentialId, out, gen, signal);
+          }
+          throw mapApi(e);
+        }
         this.sessionStarted('passkey');
         if (this.record !== null && login.vaultId !== this.record.vaultId) throw new VaultError('vault-mismatch');
         const local = this.record?.credentials.find((c) => c.id === assertion.credentialId);
@@ -387,15 +466,14 @@ export class Vault {
         };
         const history = stored.delivery === local?.delivery ? (this.record?.histories[String(stored.delivery.epoch)] ?? null) : login.keys.history;
         if (prfOutput === null) {
-          prfOutput = (
-            await evaluatePrf(creds, [stored.id], online.options.rpId).catch((e: unknown) => {
-              throw mapPasskey(e);
-            })
-          ).prfOutput;
+          // Rare: the sign-in prompt gave no PRF output, so one more prompt (abortable, with a backstop).
+          step('passkey');
+          prfOutput = (await evaluatePrf(creds, [stored.id], online.options.rpId, prompt).catch(rethrowPasskey)).prfOutput;
         }
+        step('opening');
         const session = await this.openWithPasskey(login.vaultId, stored, prfOutput, history);
         prfOutput = null;
-        this.assertGen(gen);
+        this.assertLive(gen, signal);
         const fresh = this.record === null;
         const base = this.record ?? emptyRecord(login.vaultId, this.origin, this.scheduler.now());
         const next = withEpoch(
@@ -405,8 +483,8 @@ export class Vault {
         );
         if (fresh) await this.putRecord(next);
         else await this.updateRecord((r) => withEpoch({ ...r, credentials: upsert(r.credentials, stored), histories: next.histories }, login.keys.epoch, this.scheduler.now()));
-        this.assertGen(gen);
-        await this.begin(session);
+        this.assertLive(gen, signal);
+        await this.begin(session, signal);
         if (fresh) return { via: 'passkey', sync: await this.store.sync() };
         void this.store.sync();
         return { via: 'passkey', sync: null };
@@ -416,6 +494,23 @@ export class Vault {
     });
   }
 
+  /** Open the local copy with a PRF output from one of this device's passkeys (no server). Wipes `prfOutput`. */
+  private async openLocally(credentialId: string, prfOutput: Bytes, gen: number, signal: AbortSignal): Promise<UnlockResult> {
+    const record = this.record;
+    const stored = record?.credentials.find((c) => c.id === credentialId);
+    if (record === null || stored === undefined) {
+      wipe(prfOutput);
+      throw new VaultError('passkey-rejected', 'this passkey is not set up on this device');
+    }
+    const history = record.histories[String(stored.delivery.epoch)] ?? null;
+    const session = await this.openWithPasskey(record.vaultId, stored, prfOutput, history);
+    this.assertLive(gen, signal);
+    await this.begin(session, signal);
+    // Signs in (or shows "offline") when it can; never awaited here.
+    void this.store.sync();
+    return { via: 'passkey', sync: null };
+  }
+
   /**
    * Unlock with the recovery code. On a device that already holds the vault this works offline.
    * Online, the device first checks the server's recovery version: if the code was replaced, its
@@ -423,22 +518,37 @@ export class Vault {
    * restores: params → auth token → session → wrapped DK → full sync. Typos are reported (as
    * `RecoveryCodeError`) before any network call.
    */
-  unlockWithRecoveryCode(input: string): Promise<UnlockResult> {
+  unlockWithRecoveryCode(input: string, opts: UnlockOptions = {}): Promise<UnlockResult> {
     // Taken now, not when the queued work starts: a lock() issued after this call must win.
     const gen = this.lockGen;
-    return this.exclusive(async () => {
+    const ctrl = this.newUnlockAttempt(opts.signal);
+    const signal = ctrl.signal;
+    const step = (s: UnlockStep) => {
+      if (!signal.aborted) opts.onStep?.(s);
+    };
+    return this.attempt(ctrl, async () => {
       if (this.session !== null) return { via: this.session.via, sync: null };
       const code = await parseRecoveryCode(input);
       let token: Bytes | null = null;
       try {
-        const online = this.isOnline();
-        if (online) await this.flushLogout();
-        const params = online
-          ? await this.api.recoveryParams().catch((e: unknown) => {
-              if (e instanceof ApiError && e.kind === 'network') return null;
+        let unreachable: VaultError | null = this.isOnline() ? null : new VaultError('offline');
+        if (unreachable === null && this.serverSlow()) unreachable = new VaultError('timeout', 'the server was too slow a moment ago');
+        const net = { signal, timeoutMs: this.unlockNetworkMs };
+        let params: Awaited<ReturnType<ApiClient['recoveryParams']>> | null = null;
+        if (unreachable === null) {
+          step('signing-in');
+          if (!(await this.flushLogout(net))) unreachable = new VaultError('timeout');
+          else {
+            params = await this.api.recoveryParams(net).catch((e: unknown) => {
+              if (isUnreachable(e)) {
+                unreachable = this.unreachable(e);
+                return null;
+              }
               throw e instanceof ApiError && e.kind === 'not-found' ? new VaultError('no-vault', 'the server has no vault yet', { cause: e }) : mapApi(e);
-            })
-          : null;
+            });
+          }
+        }
+        step('opening');
         if (this.record !== null && params !== null && params.vaultId !== this.record.vaultId) throw new VaultError('vault-mismatch');
         let local = this.record?.recovery ?? null;
         if (local !== null && params !== null && params.version > local.version) {
@@ -457,18 +567,21 @@ export class Vault {
             token = await deriveRecoveryAuthToken(code.secret, salt);
             const keys = await this.epochKeys(this.record.vaultId, local.version, dk, this.record.histories[String(local.version)] ?? null);
             if (params !== null) {
-              const ok = await this.api.recoveryLogin(b64(token)).then(
+              step('signing-in');
+              const ok = await this.api.recoveryLogin(b64(token), net).then(
                 () => true,
                 (e: unknown) => {
                   if (e instanceof ApiError && e.kind === 'unauthorized') throw new VaultError('wrong-recovery-code', undefined, { cause: e });
+                  if (e instanceof ApiError && e.kind === 'aborted') throw new VaultError('aborted', undefined, { cause: e });
                   return false;
                 },
               );
               if (ok) this.sessionStarted('recovery');
+              step('opening');
             }
-            this.assertGen(gen);
+            this.assertLive(gen, signal);
             if (this.record.recoveryChanged) await this.updateRecord((r) => ({ ...r, recoveryChanged: false }));
-            await this.begin({ vaultId: this.record.vaultId, via: 'recovery', epoch: local.version, keys, current: { kek, wrapped, aad }, history: historyBytes(this.record.histories[String(local.version)]), credential: null, recoveryToken: token });
+            await this.begin({ vaultId: this.record.vaultId, via: 'recovery', epoch: local.version, keys, current: { kek, wrapped, aad }, history: historyBytes(this.record.histories[String(local.version)]), credential: null, recoveryToken: token }, signal);
             token = null; // owned by the session now
             void this.store.sync();
             return { via: 'recovery', sync: null };
@@ -476,13 +589,15 @@ export class Vault {
           if (params === null) throw new VaultError('wrong-recovery-code');
         }
 
-        if (params === null) throw new VaultError(this.record === null || local === null ? 'offline' : 'wrong-recovery-code');
+        if (params === null) throw this.record === null || local === null ? (unreachable ?? new VaultError('offline')) : new VaultError('wrong-recovery-code');
         const salt = unb64(params.salt);
         token = await deriveRecoveryAuthToken(code.secret, salt);
-        const login = await this.api.recoveryLogin(b64(token)).catch((e: unknown) => {
+        step('signing-in');
+        const login = await this.api.recoveryLogin(b64(token), { signal }).catch((e: unknown) => {
           throw e instanceof ApiError && e.kind === 'unauthorized' ? new VaultError('wrong-recovery-code', undefined, { cause: e }) : mapApi(e);
         });
         this.sessionStarted('recovery');
+        step('opening');
         const kek = await deriveRecoveryKek(code.secret, salt);
         const aad = wrapAad(params.vaultId, { type: 'recovery', version: login.version });
         const wrapped = unb64(login.wrappedDk);
@@ -490,13 +605,13 @@ export class Vault {
           throw new VaultError('wrong-recovery-code', undefined, { cause: e });
         });
         const keys = await this.epochKeys(params.vaultId, login.version, dk, login.history);
-        this.assertGen(gen);
+        this.assertLive(gen, signal);
         const recovery: StoredRecovery = { version: login.version, salt: params.salt, wrappedDk: login.wrappedDk };
         const histories = login.history === null ? {} : { [String(login.version)]: login.history };
         if (this.record === null) await this.putRecord({ ...emptyRecord(params.vaultId, this.origin, this.scheduler.now(), login.version), recovery, histories });
         else await this.updateRecord((r) => withEpoch({ ...r, recovery, recoveryChanged: false, histories: { ...r.histories, ...histories } }, login.version, this.scheduler.now()));
-        this.assertGen(gen);
-        await this.begin({ vaultId: params.vaultId, via: 'recovery', epoch: login.version, keys, current: { kek, wrapped, aad }, history: historyBytes(login.history), credential: null, recoveryToken: token });
+        this.assertLive(gen, signal);
+        await this.begin({ vaultId: params.vaultId, via: 'recovery', epoch: login.version, keys, current: { kek, wrapped, aad }, history: historyBytes(login.history), credential: null, recoveryToken: token }, signal);
         token = null;
         return { via: 'recovery', sync: await this.store.sync() };
       } finally {
@@ -903,24 +1018,57 @@ export class Vault {
       this.markLogoutPending(true);
       return;
     }
-    this.logoutInFlight = this.api
+    const signIns = this.signIns;
+    const p: Promise<void> = this.api
       .logout()
-      .catch(() => this.markLogoutPending(true))
+      .catch(() => {
+        // Only while no newer sign-in replaced the cookie: a queued logout would end THAT session.
+        if (this.signIns === signIns) this.markLogoutPending(true);
+      })
       .finally(() => {
-        this.logoutInFlight = null;
+        if (this.logoutInFlight === p) this.logoutInFlight = null;
       });
+    this.logoutInFlight = p;
   }
 
-  /** Send a queued logout before anything else talks to the server. A failure keeps it queued. */
-  private async flushLogout(): Promise<void> {
-    if (this.logoutInFlight !== null) await this.logoutInFlight;
-    if (!this.logoutPending || !this.isOnline()) return;
+  /**
+   * Send a queued logout before anything else talks to the server. A failure keeps it queued.
+   * Returns false when the server could not be reached in time (the caller may go offline). A
+   * logout still in flight carries the OLD cookie, so a sign-in may go ahead without waiting for it.
+   */
+  private async flushLogout(opts: RequestOptions = {}): Promise<boolean> {
+    const inFlight = this.logoutInFlight;
+    if (inFlight !== null) {
+      if (opts.timeoutMs === undefined) await inFlight;
+      else if (!(await settleWithin(inFlight, opts.timeoutMs, opts.signal))) {
+        if (isAborted(opts.signal)) throw new VaultError('aborted');
+        return false;
+      }
+    }
+    if (isAborted(opts.signal)) throw new VaultError('aborted');
+    if (!this.logoutPending || !this.isOnline()) return true;
     try {
-      await this.api.logout();
-    } catch {
-      return;
+      await this.api.logout(opts);
+    } catch (e) {
+      if (e instanceof ApiError && e.kind === 'aborted') throw new VaultError('aborted', undefined, { cause: e });
+      if (e instanceof ApiError && e.kind === 'timeout') this.unreachable(e);
+      return !isUnreachable(e);
     }
     this.markLogoutPending(false);
+    return true;
+  }
+
+  /** Remember a timeout (unlocks skip the server for a while) and return the error to report. */
+  private unreachable(e: unknown): VaultError {
+    if (e instanceof ApiError && e.kind === 'timeout') {
+      this.serverSlowUntil = this.scheduler.now() + SLOW_SERVER_MS;
+      return new VaultError('timeout', undefined, { cause: e });
+    }
+    return new VaultError('offline', undefined, { cause: e });
+  }
+
+  private serverSlow(): boolean {
+    return this.scheduler.now() < this.serverSlowUntil;
   }
 
   /**
@@ -929,6 +1077,8 @@ export class Vault {
    */
   private sessionStarted(kind: 'passkey' | 'recovery'): void {
     this.serverSession = kind;
+    this.signIns++;
+    this.serverSlowUntil = 0;
     if (this.logoutPending) this.markLogoutPending(false);
   }
 
@@ -954,15 +1104,19 @@ export class Vault {
 
   // --- Internals: state --------------------------------------------------------------------------
 
-  private async begin(session: Session): Promise<void> {
+  private async begin(session: Session, signal?: AbortSignal): Promise<void> {
     // Decrypt the local copy first, then report "unlocked": the app must never render an unlocked
     // book whose `list()` is still empty. This never waits for the network.
     const gen = this.lockGen;
+    if (isAborted(signal)) {
+      wipe(session.recoveryToken);
+      throw new VaultError('aborted');
+    }
     await this.store.start(storeKeys(session));
-    if (gen !== this.lockGen) {
+    if (gen !== this.lockGen || isAborted(signal)) {
       this.store.stop();
       wipe(session.recoveryToken);
-      throw new VaultError('locked', 'the vault was locked while unlocking');
+      throw gen !== this.lockGen ? new VaultError('locked', 'the vault was locked while unlocking') : new VaultError('aborted');
     }
     this.session = session;
     this.lockReason = null;
@@ -974,6 +1128,27 @@ export class Vault {
 
   private assertGen(gen: number): void {
     if (gen !== this.lockGen) throw new VaultError('locked', 'the vault was locked while unlocking');
+  }
+
+  /** Neither locked nor abandoned since the attempt started. */
+  private assertLive(gen: number, signal: AbortSignal): void {
+    this.assertGen(gen);
+    if (signal.aborted) throw new VaultError('aborted');
+  }
+
+  /** A new unlock attempt: the one still running (a hidden prompt, a slow server) is abandoned. */
+  private newUnlockAttempt(external: AbortSignal | undefined): AbortController {
+    this.unlockCtrl?.abort();
+    const ctrl = linkedController(external);
+    this.unlockCtrl = ctrl;
+    return ctrl;
+  }
+
+  /** Run an unlock attempt in the queue; an abort releases the queue at once. */
+  private attempt<T>(ctrl: AbortController, fn: () => Promise<T>): Promise<T> {
+    return this.exclusive(fn, ctrl.signal).finally(() => {
+      if (this.unlockCtrl === ctrl) this.unlockCtrl = null;
+    });
   }
 
   private knownCredentials(): string[] {
@@ -1013,10 +1188,16 @@ export class Vault {
     return this.credentials;
   }
 
-  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(fn, fn);
+  /**
+   * One operation at a time. With a signal, an abort rejects the caller and frees the queue right
+   * away, even if the abandoned work is stuck (it checks the signal before acting on a late result).
+   */
+  private exclusive<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const aborted = () => new VaultError('aborted', 'this unlock was abandoned');
+    const start = (): Promise<T> => (signal?.aborted === true ? Promise.reject(aborted()) : raceAbort(fn(), signal, aborted));
+    const run = this.queue.then(start, start);
     this.queue = run.catch(() => undefined);
-    return run;
+    return raceAbort(run, signal, aborted);
   }
 
   private emit(): void {
@@ -1130,6 +1311,8 @@ function storeKeys(session: Session) {
 function mapApi(e: unknown): unknown {
   if (!(e instanceof ApiError)) return e;
   if (e.kind === 'network') return new VaultError('offline', undefined, { cause: e });
+  if (e.kind === 'timeout') return new VaultError('timeout', undefined, { cause: e });
+  if (e.kind === 'aborted') return new VaultError('aborted', undefined, { cause: e });
   if (e.kind === 'unauthorized') return new VaultError('needs-session', undefined, { cause: e });
   return e;
 }
@@ -1139,5 +1322,16 @@ function mapPasskey(e: unknown): unknown {
   if (e.code === 'prf-unavailable') return new VaultError('prf-unavailable', undefined, { cause: e });
   if (e.code === 'unsupported') return new VaultError('passkeys-unsupported', undefined, { cause: e });
   if (e.code === 'no-credential') return new VaultError('no-passkey', undefined, { cause: e });
+  if (e.code === 'aborted') return new VaultError('aborted', undefined, { cause: e });
+  if (e.code === 'timeout') return new VaultError('passkey-timeout', undefined, { cause: e });
   return e;
+}
+
+function rethrowPasskey(e: unknown): never {
+  throw mapPasskey(e);
+}
+
+/** A server problem an unlock can step around by opening the local copy: unreachable, too slow, 5xx, 429. */
+function fallsBack(e: unknown): boolean {
+  return isUnreachable(e) || (e instanceof ApiError && (e.kind === 'server' || e.kind === 'rate-limited'));
 }

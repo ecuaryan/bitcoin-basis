@@ -58,7 +58,7 @@ export const KIND_GROUPS: readonly { value: KindGroup; label: string }[] = [
   { value: 'sold', label: 'Sold or spent' },
   { value: 'gave', label: 'Gave' },
   { value: 'lost', label: 'Lost' },
-  { value: 'imported', label: 'Imported lots' },
+  { value: 'imported', label: 'Imported' },
   { value: 'wallets', label: 'Wallet changes' },
   { value: 'checks', label: 'Balance checks' },
   { value: 'settings', label: 'Settings' },

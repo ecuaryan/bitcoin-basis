@@ -8,6 +8,7 @@ import { Amount } from '../../ui/Amount.tsx';
 import { UnlockYearSheet } from '../tax/Tax.tsx';
 import { AddWalletButton } from '../wallet/AddWallet.tsx';
 import { yearLockHistory } from '../tax/tax-logic.ts';
+import { ChevronRightIcon } from '../../ui/icons.tsx';
 
 /** Years that were closed after filing, with their history. Unlocking needs a reason. */
 export function ClosedYearsView() {
@@ -61,7 +62,7 @@ export function WalletsView() {
   const row = (w: (typeof state.wallets)[number]) => {
     const n = sats.get(w.id) ?? 0;
     return (
-      <Link key={w.id} to={`/wallet/${w.id}`} className="flex min-h-14 items-center justify-between gap-3 rounded-xl px-3 text-text no-underline hover:bg-surface-2">
+      <Link key={w.id} to={`/wallet/${w.id}`} className="press-soft flex min-h-14 items-center justify-between gap-3 rounded-xl pl-3 pr-2 text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2">
         <span className="flex flex-col">
           <span className="text-[15px] font-semibold">{w.name}</span>
           <span className="text-xs normal-nums text-muted">
@@ -69,7 +70,10 @@ export function WalletsView() {
             {w.frozen ? ' · frozen' : w.archived ? ' · archived' : ''}
           </span>
         </span>
-        <span className="text-sm font-semibold">{w.type === 'retirement' && n === 0 ? <span className="font-normal text-muted">View only</span> : <Amount sats={n} short interactive={false} />}</span>
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          {w.type === 'retirement' && n === 0 ? <span className="font-normal text-muted">View only</span> : <Amount sats={n} short interactive={false} />}
+          <ChevronRightIcon size={16} className="flex-none text-muted" />
+        </span>
       </Link>
     );
   };

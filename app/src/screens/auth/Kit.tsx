@@ -49,7 +49,7 @@ export function Kit() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 text-[15px] font-bold text-bg hover:bg-amber"
+            className="press flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 text-[15px] font-bold text-bg hover:bg-amber"
           >
             <PrinterIcon size={18} />
             Print
@@ -72,10 +72,10 @@ export function Kit() {
           <div role="alertdialog" aria-label="Leave without saving" className="flex flex-col gap-2 rounded-xl border border-accent bg-surface px-3.5 py-3 text-[13px] leading-[1.45] text-soft">
             <span>Leave without saving the new code? Your old kit no longer works.</span>
             <div className="flex gap-2">
-              <button type="button" autoFocus onClick={() => setLeaving(false)} className="min-h-11 rounded-xl bg-accent px-4 text-sm font-bold text-bg hover:bg-amber">
+              <button type="button" autoFocus onClick={() => setLeaving(false)} className="press min-h-11 rounded-xl bg-accent px-4 text-sm font-bold text-bg hover:bg-amber">
                 Stay
               </button>
-              <button type="button" onClick={() => navigate('/records?v=security')} className="min-h-11 rounded-xl border border-line bg-surface-2 px-4 text-sm font-semibold text-text hover:bg-line">
+              <button type="button" onClick={() => navigate('/records?v=security')} className="press min-h-11 rounded-xl border border-line bg-surface-2 px-4 text-sm font-semibold text-text hover:bg-line">
                 Leave
               </button>
             </div>

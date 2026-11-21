@@ -20,18 +20,26 @@ import { answerReason, defaultTaxYear, flagsForYear, form1099Rows, nextYearLosse
 import { LOSSES_CHECK, staleLosses } from '../../lib/losses.ts';
 import { useWriter } from '../../ui/use-writer.ts';
 import { useTitle } from '../../ui/use-title.ts';
+import { TERM_HELP } from '../../lib/terms.ts';
+import { useHelp } from '../../ui/Help.tsx';
 
-function Rows({ rows, label }: { rows: readonly [string, ReactNode][]; label: string }) {
+/** A card of label/value rows. `help` puts a "?" after one row's label, with its answer under the rows. */
+function Rows({ rows, label, help }: { rows: readonly [string, ReactNode][]; label: string; help?: { row: string; label: string; text: string } }) {
+  const h = useHelp(help?.label ?? '', help?.text ?? '');
   return (
     <section aria-label={label} className="rounded-[18px] border border-line bg-surface px-4 py-1">
       <dl className="m-0">
         {rows.map(([k, v], i) => (
           <div key={k} className={cx('flex min-h-12 items-center justify-between gap-4', i < rows.length - 1 && 'border-b border-line')}>
-            <dt className="text-sm text-soft">{k}</dt>
+            <dt className="flex items-center gap-1 text-sm text-soft">
+              {k}
+              {help?.row === k ? h.button : null}
+            </dt>
             <dd className="m-0 text-right text-sm font-semibold">{v}</dd>
           </div>
         ))}
       </dl>
+      {help && h.panel ? <div className="border-t border-line py-3">{h.panel}</div> : null}
     </section>
   );
 }
@@ -56,14 +64,14 @@ function CloseYearSheet({ year, onClose }: { year: number; onClose(): void }) {
   async function close() {
     await append([{ id: newIdGenerator(entries)(), kind: 'close-year', at: entryInstant(isDemo, today), tz: state.settings.timeZone, year }]);
     if (carry === null) {
-      toast.show(`${year} is closed.`);
+      toast.show(`${year} is closed.`, { success: true });
       onClose();
     } else setClosedNow(true);
   }
   async function saveThese() {
     if (carry === null) return;
     await write({ kind: 'settings', patch: { carryforwardStCents: carry.st, carryforwardLtCents: carry.lt, carryforwardYear: year + 1 } });
-    toast.show(`Saved for ${year + 1}.`);
+    toast.show(`Saved for ${year + 1}.`, { success: true });
     onClose();
   }
   if (closedNow && carry !== null) {
@@ -125,7 +133,7 @@ export function UnlockYearSheet({ year, onClose }: { year: number; onClose(): vo
   const [reason, setReason] = useState('');
   async function unlock() {
     await append([{ id: newIdGenerator(entries)(), kind: 'unlock-year', at: entryInstant(isDemo, today), tz: state.settings.timeZone, year, reason: reason.trim() }]);
-    toast.show(`${year} is unlocked.`);
+    toast.show(`${year} is unlocked.`, { success: true });
     onClose();
   }
   return (
@@ -365,7 +373,7 @@ export function Tax() {
               </Link>
             </p>
           )}
-          <Rows label="Summary" rows={summaryRows} />
+          <Rows label="Summary" rows={summaryRows} help={{ row: 'Short-term total', label: 'What are short-term and long-term?', text: TERM_HELP }} />
           <Rows label="After losses from past years" rows={afterRows} />
           {income}
         </div>

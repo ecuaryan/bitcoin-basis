@@ -70,7 +70,7 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
         ...(perBtc === null ? [] : [{ label: 'Cost per BTC', value: <Money cents={perBtc} /> }]),
         { label: 'When', value: whenLabel(at, tz, nowMs) },
         { label: 'Wallet', value: w.name },
-        { label: 'Proof', value: proofText || 'None yet' },
+        { label: 'Receipt', value: proofText || 'None yet' },
         { label: 'How sure', value: TIER_LABEL[tier] },
       ],
       build: () => [entry],
@@ -101,7 +101,7 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
         <MoneyInput label="Total paid, including fees" value={paid} onChange={setPaid} error={tried ? errors.paid : null} trailing={perBtc === null ? null : `${formatMoney(perBtc)} per BTC`} />
       )}
       <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
-      <TextField label="Proof" value={proofText} onChange={(e) => setProof(e.target.value)} autoComplete="off" hint={w && proof === null ? `${w.name}'s usual` : undefined} />
+      <TextField label="Receipt" value={proofText} onChange={(e) => setProof(e.target.value)} autoComplete="off" hint={w && proof === null ? `${w.name}'s usual` : undefined} />
       <details className="rounded-2xl border border-line px-3.5 py-1">
         <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-soft">More details</summary>
         <div className="flex flex-col gap-3 pb-3">

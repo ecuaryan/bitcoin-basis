@@ -13,7 +13,12 @@
  * try one follow-up `get` with a local challenge (several platforms only evaluate PRF on `get`).
  * With no PRF, a passkey can still sign in, but the vault on that device unlocks with the recovery
  * code.
+ *
+ * Every prompt takes the caller's `AbortSignal` and has a backstop timeout: on some phones a prompt
+ * the browser decides not to show (no recent tap, page not focused) never settles at all, and
+ * nothing waiting on it may hang because of that.
  */
+import { linkedController, raceAbort, withTimeout } from './abort.ts';
 import { fromHex, randomBytes, toBase64Url, fromBase64Url, toBytes, type Bytes } from './bytes.ts';
 
 /** `SHA-256("bitcoin-basis/prf/v1")`: the PRF `eval.first` input for every credential. Frozen. */
@@ -32,7 +37,26 @@ export interface CredentialsLike {
 
 export type PrfSupport = 'supported' | 'unsupported' | 'unknown';
 
-export type PasskeyErrorCode = 'unsupported' | 'cancelled' | 'no-credential' | 'prf-unavailable' | 'failed';
+export type PasskeyErrorCode =
+  | 'unsupported'
+  | 'cancelled'
+  | 'no-credential'
+  | 'prf-unavailable'
+  | 'failed'
+  /** The caller's signal fired (a newer attempt started, or "Try again"). */
+  | 'aborted'
+  /** The prompt never answered within the backstop timeout. */
+  | 'timeout';
+
+/** Backstop for a prompt that never settles: a little over the longest timeout we ask the browser for. */
+export const PROMPT_BACKSTOP_MS = 150_000;
+
+/** Per-prompt options. */
+export interface PromptOptions {
+  readonly signal?: AbortSignal | undefined;
+  /** Default `PROMPT_BACKSTOP_MS`. */
+  readonly backstopMs?: number | undefined;
+}
 
 export class PasskeyError extends Error {
   override readonly name = 'PasskeyError';
@@ -117,7 +141,7 @@ export async function detectPrfSupport(pkc: unknown = (globalThis as { PublicKey
   const getCaps = (pkc as { getClientCapabilities?: () => Promise<Record<string, boolean | undefined>> } | undefined)?.getClientCapabilities;
   if (typeof getCaps !== 'function') return 'unknown';
   try {
-    const caps = await getCaps.call(pkc);
+    const caps = await withTimeout(getCaps.call(pkc), 3_000, () => new Error('getClientCapabilities did not answer'));
     const prf = caps['extension:prf'];
     return prf === true ? 'supported' : prf === false ? 'unsupported' : 'unknown';
   } catch {
@@ -181,10 +205,10 @@ export interface CreatedPasskey {
  * Create a passkey, asking for PRF with `eval.first = PRF_INPUT`. If the create result lacks PRF
  * results (and didn't say PRF is disabled), runs one follow-up `get` to evaluate it.
  */
-export async function createPasskey(creds: CredentialsLike, optionsJSON: PublicKeyCredentialCreationOptionsJSON): Promise<CreatedPasskey> {
+export async function createPasskey(creds: CredentialsLike, optionsJSON: PublicKeyCredentialCreationOptionsJSON, opts: PromptOptions = {}): Promise<CreatedPasskey> {
   const publicKey = creationOptionsFromJSON(optionsJSON);
   publicKey.extensions = { ...publicKey.extensions, credProps: true, prf: { eval: { first: prfInput() } } } as AuthenticationExtensionsClientInputs;
-  const cred = asPublicKeyCredential(await call(() => creds.create({ publicKey })));
+  const cred = asPublicKeyCredential(await prompt((signal) => creds.create({ publicKey, signal }), opts));
   const ext = cred.getClientExtensionResults() as { prf?: { enabled?: boolean; results?: { first?: BufferSource } } };
   const credentialId = toBase64Url(toBytes(cred.rawId));
   const response = registrationToJSON(cred);
@@ -192,9 +216,9 @@ export async function createPasskey(creds: CredentialsLike, optionsJSON: PublicK
   if (prfOutput === null && ext.prf?.enabled !== false) {
     const rpId = optionsJSON.rp.id;
     try {
-      prfOutput = (await evaluatePrf(creds, [credentialId], rpId)).prfOutput;
+      prfOutput = (await evaluatePrf(creds, [credentialId], rpId, opts)).prfOutput;
     } catch (e) {
-      if (e instanceof PasskeyError && e.code === 'cancelled') throw e;
+      if (e instanceof PasskeyError && (e.code === 'cancelled' || e.code === 'aborted')) throw e;
       prfOutput = null;
     }
   }
@@ -212,11 +236,11 @@ export interface Assertion {
  * One `get` prompt, always requesting PRF on `PRF_INPUT`. With `knownIds`, the prompt is restricted
  * to those credentials; with none, it is discoverable (a fresh device with a synced passkey).
  */
-export async function getAssertion(creds: CredentialsLike, optionsJSON: PublicKeyCredentialRequestOptionsJSON, knownIds: readonly Base64URLString[]): Promise<Assertion> {
+export async function getAssertion(creds: CredentialsLike, optionsJSON: PublicKeyCredentialRequestOptionsJSON, knownIds: readonly Base64URLString[], opts: PromptOptions = {}): Promise<Assertion> {
   const publicKey = requestOptionsFromJSON(optionsJSON);
   if (knownIds.length > 0) publicKey.allowCredentials = knownIds.map((id) => ({ id: fromBase64Url(id), type: 'public-key' }));
   publicKey.extensions = { ...publicKey.extensions, prf: { eval: { first: prfInput() } } } as AuthenticationExtensionsClientInputs;
-  const cred = asPublicKeyCredential(await call(() => creds.get({ publicKey })));
+  const cred = asPublicKeyCredential(await prompt((signal) => creds.get({ publicKey, signal }), opts));
   const credentialId = toBase64Url(toBytes(cred.rawId));
   if (knownIds.length > 0 && !knownIds.includes(credentialId)) throw new PasskeyError('no-credential', 'the authenticator answered with an unknown passkey');
   const ext = cred.getClientExtensionResults() as { prf?: { results?: { first?: BufferSource } } };
@@ -224,11 +248,11 @@ export async function getAssertion(creds: CredentialsLike, optionsJSON: PublicKe
 }
 
 /** A `get` with a local random challenge, only to evaluate PRF (offline unlock, or after `create`). */
-export async function evaluatePrf(creds: CredentialsLike, knownIds: readonly Base64URLString[], rpId?: string): Promise<{ credentialId: string; prfOutput: Bytes }> {
+export async function evaluatePrf(creds: CredentialsLike, knownIds: readonly Base64URLString[], rpId?: string, opts: PromptOptions = {}): Promise<{ credentialId: string; prfOutput: Bytes }> {
   if (knownIds.length === 0) throw new PasskeyError('no-credential', 'no passkey with PRF is set up on this device');
   const options: PublicKeyCredentialRequestOptionsJSON = { challenge: toBase64Url(randomBytes(32)), userVerification: 'required', timeout: 120_000 };
   if (rpId !== undefined) options.rpId = rpId;
-  const a = await getAssertion(creds, options, knownIds);
+  const a = await getAssertion(creds, options, knownIds, opts);
   if (a.prfOutput === null) throw new PasskeyError('prf-unavailable', 'this passkey or browser does not support the PRF extension');
   return { credentialId: a.credentialId, prfOutput: a.prfOutput };
 }
@@ -302,6 +326,38 @@ function prfResult(ext: { prf?: { results?: { first?: BufferSource } } }): Bytes
 function asPublicKeyCredential(c: Credential | null): PublicKeyCredential {
   if (c === null || c.type !== 'public-key') throw new PasskeyError('failed', 'no passkey was returned');
   return c as PublicKeyCredential;
+}
+
+/**
+ * Run one browser prompt with an abort signal of its own: it fires when the caller's does or when
+ * the backstop runs out, and the wait is raced against it, so even a browser that ignores the
+ * signal can't keep us waiting.
+ */
+async function prompt<T>(fn: (signal: AbortSignal) => Promise<T>, opts: PromptOptions): Promise<T> {
+  const ctrl = linkedController(opts.signal);
+  let timedOut = false;
+  const stopped = () => (timedOut ? new PasskeyError('timeout', 'the passkey prompt did not answer') : new PasskeyError('aborted', 'the passkey prompt was abandoned'));
+  if (ctrl.signal.aborted) throw stopped();
+  const backstop = opts.backstopMs ?? PROMPT_BACKSTOP_MS;
+  const started = call(() => fn(ctrl.signal));
+  try {
+    return await raceAbort(
+      withTimeout(started, backstop, () => {
+        timedOut = true;
+        ctrl.abort();
+        return stopped();
+      }),
+      ctrl.signal,
+      stopped,
+    );
+  } catch (e) {
+    // The browser reports our own abort as AbortError ("cancelled"): say what really happened.
+    if (ctrl.signal.aborted && e instanceof PasskeyError && e.code === 'cancelled') throw stopped();
+    throw e;
+  } finally {
+    started.catch(() => undefined);
+    if (!ctrl.signal.aborted) ctrl.abort();
+  }
 }
 
 async function call<T>(fn: () => Promise<T>): Promise<T> {

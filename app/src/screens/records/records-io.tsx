@@ -89,7 +89,7 @@ function ImportLots() {
       return;
     }
     const n = p.entries.length;
-    toast.show(`Added ${n} ${n === 1 ? 'coin' : 'coins'}${p.newWallets.length > 0 ? ` and ${p.newWallets.length} ${p.newWallets.length === 1 ? 'wallet' : 'wallets'}` : ''}.`);
+    toast.show(`Added ${n} ${n === 1 ? 'coin' : 'coins'}${p.newWallets.length > 0 ? ` and ${p.newWallets.length} ${p.newWallets.length === 1 ? 'wallet' : 'wallets'}` : ''}.`, { success: true });
     setFile(null);
     setProgress(null);
     navigate('/');
@@ -242,7 +242,7 @@ function ImportJson() {
                 disabled={preview.fresh.length === 0}
                 onClick={() => {
                   void append(preview.fresh).then(() => {
-                    toast.show(`Added ${preview.fresh.length} entries.`);
+                    toast.show(`Added ${preview.fresh.length} entries.`, { success: true });
                     setPreview(null);
                   });
                 }}
@@ -265,7 +265,7 @@ function Export() {
   return (
     <Card as="section" aria-label="Download" className="flex flex-col gap-3 !rounded-[18px] !p-4">
       <h2 className="m-0 text-[15px] font-semibold">Download</h2>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <Button onClick={() => downloadText('bitcoin-basis-entries.json', exportEntriesJson(entries), 'application/json')}>
           <DownloadIcon size={16} /> Backup file (keeps everything)
         </Button>
@@ -290,7 +290,7 @@ function Export() {
           </SelectBox>
         )}
         {/* The year picker sits right beside it, so the label only names the year when there is no picker. */}
-        <Button aria-label={`Form 8949 for ${year}`} onClick={() => downloadText(`form-8949-${year}.csv`, form8949Csv(state, year))}>
+        <Button aria-label={`Form 8949 for ${year}`} className="flex-1 sm:flex-none" onClick={() => downloadText(`form-8949-${year}.csv`, form8949Csv(state, year))}>
           <DownloadIcon size={16} /> {years.length > 1 ? 'Form 8949' : `Form 8949 for ${year}`}
         </Button>
       </div>

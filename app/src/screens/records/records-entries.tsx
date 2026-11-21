@@ -63,11 +63,11 @@ function facts(e: Entry, name: (id: string) => string): [string, ReactNode][] {
     case 'receive':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['Source', e.source.type]];
     case 'move':
-      return [['From', name(e.from)], ['To', name(e.to)], coins('Coins arriving', e.sats), coins('Network fee', e.feeSats), ['Coins used', countOf(e.picks.length, 'lot')]];
+      return [['From', name(e.from)], ['To', name(e.to)], coins('Coins arriving', e.sats), coins('Network fee', e.feeSats), ['Coins used', countOf(e.picks.length, 'batch', 'batches')]];
     case 'sell':
-      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash(e.spent ? 'Value spent' : 'Proceeds', e.proceedsCents), ['Coins used', countOf(e.picks.length, 'lot')], ...(e.description ? ([['What for', e.description]] as [string, ReactNode][]) : [])];
+      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash(e.spent ? 'Value spent' : 'Proceeds', e.proceedsCents), ['Coins used', countOf(e.picks.length, 'batch', 'batches')], ...(e.description ? ([['What for', e.description]] as [string, ReactNode][]) : [])];
     case 'give':
-      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['To', `${e.recipient} (${e.to})`], ['Coins used', countOf(e.picks.length, 'lot')]];
+      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['To', `${e.recipient} (${e.to})`], ['Coins used', countOf(e.picks.length, 'batch', 'batches')]];
     case 'lost':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), ['Cause', e.cause.replace('-', ' ')]];
     case 'opening-lot':
@@ -93,7 +93,7 @@ export function EntrySheet({ item, state, today, onClose }: { item: EntryItem; s
   const rows: [string, ReactNode][] = [
     ['When', `${shortDate(localDate(e.at, e.tz), today)} · ${e.tz.replace('_', ' ')}`],
     ...facts(e, name),
-    ...(e.proof ? ([['Proof', e.proof]] as [string, ReactNode][]) : []),
+    ...(e.proof ? ([['Receipt', e.proof]] as [string, ReactNode][]) : []),
     ...(e.note ? ([['Note', e.note]] as [string, ReactNode][]) : []),
   ];
   const history = [...item.versions].reverse();

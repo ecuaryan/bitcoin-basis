@@ -64,7 +64,7 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
     const id = `${slug(trimmed) || 'wallet'}-${uuidv7().slice(-6)}`;
     const entry: WalletEntry = { id: uuidv7(), kind: 'wallet', wallet: id, name: trimmed, type, defaultProof: proof, at: nowInstant(Date.now()), tz: state.settings.timeZone };
     await append([entry]);
-    toast.show(`${trimmed} added.`);
+    toast.show(`${trimmed} added.`, { success: true });
     onAdded?.(id);
     onClose();
   }

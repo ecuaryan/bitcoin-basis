@@ -1,9 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useInRouterContext, useLocation } from 'react-router';
+import { confirmHaptic } from './haptics.ts';
 
 export interface ToastOptions {
   /** A button in the toast, such as Undo. Gives the person longer to reach it. */
   action?: { label: string; onClick(): void };
+  /** Something the person did worked (saved, added, confirmed): a check draws in and Android phones tap once. */
+  success?: boolean;
 }
 
 interface ToastApi {
@@ -16,6 +19,7 @@ interface Message {
   id: number;
   text: string;
   action?: ToastOptions['action'];
+  success: boolean;
 }
 
 /**
@@ -41,7 +45,8 @@ export function ToastProvider({ children, durationMs = 2500 }: { children: React
     (text: string, options?: ToastOptions) => {
       counter.current += 1;
       shownAt.current = Date.now();
-      setMessage({ id: counter.current, text, ...(options?.action ? { action: options.action } : {}) });
+      setMessage({ id: counter.current, text, success: options?.success === true, ...(options?.action ? { action: options.action } : {}) });
+      if (options?.success === true) confirmHaptic();
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setMessage(null), options?.action ? durationMs * 2 : durationMs);
     },
@@ -56,7 +61,8 @@ export function ToastProvider({ children, durationMs = 2500 }: { children: React
       {inRouter ? <RouteWatcher onChange={dismissOnMove} /> : null}
       <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 top-[max(12px,env(safe-area-inset-top))] z-[60] flex justify-center px-4">
         {message && (
-          <div key={message.id} className={`animate-toast-in flex items-center gap-3 rounded-2xl border border-line bg-surface-2 py-3 pl-4 text-sm font-medium text-text shadow-2xl ${message.action ? 'pointer-events-auto pr-1.5' : 'pr-4'}`}>
+          <div key={message.id} className={`animate-toast-in flex items-center gap-3 rounded-2xl border border-line bg-surface-2 py-3 text-sm font-medium text-text shadow-[0_12px_32px_rgb(0_0_0/0.5)] ${message.success ? 'pl-3' : 'pl-4'} ${message.action ? 'pointer-events-auto pr-1.5' : 'pr-4'}`}>
+            {message.success && <SuccessCheck />}
             <span>{message.text}</span>
             {message.action && (
               <button
@@ -75,6 +81,17 @@ export function ToastProvider({ children, durationMs = 2500 }: { children: React
         )}
       </div>
     </ToastContext.Provider>
+  );
+}
+
+/** A small orange disc whose check mark draws in (instantly under reduced motion). */
+function SuccessCheck() {
+  return (
+    <span aria-hidden="true" className="flex size-6 flex-none animate-pop items-center justify-center rounded-full bg-accent text-bg">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 12.5l4.5 4.5L19 7.5" pathLength={1} className="animate-check-draw [stroke-dasharray:1]" />
+      </svg>
+    </span>
   );
 }
 

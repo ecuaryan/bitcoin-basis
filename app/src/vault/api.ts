@@ -4,14 +4,20 @@
  * Same origin only: relative URLs, `credentials: 'same-origin'` (the session is an HttpOnly
  * cookie), JSON bodies except the blob upload. Binary fields in JSON are unpadded base64url
  * (the decoder also accepts standard base64).
- * Every failure is an `ApiError` with a `kind` the vault can act on.
+ * Every failure is an `ApiError` with a `kind` the vault can act on. Every request has a timeout
+ * (default 15 s, uploads 60 s), so a stalled connection becomes a `timeout` error, never a hang.
  */
+import { linkedController, raceAbort } from './abort.ts';
 import { fromBase64Url, type Bytes } from './bytes.ts';
 import type { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from './passkey.ts';
 
 export type ApiErrorKind =
-  /** No response at all (offline, DNS, CORS, aborted). */
+  /** No response at all (offline, DNS, CORS). */
   | 'network'
+  /** No answer in time: a slow server or a stalled connection (e.g. a phone just back from the background). */
+  | 'timeout'
+  /** The caller gave up (its `AbortSignal` fired). */
+  | 'aborted'
   | 'bad-request'
   /** 401: no session, or wrong recovery token. */
   | 'unauthorized'
@@ -135,15 +141,26 @@ export interface BlobPage {
 
 export const MAX_PAGE = 200;
 
+/** Per-call options: the caller's cancel signal and a tighter timeout (the client's default otherwise). */
+export interface RequestOptions {
+  readonly signal?: AbortSignal | undefined;
+  readonly timeoutMs?: number | undefined;
+}
+
+/** The server can't be reached right now (offline, or too slow): the vault falls back to the local copy. */
+export function isUnreachable(e: unknown): boolean {
+  return e instanceof ApiError && (e.kind === 'network' || e.kind === 'timeout');
+}
+
 export interface ApiClient {
   status(): Promise<{ claimed: boolean }>;
   registerOptions(auth: { setupCode: string } | null): Promise<ChallengeOptions<PublicKeyCredentialCreationOptionsJSON>>;
   /** Stores the credential and starts a session (cookie). */
   registerVerify(body: RegisterVerifyBody): Promise<{ credentialId: string }>;
-  loginOptions(): Promise<ChallengeOptions<PublicKeyCredentialRequestOptionsJSON>>;
-  loginVerify(body: { response: AuthenticationResponseJSON; challengeToken: string }): Promise<LoginResult>;
-  recoveryParams(): Promise<RecoveryParams>;
-  recoveryLogin(authToken: string): Promise<RecoveryLoginResult>;
+  loginOptions(opts?: RequestOptions): Promise<ChallengeOptions<PublicKeyCredentialRequestOptionsJSON>>;
+  loginVerify(body: { response: AuthenticationResponseJSON; challengeToken: string }, opts?: RequestOptions): Promise<LoginResult>;
+  recoveryParams(opts?: RequestOptions): Promise<RecoveryParams>;
+  recoveryLogin(authToken: string, opts?: RequestOptions): Promise<RecoveryLoginResult>;
   /** Needs a passkey session and a `rotate` step-up. */
   recoveryRotate(body: RotateBody): Promise<{ version: number }>;
   /** A step-up challenge for this (passkey) session, valid five minutes, for one purpose. */
@@ -155,7 +172,7 @@ export interface ApiClient {
   uploadBlob(blob: Bytes): Promise<{ key: string }>;
   /** `after` is a key or any `e/<13 digits>` prefix; `null` lists from the start. */
   listBlobs(after: string | null, limit?: number): Promise<BlobPage>;
-  logout(): Promise<void>;
+  logout(opts?: RequestOptions): Promise<void>;
 }
 
 export interface ApiClientOptions {
@@ -163,14 +180,38 @@ export interface ApiClientOptions {
   readonly fetch?: (input: string, init: RequestInit) => Promise<Response>;
   /** Prefix for every path; default `''` (same origin). */
   readonly baseUrl?: string;
+  /** Default 15 000 ms for every request. */
+  readonly timeoutMs?: number;
+  /** Default 60 000 ms for a blob upload. */
+  readonly uploadTimeoutMs?: number;
 }
 
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const doFetch = options.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
   const base = options.baseUrl ?? '';
+  const defaultTimeout = options.timeoutMs ?? 15_000;
+  const uploadTimeout = options.uploadTimeoutMs ?? 60_000;
 
-  async function request(method: 'GET' | 'POST', path: string, body?: unknown, raw?: Bytes): Promise<unknown> {
-    const init: RequestInit = { method, credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store' };
+  async function request(method: 'GET' | 'POST', path: string, body?: unknown, raw?: Bytes, opts: RequestOptions = {}): Promise<unknown> {
+    const ctrl = linkedController(opts.signal);
+    let timedOut = false;
+    const ms = opts.timeoutMs ?? (raw !== undefined ? uploadTimeout : defaultTimeout);
+    const timer = globalThis.setTimeout(() => {
+      timedOut = true;
+      ctrl.abort();
+    }, ms);
+    const stopped = () => (timedOut ? new ApiError('timeout', null, `the server did not answer within ${Math.round(ms / 1000)} s`) : new ApiError('aborted', null, 'request cancelled'));
+    try {
+      // Raced against the signal too: a fetch implementation that ignores `signal` still can't hang us.
+      return await raceAbort(send(method, path, body, raw, ctrl.signal, stopped), ctrl.signal, stopped);
+    } finally {
+      globalThis.clearTimeout(timer);
+      ctrl.abort(); // detach from the caller's signal
+    }
+  }
+
+  async function send(method: 'GET' | 'POST', path: string, body: unknown, raw: Bytes | undefined, signal: AbortSignal, stopped: () => ApiError): Promise<unknown> {
+    const init: RequestInit = { method, credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store', signal };
     if (raw !== undefined) {
       init.headers = { ...init.headers, 'Content-Type': 'application/octet-stream' };
       init.body = raw;
@@ -182,6 +223,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     try {
       res = await doFetch(base + path, init);
     } catch (e) {
+      if (signal.aborted) throw stopped();
       throw new ApiError('network', null, 'could not reach the server', { cause: e });
     }
     if (!res.ok) throw new ApiError(kindFor(res.status), res.status);
@@ -194,7 +236,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     }
   }
 
-  const post = (path: string, body?: unknown) => request('POST', path, body);
+  const post = (path: string, body?: unknown, opts?: RequestOptions) => request('POST', path, body, undefined, opts);
 
   return {
     async status() {
@@ -208,11 +250,11 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const r = obj(await post('/api/register/verify', body));
       return { credentialId: str(r.credentialId) };
     },
-    async loginOptions() {
-      return challenge<PublicKeyCredentialRequestOptionsJSON>(await post('/api/login/options', {}));
+    async loginOptions(opts) {
+      return challenge<PublicKeyCredentialRequestOptionsJSON>(await post('/api/login/options', {}, opts));
     },
-    async loginVerify(body) {
-      const r = obj(await post('/api/login/verify', body));
+    async loginVerify(body, opts) {
+      const r = obj(await post('/api/login/verify', body, opts));
       const c = obj(r.credential);
       const keys = epochKeys(r.keys);
       if (keys.delivery === null) throw bad('login without a delivery');
@@ -222,12 +264,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         keys: { ...keys, delivery: keys.delivery },
       };
     },
-    async recoveryParams() {
-      const r = obj(await request('GET', '/api/recovery/params'));
+    async recoveryParams(opts) {
+      const r = obj(await request('GET', '/api/recovery/params', undefined, undefined, opts));
       return { vaultId: str(r.vaultId), version: int(r.version), salt: str(r.salt) };
     },
-    async recoveryLogin(authToken) {
-      const r = obj(await post('/api/recovery/login', { authToken }));
+    async recoveryLogin(authToken, opts) {
+      const r = obj(await post('/api/recovery/login', { authToken }, opts));
       return { wrappedDk: str(r.wrappedDk), version: int(r.version), history: optStr(r.history) };
     },
     async recoveryRotate(body) {
@@ -273,8 +315,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       }
       return { blobs, more: bool(r.more) };
     },
-    async logout() {
-      await post('/api/logout', {});
+    async logout(opts) {
+      await post('/api/logout', {}, opts);
     },
   };
 }

@@ -13,6 +13,7 @@ import { Card } from '../../ui/Card.tsx';
 import { BtcInput } from '../../ui/formatted-inputs.tsx';
 import { ChevronDownIcon } from '../../ui/more-icons.tsx';
 import { Note, PlanCard, PlanChoice, Sentence } from './sell-parts.tsx';
+import { TERM_HELP } from '../../lib/terms.ts';
 import { PickCoinsSheet, PrepareSaleSheet, SaleReviewSheet, WalletSheet } from './sell-sheets.tsx';
 import { carriedOut, defaultSats, documentationNote, needsBrokerInstruction, picksFromSelection, planFor, planForWallet, stepFor, summarize, type PlanKey } from './sell-logic.ts';
 
@@ -185,6 +186,7 @@ export function Sell() {
             {/* The 44px tap target overlaps the card's gap, so "Why?" sits as close as the lines above it. */}
             <summary className="-my-2.5 flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-soft">Why?</summary>
             <div className="flex flex-col gap-3 pb-1 pt-3.5">
+              <Note>{TERM_HELP}</Note>
               <Note>{documentationNote(plans.oldestFirst, plans.lowestTax)}</Note>
               {plans.lowestTax.deferredNote !== null && needsBrokerInstruction(plans.lowestTax) && <Note>{plans.lowestTax.deferredNote}</Note>}
               {plans.lowestTax.note !== null && <Note>{plans.lowestTax.note}</Note>}

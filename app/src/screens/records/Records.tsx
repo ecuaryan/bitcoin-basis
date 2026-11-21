@@ -18,6 +18,7 @@ import { useVaultStatusOptional } from '../../data/vault-provider.tsx';
 import { buildItems } from './records-logic.ts';
 import { useState } from 'react';
 import { useTitle } from '../../ui/use-title.ts';
+import { ChevronRightIcon } from '../../ui/icons.tsx';
 
 type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'io' | 'settings' | 'security';
 const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'io', 'settings', 'security'];
@@ -33,12 +34,15 @@ function Tile({ to, title, sub, hot, active, className }: { to: string; title: s
       to={to}
       aria-current={active ? 'page' : undefined}
       className={cx(
-        'flex min-h-[92px] flex-col justify-between rounded-2xl border bg-surface p-3 text-text no-underline hover:bg-surface-2',
+        'press-soft flex min-h-[92px] flex-col justify-between rounded-2xl border bg-surface p-3 text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2',
         active ? 'border-accent' : 'border-line',
         className,
       )}
     >
-      <span className="text-[13px] font-semibold leading-tight text-balance">{title}</span>
+      <span className="flex items-start justify-between gap-2">
+        <span className="text-[13px] font-semibold leading-tight text-balance">{title}</span>
+        <ChevronRightIcon size={16} className="-mr-0.5 flex-none text-muted" />
+      </span>
       <span className={cx('text-xs', hot ? 'font-semibold text-amber' : 'text-muted')}>{sub}</span>
     </Link>
   );
@@ -64,7 +68,7 @@ export function Records() {
   const tiles: ReactNode = (
     <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-7' : 'grid-cols-6') : 'grid-cols-2 min-[480px]:grid-cols-3')}>
       {due !== null && <Tile to="/records?v=giving" title={state.settings.givingName} sub={`${formatMoney(Math.max(0, due.owedCents))} due`} hot={due.owedCents > 0} active={view === 'giving'} />}
-      <Tile to="/records?v=closed" title="Closed years" sub={state.closedYears.length === 0 ? 'None yet' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
+      <Tile to="/records?v=closed" title="Closed years" sub={state.closedYears.length === 0 ? 'Lock a year once filed' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
       <Tile to="/records?v=wallets" title="Wallets" sub={`${active} active`} active={view === 'wallets'} />
       <Tile to="/records?v=io" title={'Import and\u00a0export'} sub="CSV · backup" active={view === 'io'} />
       <Tile to="/records?v=settings" title="Settings" sub="Taxes · time zone" active={view === 'settings'} />

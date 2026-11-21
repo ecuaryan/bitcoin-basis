@@ -1,16 +1,17 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { Route, Routes } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeAuthenticator } from '../../vault/test/fake-authenticator.ts';
 import { FakeServer } from '../../vault/test/fake-server.ts';
 import { makeDevice, settle } from '../../vault/test/harness.ts';
 import { SETUP_CODE, deviceWithVault, renderWithVault, restoredLockedDevice } from '../../test/vault-fixture.tsx';
-import type { Rendered } from '../../test/render.tsx';
+import { click, type Rendered } from '../../test/render.tsx';
 import { PasskeyError } from '../../vault/passkey.ts';
 import { currentPlatform } from '../../data/platform.ts';
 import { RequireVault } from './RequireVault.tsx';
-import { Unlock, resetAutoPrompt, shouldAutoPrompt } from './Unlock.tsx';
+import { SLOW_AFTER_MS, Unlock, resetAutoPrompt, shouldAutoPrompt } from './Unlock.tsx';
+import type { UnlockOptions, UnlockResult } from '../../vault/index.ts';
 
 let app: Rendered | null = null;
 afterEach(() => {
@@ -70,7 +71,15 @@ describe('route guard', () => {
 });
 
 describe('Unlock', () => {
-  beforeEach(() => resetAutoPrompt());
+  beforeEach(() => {
+    resetAutoPrompt();
+    // happy-dom never has focus; a real visible, focused page does.
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
   const label = () => document.querySelector('button')?.textContent ?? '';
 
   it.each([
@@ -120,6 +129,9 @@ describe('Unlock', () => {
 
   /** A page reload: a new Vault on the same stored data, locked, with nobody having pressed Lock. */
   async function reloaded() {
+    return (await reloadedWithAuth()).device;
+  }
+  async function reloadedWithAuth() {
     const server = new FakeServer(SETUP_CODE);
     const auth = new FakeAuthenticator('test');
     const first = await makeDevice(server, auth);
@@ -127,8 +139,99 @@ describe('Unlock', () => {
     await settle();
     const device = await makeDevice(server, auth, { db: first.db });
     expect(device.vault.status.lockReason).toBeNull();
-    return device;
+    return { device, auth };
   }
+
+  /** Let the automatic prompt start (it waits one timer tick) and its promise chains run. */
+  const arrive = () =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      await settle();
+    });
+
+  /** An unlock that reports `step` and then waits until it is aborted. */
+  function pending(step: 'passkey' | 'signing-in') {
+    const signals: AbortSignal[] = [];
+    const fn = (o: UnlockOptions = {}): Promise<UnlockResult> => {
+      o.onStep?.(step);
+      if (o.signal !== undefined) signals.push(o.signal);
+      return new Promise((_, reject) => o.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'VaultError', code: 'aborted' }))));
+    };
+    return { fn, signals };
+  }
+
+  it('does not prompt by itself while the page is hidden or not focused (a home-screen app still launching)', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    const device = await reloaded();
+    let asked = 0;
+    device.vault.unlockWithPasskey = () => {
+      asked += 1;
+      return Promise.reject(new PasskeyError('cancelled'));
+    };
+    app = await renderWithVault(<Unlock platform="android" />, device);
+    await arrive();
+    expect(asked).toBe(0);
+    expect(label()).toBe('Unlock');
+  });
+
+  it('an automatic prompt the phone never shows: the button stays live, a tap starts over and unlocks', async () => {
+    const { device, auth } = await reloadedWithAuth();
+    auth.hangGets = 1;
+    app = await renderWithVault(<Unlock platform="android" />, device);
+    await arrive();
+    expect(auth.calls.get).toBeGreaterThan(0);
+    expect(label()).toBe('Waiting for your fingerprint…');
+    const button = document.querySelector('button') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    await click(button);
+    await act(settle);
+    expect(device.vault.status.state).toBe('unlocked');
+    expect(auth.getSignals[0]?.aborted).toBe(true);
+    expect(app.container.querySelector('[role=alert]')).toBeNull();
+  });
+
+  it('shows each step on the button; after signing in starts, the button waits', async () => {
+    const { device } = await deviceWithVault('locked');
+    const p = pending('signing-in');
+    device.vault.unlockWithPasskey = p.fn;
+    app = await renderWithVault(<Unlock platform="android" />, device);
+    await click(document.querySelector('button') as HTMLButtonElement);
+    expect(label()).toBe('Signing in…');
+    expect((document.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('after 20 s on one step: "Taking too long? Try again" aborts and resets', async () => {
+    const { device } = await deviceWithVault('locked');
+    const p = pending('signing-in');
+    device.vault.unlockWithPasskey = p.fn;
+    app = await renderWithVault(<Unlock platform="macos" />, device);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await click(document.querySelector('button') as HTMLButtonElement);
+    const tryAgain = () => [...document.querySelectorAll('button')].find((b) => b.textContent === 'Taking too long? Try again');
+    await act(async () => {
+      vi.advanceTimersByTime(SLOW_AFTER_MS - 1000);
+    });
+    expect(tryAgain()).toBeUndefined();
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(tryAgain()).toBeDefined();
+    await click(tryAgain() as HTMLButtonElement);
+    expect(p.signals[0]?.aborted).toBe(true);
+    expect(label()).toBe('Unlock');
+    expect(tryAgain()).toBeUndefined();
+    expect(app.container.querySelector('[role=alert]')).toBeNull();
+  });
+
+  it('a server that is slow before the prompt: the phone still unlocks offline with its local copy', async () => {
+    const { device } = await deviceWithVault('locked');
+    // Short real timeouts would need a rebuilt device; the vault's own tests cover the timing. Here: offline.
+    device.client.offline = true;
+    app = await renderWithVault(<Unlock platform="android" />, device);
+    await click(document.querySelector('button') as HTMLButtonElement);
+    await act(settle);
+    expect(device.vault.status.state).toBe('unlocked');
+  });
 
   it('asks for the passkey by itself once after a fresh load, never again', async () => {
     const device = await reloaded();
@@ -139,7 +242,7 @@ describe('Unlock', () => {
       return real();
     };
     app = await renderWithVault(<Unlock platform="android" />, device);
-    await settle();
+    await arrive();
     expect(asked).toBe(1);
     app.unmount();
     const d2 = await reloaded();
@@ -149,7 +252,7 @@ describe('Unlock', () => {
       return Promise.reject(new PasskeyError('cancelled'));
     };
     app = await renderWithVault(<Unlock platform="android" />, d2);
-    await settle();
+    await arrive();
     expect(asked2).toBe(0); // already tried in this page session
   });
 
@@ -157,7 +260,7 @@ describe('Unlock', () => {
     const device = await reloaded();
     device.vault.unlockWithPasskey = () => Promise.reject(new PasskeyError('cancelled'));
     app = await renderWithVault(<Unlock platform="android" />, device);
-    await settle();
+    await arrive();
     expect(label()).toBe('Unlock');
     expect(app.container.querySelector('[role=alert]')).toBeNull();
   });
@@ -170,13 +273,15 @@ describe('Unlock', () => {
       return Promise.reject(new PasskeyError('cancelled'));
     };
     app = await renderWithVault(<Unlock platform="android" />, device);
-    await settle();
+    await arrive();
     expect(asked).toBe(0);
   });
 
   it('never prompts by itself after Lock or an idle lock', () => {
-    const o = { passkeyOk: true, lockReason: null, used: false, showingPasskey: true } as const;
+    const o = { passkeyOk: true, lockReason: null, used: false, showingPasskey: true, visible: true, focused: true } as const;
     expect(shouldAutoPrompt(o)).toBe(true);
+    expect(shouldAutoPrompt({ ...o, visible: false })).toBe(false);
+    expect(shouldAutoPrompt({ ...o, focused: false })).toBe(false);
     expect(shouldAutoPrompt({ ...o, lockReason: 'user' })).toBe(false);
     expect(shouldAutoPrompt({ ...o, lockReason: 'idle' })).toBe(false);
     expect(shouldAutoPrompt({ ...o, lockReason: 'hidden' })).toBe(false);

@@ -19,7 +19,7 @@
  */
 import { parseEntry, type Entry } from '@bitcoin-basis/engine';
 import type { LedgerStore } from '../data/ledger-store.ts';
-import { ApiError, MAX_PAGE, type ApiClient } from './api.ts';
+import { ApiError, MAX_PAGE, type ApiClient, isUnreachable } from './api.ts';
 import { toHex, randomBytes, toBytes, type Bytes } from './bytes.ts';
 import { randomUnit, type BroadcastLike, type Scheduler } from './env.ts';
 import { VaultError } from './errors.ts';
@@ -302,7 +302,7 @@ export class EncryptedLedgerStore implements LedgerStore {
         this.setStatus({ ...this.current, phase: 'signed-out', error: null });
         return { ok: false, reason: 'signed-out' };
       }
-      const offline = e instanceof ApiError && e.kind === 'network';
+      const offline = isUnreachable(e);
       this.setStatus({ ...this.current, phase: offline ? 'offline' : 'error', error: offline ? null : String((e as Error).message ?? e) });
       this.retryLater(gen);
       return { ok: false, reason: offline ? 'offline' : 'error' };

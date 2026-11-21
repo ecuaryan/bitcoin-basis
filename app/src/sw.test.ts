@@ -160,10 +160,10 @@ describe('install and update', () => {
     expect([...sw.store.keys()].sort()).toEqual(['/', '/assets/index-abc.js']);
   });
 
-  it('a new version taking over deletes the old cache and tells open pages', async () => {
-    const sw = loadSw(() => Promise.resolve(html()), { existingCaches: ['bb-shell-v1', 'bb-shell-v2', 'other'] });
+  it('a new version taking over keeps only the previous cache (for pages still on it) and tells open pages', async () => {
+    const sw = loadSw(() => Promise.resolve(html()), { existingCaches: ['bb-shell-v0', 'bb-shell-v1', 'bb-shell-v2', 'other'] });
     await sw.run('activate');
-    expect([...sw.cacheNames].sort()).toEqual(['bb-shell-v2', 'other']);
+    expect([...sw.cacheNames].sort()).toEqual(['bb-shell-v1', 'bb-shell-v2', 'other']);
     expect(sw.posted).toEqual([{ type: 'bb-sw-updated', version: 'v2' }]);
   });
 

@@ -60,14 +60,23 @@ export interface Device {
 export async function makeDevice(
   server: FakeServer,
   credentials: CredentialsLike | null,
-  opts: { prfSupport?: PrfSupport; environment?: VaultEnvironment | null; autoLockMinutes?: number; db?: MemoryDb; pollIntervalMs?: number } = {},
+  opts: {
+    prfSupport?: PrfSupport;
+    environment?: VaultEnvironment | null;
+    autoLockMinutes?: number;
+    db?: MemoryDb;
+    pollIntervalMs?: number;
+    /** Real milliseconds: the API client's request timeout, and the unlock's pre-prompt network budget. */
+    apiTimeoutMs?: number;
+    unlockNetworkMs?: number;
+  } = {},
 ): Promise<Device> {
   const db = opts.db ?? createMemoryDb();
   const client = server.client();
   const scheduler = new ManualScheduler();
   const vault = await Vault.open({
     db,
-    api: createApiClient({ fetch: client.fetch }),
+    api: createApiClient({ fetch: client.fetch, ...(opts.apiTimeoutMs === undefined ? {} : { timeoutMs: opts.apiTimeoutMs }) }),
     credentials,
     prfSupport: () => Promise.resolve(opts.prfSupport ?? 'unknown'),
     origin: 'https://basis.example',
@@ -76,6 +85,7 @@ export async function makeDevice(
     environment: opts.environment ?? null,
     channel: null,
     pollIntervalMs: opts.pollIntervalMs ?? 0,
+    ...(opts.unlockNetworkMs === undefined ? {} : { unlockNetworkMs: opts.unlockNetworkMs }),
     ...(opts.autoLockMinutes === undefined ? {} : { autoLockMinutes: opts.autoLockMinutes }),
   });
   return { db, client, scheduler, vault };

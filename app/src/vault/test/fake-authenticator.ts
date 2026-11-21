@@ -28,6 +28,13 @@ export class FakeAuthenticator implements CredentialsLike {
   readonly calls = { create: 0, get: 0 };
   /** Make the next prompt fail as if the user cancelled. */
   cancelNext = false;
+  /**
+   * The next N `get` prompts never settle and ignore their abort signal (the worst case: a prompt
+   * a phone decided not to show).
+   */
+  hangGets = 0;
+  /** The signal each `get` was given (every prompt must be abortable). */
+  readonly getSignals: (AbortSignal | undefined)[] = [];
   /** For discoverable prompts: which credential the "user" picks (default: the newest). */
   choose: ((creds: readonly FakeCred[]) => FakeCred | undefined) | null = null;
   private counter = 0;
@@ -76,6 +83,11 @@ export class FakeAuthenticator implements CredentialsLike {
 
   async get(options: CredentialRequestOptions): Promise<Credential | null> {
     this.calls.get++;
+    this.getSignals.push(options.signal ?? undefined);
+    if (this.hangGets > 0) {
+      this.hangGets--;
+      return new Promise<Credential | null>(() => undefined);
+    }
     this.maybeCancel();
     const pk = options.publicKey as PublicKeyCredentialRequestOptions;
     if (pk.userVerification !== 'required') throw new Error('fake: user verification must be required');

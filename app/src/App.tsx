@@ -6,6 +6,7 @@ import { ReadyGate } from './ui/ready-gate.tsx';
 import { AppShell, useLogSheet } from './ui/AppShell.tsx';
 import { lazy, Suspense, useEffect } from 'react';
 import { useServiceWorkerUpdateToast } from './register-sw.ts';
+import { UpdateBoundary } from './ui/UpdateBoundary.tsx';
 
 // Everything except Holdings loads on demand, so the first screen stays small.
 const WhatIf = lazy(() => import('./screens/whatif/WhatIf.tsx').then((m) => ({ default: m.WhatIf })));
@@ -27,29 +28,32 @@ function LogRoute() {
 export function App() {
   useServiceWorkerUpdateToast();
   return (
-    <Suspense fallback={null}>
-      <Routes>
-        <Route
-          element={
-            <RequireVault>
-              <AppShell />
-            </RequireVault>
-          }
-        >
-          <Route index element={<Holdings />} />
-          <Route path="what-if" element={<WhatIf />} />
-          <Route path="records" element={<Records />} />
-          <Route path="tax" element={<Tax />} />
-          <Route path="wallet/:id" element={<WalletDetail />} />
-          <Route path="log" element={<LogRoute />} />
-        </Route>
-        <Route path="tax/summary/:year" element={<RequireVault><ReadyGate><TaxSummary /></ReadyGate></RequireVault>} />
-        <Route path="gift-note/:id" element={<RequireVault><ReadyGate><GiftNotePage /></ReadyGate></RequireVault>} />
-        <Route path="welcome" element={<Welcome />} />
-        <Route path="unlock" element={<RequireVault><Navigate to="/" replace /></RequireVault>} />
-        <Route path="kit" element={<RequireVault><Kit /></RequireVault>} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </Suspense>
+    // A screen's code that fails to load (a page left open across a deploy) offers "Reload to update", never a blank app.
+    <UpdateBoundary>
+      <Suspense fallback={null}>
+        <Routes>
+          <Route
+            element={
+              <RequireVault>
+                <AppShell />
+              </RequireVault>
+            }
+          >
+            <Route index element={<Holdings />} />
+            <Route path="what-if" element={<WhatIf />} />
+            <Route path="records" element={<Records />} />
+            <Route path="tax" element={<Tax />} />
+            <Route path="wallet/:id" element={<WalletDetail />} />
+            <Route path="log" element={<LogRoute />} />
+          </Route>
+          <Route path="tax/summary/:year" element={<RequireVault><ReadyGate><TaxSummary /></ReadyGate></RequireVault>} />
+          <Route path="gift-note/:id" element={<RequireVault><ReadyGate><GiftNotePage /></ReadyGate></RequireVault>} />
+          <Route path="welcome" element={<Welcome />} />
+          <Route path="unlock" element={<RequireVault><Navigate to="/" replace /></RequireVault>} />
+          <Route path="kit" element={<RequireVault><Kit /></RequireVault>} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </UpdateBoundary>
   );
 }

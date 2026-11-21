@@ -36,7 +36,7 @@ export function GivingView() {
         <Button
           variant="primary"
           onClick={() => {
-            void write({ kind: 'settings', patch: { givingEnabled: true } }).then(() => toast.show(`${s.givingName} is on.`));
+            void write({ kind: 'settings', patch: { givingEnabled: true } }).then(() => toast.show(`${s.givingName} is on.`, { success: true }));
           }}
         >
           Turn it on
@@ -49,7 +49,7 @@ export function GivingView() {
     if (cents === null || cents <= 0) return;
     await write({ kind: 'giving-paid', year, cents });
     setAmount(null);
-    toast.show(`Marked as paid for ${year}.`);
+    toast.show(`Marked as paid for ${year}.`, { success: true });
   }
   return (
     <div className="flex flex-col gap-3">

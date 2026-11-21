@@ -168,8 +168,8 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
     await append(made);
     saving.current = false;
     const next = d.afterSave?.(made) ?? null;
-    if (next !== null && 'next' in next) toast.show(d.savedMessage);
-    else toast.show(d.savedMessage, { action: { label: 'Undo', onClick: () => void undo(made) } });
+    if (next !== null && 'next' in next) toast.show(d.savedMessage, { success: true });
+    else toast.show(d.savedMessage, { success: true, action: { label: 'Undo', onClick: () => void undo(made) } });
     saved(d, made);
   }
 

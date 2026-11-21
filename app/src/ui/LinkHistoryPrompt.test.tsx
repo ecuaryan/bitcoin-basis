@@ -21,7 +21,8 @@ it('asks once, after unlock, when the page was opened from the kit QR link', asy
   app = await renderWithVault(<LinkHistoryPrompt />, device);
   expect(document.body.textContent).toContain("You opened this from your kit's QR code. Browsers can keep that link in history. Make a new recovery code?");
   await click(button('Not now'));
-  expect(document.body.textContent).not.toContain('QR code');
+  // The sheet slides away for a moment, but it is no longer a dialog.
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 
 it('stays quiet when the page was opened normally, or while locked', async () => {

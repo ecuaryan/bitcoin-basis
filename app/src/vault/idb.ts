@@ -6,6 +6,7 @@
  * `VaultDb` is a small key-value interface so the vault logic runs on the in-memory adapter in
  * tests (no `fake-indexeddb` dependency).
  */
+import { VaultError } from './errors.ts';
 
 export type StoreName = 'vault' | 'blobs' | 'outbox';
 export const STORE_NAMES: readonly StoreName[] = ['vault', 'blobs', 'outbox'];
@@ -30,33 +31,132 @@ export interface VaultDb {
   close(): void;
 }
 
-/** Open (and create or upgrade) the IndexedDB database. */
-export function openIndexedDb(name: string = DB_NAME, factory: IDBFactory = indexedDB): Promise<VaultDb> {
+/** How long an open may wait (e.g. blocked by another window of the app) before it is reported. */
+export const OPEN_TIMEOUT_MS = 10_000;
+/** Backstop for one transaction (another window holding a long one, a wedged connection). */
+export const TX_TIMEOUT_MS = 30_000;
+
+export interface OpenOptions {
+  readonly openTimeoutMs?: number;
+  readonly txTimeoutMs?: number;
+}
+
+const blocked = (why: string, cause?: unknown) => new VaultError('storage-blocked', why, cause === undefined ? undefined : { cause });
+
+/** One `indexedDB.open`, never hanging: a blocked or silent open rejects with `storage-blocked` after `ms`. */
+function openConnection(name: string, factory: IDBFactory, ms: number): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = factory.open(name, DB_VERSION);
+    let settled = false;
+    const fail = (e: unknown) => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timer);
+      reject(e);
+    };
+    const timer = globalThis.setTimeout(() => fail(blocked('IndexedDB did not open in time; another window of this app may be holding it')), ms);
+    let req: IDBOpenDBRequest;
+    try {
+      req = factory.open(name, DB_VERSION);
+    } catch (e) {
+      fail(blocked('IndexedDB is not available', e));
+      return;
+    }
     req.onupgradeneeded = () => {
       const db = req.result;
       for (const s of STORE_NAMES) if (!db.objectStoreNames.contains(s)) db.createObjectStore(s);
     };
-    req.onerror = () => reject(req.error ?? new Error('could not open IndexedDB'));
-    req.onblocked = () => reject(new Error('IndexedDB is blocked by another tab'));
+    req.onerror = () => fail(req.error ?? new Error('could not open IndexedDB'));
+    // Another window holds an older version open. Wait (it is asked to close) until the timeout.
+    req.onblocked = () => undefined;
     req.onsuccess = () => {
       const db = req.result;
-      // Another tab upgraded the schema: let it proceed.
-      db.onversionchange = () => db.close();
-      resolve(wrap(db));
+      if (settled) {
+        db.close(); // too late: the caller already gave up
+        return;
+      }
+      settled = true;
+      globalThis.clearTimeout(timer);
+      resolve(db);
     };
   });
 }
 
-function wrap(db: IDBDatabase): VaultDb {
-  function tx<T>(stores: readonly StoreName[], mode: IDBTransactionMode, run: (t: IDBTransaction) => () => T): Promise<T> {
+/**
+ * Open (and create or upgrade) the IndexedDB database. A connection another window asks to close
+ * (`versionchange`) is closed at once, and reopened on the next use; an open that is blocked or
+ * silent rejects with `storage-blocked` instead of hanging.
+ */
+export async function openIndexedDb(name: string = DB_NAME, factory: IDBFactory = indexedDB, options: OpenOptions = {}): Promise<VaultDb> {
+  const openMs = options.openTimeoutMs ?? OPEN_TIMEOUT_MS;
+  const txMs = options.txTimeoutMs ?? TX_TIMEOUT_MS;
+  let current: IDBDatabase | null = null;
+  let opening: Promise<IDBDatabase> | null = null;
+  const adopt = (db: IDBDatabase) => {
+    const drop = () => {
+      if (current === db) current = null;
+    };
+    db.onversionchange = () => {
+      drop();
+      db.close();
+    };
+    db.onclose = drop;
+    current = db;
+    return db;
+  };
+  const connection = (): Promise<IDBDatabase> => {
+    if (current !== null) return Promise.resolve(current);
+    opening ??= openConnection(name, factory, openMs)
+      .then(adopt)
+      .finally(() => {
+        opening = null;
+      });
+    return opening;
+  };
+  await connection();
+  return wrap(connection, txMs, () => {
+    current?.close();
+    current = null;
+  });
+}
+
+function wrap(connection: () => Promise<IDBDatabase>, txMs: number, close: () => void): VaultDb {
+  /** A transaction; a connection that was closed under us (another window, the browser) is reopened once. */
+  async function begin(stores: readonly StoreName[], mode: IDBTransactionMode): Promise<IDBTransaction> {
+    for (let tries = 0; ; tries++) {
+      const db = await connection();
+      try {
+        return db.transaction(stores as StoreName[], mode);
+      } catch (e) {
+        if (!(e instanceof DOMException && e.name === 'InvalidStateError')) throw e;
+        close();
+        if (tries > 0) throw blocked('the IndexedDB connection was closed', e);
+      }
+    }
+  }
+  async function tx<T>(stores: readonly StoreName[], mode: IDBTransactionMode, run: (t: IDBTransaction) => () => T): Promise<T> {
+    const t = await begin(stores, mode);
     return new Promise<T>((resolve, reject) => {
-      const t = db.transaction(stores as StoreName[], mode);
+      const timer = globalThis.setTimeout(() => {
+        try {
+          t.abort();
+        } catch {
+          // already finished
+        }
+        reject(blocked('an IndexedDB transaction did not finish in time'));
+      }, txMs);
       const result = run(t);
-      t.oncomplete = () => resolve(result());
-      t.onerror = () => reject(t.error ?? new Error('IndexedDB transaction failed'));
-      t.onabort = () => reject(t.error ?? new Error('IndexedDB transaction aborted'));
+      t.oncomplete = () => {
+        globalThis.clearTimeout(timer);
+        resolve(result());
+      };
+      t.onerror = () => {
+        globalThis.clearTimeout(timer);
+        reject(t.error ?? new Error('IndexedDB transaction failed'));
+      };
+      t.onabort = () => {
+        globalThis.clearTimeout(timer);
+        reject(t.error ?? new Error('IndexedDB transaction aborted'));
+      };
     });
   }
   return {
@@ -98,7 +198,7 @@ function wrap(db: IDBDatabase): VaultDb {
         for (const s of STORE_NAMES) t.objectStore(s).clear();
         return () => undefined;
       }),
-    close: () => db.close(),
+    close,
   };
 }
 

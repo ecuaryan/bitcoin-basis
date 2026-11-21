@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { countOf, satsToCents, shortDate } from '../../lib/format.ts';
+import { satsToCents, shortDate } from '../../lib/format.ts';
 import { describeOrigin, TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
@@ -22,6 +22,8 @@ import { CloseOutSheet } from './CloseOut.tsx';
 import { lastConfirmed, walletEntries, walletLots } from './model.ts';
 import { WalletMenu } from './WalletMenu.tsx';
 import { useTitle } from '../../ui/use-title.ts';
+import { TERM_HELP } from '../../lib/terms.ts';
+import { useHelp } from '../../ui/Help.tsx';
 
 const TYPE_LABEL = { exchange: 'Exchange', 'self-custody': 'Self-custody', retirement: 'Retirement' } as const;
 
@@ -35,7 +37,7 @@ function DotsIcon() {
   );
 }
 
-const ROUND_BTN = 'flex size-11 flex-none items-center justify-center rounded-full border border-line bg-surface text-soft hover:text-text';
+const ROUND_BTN = 'press flex size-11 flex-none items-center justify-center rounded-full border border-line bg-surface text-soft hover:text-text';
 
 // ---- Header ----------------------------------------------------------------------------
 
@@ -57,13 +59,13 @@ function Header({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): void; wide
 
 // ---- Balance ---------------------------------------------------------------------------
 
-function Balance({ wallet, sats, costCents, avg, lotCount, priceCents }: { wallet: Wallet; sats: number; costCents: number; avg: number | null; lotCount: number; priceCents: number | null }) {
+function Balance({ wallet, sats, costCents, avg, priceCents }: { wallet: Wallet; sats: number; costCents: number; avg: number | null; priceCents: number | null }) {
   const worth = priceCents === null ? null : satsToCents(sats, priceCents);
   const counted = !wallet.frozen && !wallet.archived;
   return (
     <section aria-label="Balance" className="flex flex-col gap-1.5">
       <span className="text-xs normal-nums tracking-[0.06em] text-muted">
-        {TYPE_LABEL[wallet.type].toUpperCase()} · {countOf(lotCount, 'lot').toUpperCase()}
+        {TYPE_LABEL[wallet.type].toUpperCase()}
         {wallet.archived ? ' · ARCHIVED' : ''}
       </span>
       <span className="font-display text-[34px] font-semibold leading-none tracking-[-0.02em] lg:text-5xl">
@@ -119,7 +121,7 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
   /** Yes: the app's own balance is what the wallet shows. */
   async function yes() {
     await append([entryFor(sats)]);
-    toast.show(`Confirmed. ${wallet.name} matches.`);
+    toast.show(`Confirmed. ${wallet.name} matches.`, { success: true });
     reset();
   }
 
@@ -140,7 +142,7 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
     }
     if (result.matches) {
       await append([entry]);
-      toast.show(`Confirmed. ${wallet.name} matches.`);
+      toast.show(`Confirmed. ${wallet.name} matches.`, { success: true });
       reset();
     } else {
       setPending({ entry, diff: result.differenceSats, since: result.entriesSinceLastMatch });
@@ -251,7 +253,7 @@ function ConfirmBalance({ wallet, sats, inputRef }: { wallet: Wallet; sats: numb
               variant="ghost"
               onClick={() => {
                 void append([pending.entry]).then(() => {
-                  toast.show('Saved. This wallet is marked as needing a check.');
+                  toast.show('Saved. This wallet is marked as needing a check.', { success: true });
                   setPending(null);
                 });
               }}
@@ -272,12 +274,17 @@ function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; toda
   const [openId, setOpenId] = useState<string | null>(null);
   const sorted = useMemo(() => [...lots].sort((a, b) => (a.acquiredAt < b.acquiredAt ? -1 : a.acquiredAt > b.acquiredAt ? 1 : 0)), [lots]);
   const shown = all ? sorted : sorted.slice(0, 5);
+  const termHelp = useHelp('What are long-term and short-term?', TERM_HELP);
   return (
     <Card as="section" aria-label="Coins in this wallet" className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between">
-        <h2 className="m-0 text-[15px] font-semibold">Coins, oldest first</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="m-0 flex items-center gap-1 text-[15px] font-semibold">
+          Coins, oldest first
+          {termHelp.button}
+        </h2>
         <span className="text-xs text-muted">Cost per BTC</span>
       </div>
+      {termHelp.panel}
       {sorted.length === 0 ? <p className="m-0 py-3 text-sm text-muted">No coins here.</p> : null}
       <ul className="m-0 flex list-none flex-col p-0">
         {shown.map((l) => {
@@ -523,7 +530,7 @@ function RetirementDetail({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): 
             }
             const entry: RetirementSnapshotEntry = { id: uuidv7(), kind: 'retirement-snapshot', wallet: wallet.id, sats, at: nowInstant(Date.now()), tz: state.settings.timeZone };
             void append([entry]).then(() => {
-              toast.show('Balance noted.');
+              toast.show('Balance noted.', { success: true });
               amount.setText('');
               setError(null);
             });
@@ -601,7 +608,7 @@ export function WalletDetail() {
       {frozenView ? (
         <FrozenSections wallet={wallet} sats={holdingSats} costCents={costCents} rows={rows} onCloseOut={() => setCloseOut(true)} />
       ) : (
-        <Balance wallet={wallet} sats={holdingSats} costCents={costCents} avg={holding?.averageCostCentsPerBtc ?? null} lotCount={lots.length} priceCents={priceCents} />
+        <Balance wallet={wallet} sats={holdingSats} costCents={costCents} avg={holding?.averageCostCentsPerBtc ?? null} priceCents={priceCents} />
       )}
       {!frozenView ? <ConfirmBalance wallet={wallet} sats={holdingSats} inputRef={confirmRef} /> : null}
     </>
