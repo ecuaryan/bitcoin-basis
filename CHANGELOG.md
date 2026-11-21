@@ -17,6 +17,7 @@
 
 ### Fixed
 
+- The fingerprint on the Unlock button is a clearer, filled glyph (Material Design, Apache 2.0; see THIRD-PARTY-NOTICES.md).
 - **Newest first**: a wallet's coins, a retirement wallet's purchases, a loan's purchases, a year's coins, income on Tax season, and the giving lists now show the latest at the top, like entries and payments already did. The coin picker for a sale keeps oldest first, the order coins are used.
 - **Every date shows its year** (Oct 23, 2026), everywhere, and lines with a date wrap instead of cutting it off.
 - **Icons where they help**: the desktop Hide amounts and Lock buttons, Records tiles, Settings sections, the entries search, and actions with a clear symbol (add, import, download, print, passkey, edit, remove, check now, forget this device). One style and size throughout; see docs/design.md.
