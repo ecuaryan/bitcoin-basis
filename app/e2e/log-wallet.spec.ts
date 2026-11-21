@@ -281,8 +281,11 @@ test('edit an entry needs a reason; closed years are locked', async ({ page }) =
   await expect(page.getByText('2025 is closed', { exact: true })).toBeVisible();
   await go(page, '/wallet/wallet-strike');
   const more = page.getByRole('button', { name: /^Show all \d+ entries/ });
-  if ((await more.count()) > 0) await more.click();
-  await entries.getByRole('button', { name: /^Bought.*, 2025/ }).first().click();
+  const target = entries.getByRole('button', { name: /^Bought.*, 2025/ }).first();
+  // The list renders after the book loads: wait for either the 2025 row or the "Show all" button.
+  await expect(target.or(more).first()).toBeVisible();
+  if (!(await target.isVisible()) && (await more.count()) > 0) await more.click();
+  await target.click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByText(/Locked: 2025 is closed/)).toBeVisible();
   await expect(sheet.getByRole('button', { name: /^(Edit|Remove)/ })).toHaveCount(0);
