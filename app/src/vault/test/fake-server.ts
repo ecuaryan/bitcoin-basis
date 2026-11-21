@@ -29,6 +29,8 @@ export interface FakeClient {
   readonly fetch: (input: string, init: RequestInit) => Promise<Response>;
   /** Simulate no connectivity for this client. */
   offline: boolean;
+  /** Blob listing requests never answer (a slow or hanging network). */
+  hangList: boolean;
   /** Drop this client's session cookie (expired). */
   expireSession(): void;
   /** The raw cookie value (a stolen copy, for tests). */
@@ -73,6 +75,7 @@ export class FakeServer {
     let cookie: string | null = null;
     const c: FakeClient = {
       offline: false,
+      hangList: false,
       expireSession: () => {
         cookie = null;
       },
@@ -84,6 +87,7 @@ export class FakeServer {
       },
       fetch: async (input, init) => {
         if (c.offline) throw new TypeError('fetch failed');
+        if (c.hangList && (init.method ?? 'GET') === 'GET' && input.startsWith('/api/blobs')) return new Promise<Response>(() => undefined);
         if (init.credentials !== 'same-origin') throw new Error('fake server: credentials must be same-origin');
         const res = await this.handle(input, init, cookie);
         if (res.session === 'clear') cookie = null;

@@ -10,23 +10,16 @@ import { buttonClasses, Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { downloadText } from '../../ui/download.ts';
 import { Field, SelectBox } from '../../ui/Field.tsx';
-import { CheckIcon, ChevronLeftIcon, DownloadIcon, InfoIcon } from '../../ui/more-icons.tsx';
+import { ChevronLeftIcon, DownloadIcon, InfoIcon } from '../../ui/more-icons.tsx';
 import { PageHeader } from '../../ui/PageHeader.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import { LockIcon } from '../../ui/icons.tsx';
 import { answerReason, defaultTaxYear, flagsForYear, form1099Rows, nextYearLosses, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
-import { sessionMemory } from '../../data/session-memory.ts';
 import { LOSSES_CHECK, staleLosses } from '../../lib/losses.ts';
 import { useWriter } from '../../ui/use-writer.ts';
 import { useTitle } from '../../ui/use-title.ts';
-
-const CHECKED_KEY = '1099.checked';
-/** The ticks are kept in memory until the app locks; they are never written to storage. */
-function loadChecked(): string[] {
-  return sessionMemory.get<string[]>(CHECKED_KEY, []);
-}
 
 function Rows({ rows, label }: { rows: readonly [string, ReactNode][]; label: string }) {
   return (
@@ -157,32 +150,23 @@ export function UnlockYearSheet({ year, onClose }: { year: number; onClose(): vo
 
 export function Tax() {
   const wide = useIsWide();
-  const { state, today } = useLedger();
+  const { entries, state, today } = useLedger();
   const [params, setParams] = useSearchParams();
   const years = useMemo(() => yearsAvailable(state, today), [state, today]);
   const asked = Number(params.get('year'));
   const year = years.includes(asked) ? asked : defaultTaxYear(years, today);
   const [sheet, setSheet] = useState<'close' | 'unlock' | null>(null);
-  const [checked, setChecked] = useState<string[]>(() => loadChecked());
   useTitle('Tax season');
 
   const summary = useMemo(() => yearSummary(state, year), [state, year]);
   const view = useMemo(() => yearTaxView(state, state.settings, year, today), [state, year, today]);
   const totals = useMemo(() => totalsByKind(summary), [summary]);
-  const forms = useMemo(() => form1099Rows(state, year), [state, year]);
+  const forms = useMemo(() => form1099Rows(state, year, entries), [state, year, entries]);
   const gifts = useMemo(() => overExclusion(state, year), [state, year]);
   const flags = useMemo(() => flagsForYear(state, year), [state, year]);
   const closed = state.closedYears.includes(year);
   const stale = year === yearOf(today) ? staleLosses(state.settings, year) : null;
   const yes = summary.digitalAssetAnswer === 'yes';
-  const doneCount = forms.filter((f) => checked.includes(`${year}:${f.wallet.id}`)).length;
-
-  function toggleChecked(id: string, on: boolean) {
-    const key = `${year}:${id}`;
-    const next = on ? [...checked, key] : checked.filter((k) => k !== key);
-    setChecked(next);
-    sessionMemory.set(CHECKED_KEY, next);
-  }
 
   const picker = (
     <SelectBox label="Tax year" hideLabel value={String(year)} onChange={(e) => setParams({ year: e.target.value }, { replace: true })} className="w-[104px]" selectClassName="!min-h-11 !rounded-xl !font-bold !bg-surface">
@@ -256,54 +240,39 @@ export function Tax() {
     </Card>
   );
 
-  const form1099 = (
-    <Card as="section" aria-label="1099-DA check" className="flex flex-col gap-3 !rounded-[18px] !p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="m-0 text-[15px] font-semibold">1099-DA check</h2>
-        {forms.length > 0 && (
-          <span className="text-xs text-amber">
-            {doneCount} of {forms.length} checked · kept until you lock
-          </span>
-        )}
-      </div>
-      {year < 2025 && <p className="m-0 text-xs text-muted">Exchanges started sending 1099-DA forms for 2025 sales. For earlier years, check any other form they sent.</p>}
-      {forms.length === 0 && <p className="m-0 text-[13px] text-muted">No exchange wallets in your book.</p>}
-      {forms.map((f) => {
-        const id = `${year}:${f.wallet.id}`;
-        const on = checked.includes(id);
-        return (
-          <div key={f.wallet.id} className="flex items-start gap-3">
-            <input type="checkbox" id={`chk-${id}`} checked={on} onChange={(e) => toggleChecked(f.wallet.id, e.target.checked)} className="mt-0.5 size-5 flex-none accent-accent" />
-            <div className="flex flex-col gap-1">
-              <label htmlFor={`chk-${id}`} className="text-sm font-semibold">
-                {f.wallet.name}
-                {on && <CheckIcon size={14} className="ml-1.5 inline text-accent" />}
-              </label>
-              <span className="text-xs leading-[1.4] text-muted">
-                {f.sales === 0 ? (
-                  'No form expected.'
-                ) : (
-                  <>
-                    Should show {f.sales === 1 ? '1 sale' : `${f.sales} sales`}, <Money cents={f.proceedsCents} />.
-                  </>
-                )}
-              </span>
-              {f.gifts > 0 && (
-                <details className="text-xs leading-[1.4] text-muted">
-                  <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-amber">
-                    You also gave {f.gifts === 1 ? 'one gift' : `${f.gifts} gifts`} from here
-                  </summary>
-                  <span>
-                    <Money cents={f.giftValueCents} /> worth, your cost <Money cents={f.giftCostCents} />. Some exchanges report gifts to other users as sales. If yours did, match each one to the gift you logged and use its cost: a gift is not a sale.
-                  </span>
-                </details>
+  const form1099 =
+    forms.length === 0 ? null : (
+      <Card as="section" aria-label="Tax forms from exchanges" className="flex flex-col gap-3 !rounded-[18px] !p-4">
+        <h2 className="m-0 text-[15px] font-semibold">
+          Tax forms from exchanges <span className="text-xs font-normal text-muted">(1099-DA)</span>
+        </h2>
+        <p className="m-0 text-[13px] leading-[1.4] text-muted">Exchanges send a 1099-DA listing your sales. Compare it with this so nothing is missed or counted twice.</p>
+        {forms.map((f) => (
+          <div key={f.wallet.id} className="flex flex-col gap-1">
+            <span className="text-sm font-semibold">{f.wallet.name}</span>
+            <span className="text-xs leading-[1.4] text-muted">
+              {f.sales === 0 ? (
+                'No sales, so no form expected'
+              ) : (
+                <>
+                  Should show {f.sales === 1 ? '1 sale' : `${f.sales} sales`} · <Money cents={f.proceedsCents} /> received
+                </>
               )}
-            </div>
+            </span>
+            {f.gifts > 0 && (
+              <details className="text-xs leading-[1.4] text-muted">
+                <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-amber">
+                  You also gave {f.gifts === 1 ? 'one gift' : `${f.gifts} gifts`} from here
+                </summary>
+                <span>
+                  <Money cents={f.giftValueCents} /> worth, your cost <Money cents={f.giftCostCents} />. Some exchanges report gifts to other users as sales. If yours did, match each one to the gift you logged and use its cost: a gift is not a sale.
+                </span>
+              </details>
+            )}
           </div>
-        );
-      })}
-    </Card>
-  );
+        ))}
+      </Card>
+    );
 
   const giftCard = (
     <Card as="section" aria-label="Gifts given" className="flex flex-col gap-2 !rounded-[18px] !p-4">

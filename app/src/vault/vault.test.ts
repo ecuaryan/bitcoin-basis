@@ -226,6 +226,50 @@ describe('passkeys', () => {
     expect((await a.vault.sync()).ok).toBe(true);
   });
 
+  test('unlock shows the cached entries before any network listing answers', async () => {
+    const { a } = await setup();
+    await a.vault.store.append(BOOK.slice(0, 5));
+    await a.vault.sync();
+    a.vault.lock();
+    expect(a.vault.store.isLoaded()).toBe(false);
+    a.client.hangList = true;
+    // The moment the vault says "unlocked", the local copy must already be in list().
+    const atUnlocked: boolean[] = [];
+    a.vault.subscribe((st) => {
+      if (st.state === 'unlocked') atUnlocked.push(a.vault.store.isLoaded());
+    });
+    await a.vault.unlockWithPasskey();
+    expect(atUnlocked.length).toBeGreaterThan(0);
+    expect(atUnlocked.every(Boolean)).toBe(true);
+    expect(a.vault.status.state).toBe('unlocked');
+    expect(a.vault.store.isLoaded()).toBe(true);
+    expect(await list(a)).toEqual(BOOK.slice(0, 5));
+    expect(a.vault.status.sync.phase).toBe('syncing');
+  });
+
+  test.each([
+    ['passkey, offline', 'offline', 'passkey'],
+    ['passkey, hanging network', 'hang', 'passkey'],
+    ['recovery code, offline', 'offline', 'code'],
+    ['recovery code, hanging network', 'hang', 'code'],
+  ] as const)('local entries are listed at unlock without the network (%s)', async (_n, net, how) => {
+    const { a, recoveryCode } = await setup();
+    await a.vault.store.append(BOOK.slice(0, 5));
+    await a.vault.sync();
+    a.vault.lock();
+    if (net === 'offline') a.client.offline = true;
+    else a.client.hangList = true;
+    const atUnlocked: number[] = [];
+    a.vault.subscribe((st) => {
+      if (st.state === 'unlocked') atUnlocked.push(a.vault.store.isLoaded() ? 1 : 0);
+    });
+    if (how === 'passkey') await a.vault.unlockWithPasskey();
+    else await a.vault.unlockWithRecoveryCode(recoveryCode);
+    expect(atUnlocked.length).toBeGreaterThan(0);
+    expect(atUnlocked.every((x) => x === 1)).toBe(true);
+    expect(await list(a)).toEqual(BOOK.slice(0, 5));
+  });
+
   test('offline unlock uses a local challenge; connect() later gets a session', async () => {
     const { auth, a } = await setup();
     await a.vault.store.append(BOOK.slice(0, 5));

@@ -7,7 +7,7 @@ const VaultContext = createContext<Vault | null>(null);
 
 /** Shares the one `Vault` for this page. The vault is the only owner of keys; screens call its public API. */
 export function VaultProvider({ vault, children }: { vault: Vault; children: ReactNode }) {
-  // A recovery code waiting to be printed, saved scenarios and 1099 ticks must not outlive the unlocked session.
+  // A recovery code waiting to be printed, saved scenarios must not outlive the unlocked session.
   useEffect(() => vault.subscribe((s) => {
         if (s.state !== 'unlocked') {
           kitHandoff.clear();

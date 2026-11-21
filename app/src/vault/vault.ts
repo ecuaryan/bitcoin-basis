@@ -955,13 +955,21 @@ export class Vault {
   // --- Internals: state --------------------------------------------------------------------------
 
   private async begin(session: Session): Promise<void> {
+    // Decrypt the local copy first, then report "unlocked": the app must never render an unlocked
+    // book whose `list()` is still empty. This never waits for the network.
+    const gen = this.lockGen;
+    await this.store.start(storeKeys(session));
+    if (gen !== this.lockGen) {
+      this.store.stop();
+      wipe(session.recoveryToken);
+      throw new VaultError('locked', 'the vault was locked while unlocking');
+    }
     this.session = session;
     this.lockReason = null;
     this.hiddenAt = null;
     this.touch();
     this.scheduleIdle();
     this.emit();
-    await this.store.start(storeKeys(session));
   }
 
   private assertGen(gen: number): void {

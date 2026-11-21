@@ -1,12 +1,14 @@
 import { createContext, lazy, useEffect, Suspense, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { NavLink } from 'react-router';
+import { PullToSync } from './PullToSync.tsx';
+import { ReadyOutlet } from './ready-gate.tsx';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { useVaultOptional } from '../data/vault-provider.tsx';
 import { cx } from '../lib/cx.ts';
 import { LinkHistoryPrompt } from './LinkHistoryPrompt.tsx';
 import { SyncIndicator } from './SyncIndicator.tsx';
 import type { LogPreset } from '../screens/log/draft.ts';
-import { EyeIcon, EyeOffIcon, HoldingsIcon, LockIcon, PlusIcon, RecordsIcon, WhatIfIcon } from './icons.tsx';
+import { EyeIcon, EyeOffIcon, HoldingsIcon, LockIcon, PlusIcon, RecordsIcon, TaxIcon, WhatIfIcon } from './icons.tsx';
 import { useMediaQuery } from './motion.ts';
 import { usePrefs } from './prefs.tsx';
 import { useToast } from './Toast.tsx';
@@ -160,7 +162,7 @@ function PhoneTab({ to, label, icon, end }: { to: string; label: string; icon: R
       to={to}
       end={end ?? false}
       className={({ isActive }) =>
-        cx('flex min-h-11 min-w-16 flex-col items-center justify-center gap-1 text-[11px] no-underline', isActive ? 'font-semibold text-accent' : 'font-medium text-muted hover:text-soft')
+        cx('flex min-h-11 w-full min-w-0 flex-col items-center justify-center gap-1 text-[11px] no-underline', isActive ? 'font-semibold text-accent' : 'font-medium text-muted hover:text-soft')
       }
     >
       {icon}
@@ -181,18 +183,20 @@ function PhoneShell({ onLog }: { onLog(): void }) {
           <LockButton />
         </div>
       </header>
+      <PullToSync />
       <DemoBanner className="mx-5 mt-3" />
       <main className="relative flex flex-1 flex-col px-5 pb-[130px] pt-6">
         <Suspense fallback={null}>
-          <Outlet />
+          <ReadyOutlet />
         </Suspense>
       </main>
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 mx-auto flex h-[92px] max-w-[560px] items-center justify-around bg-[linear-gradient(180deg,rgb(11_11_12/0),#0b0b0c_30%)] px-3 pb-[max(20px,env(safe-area-inset-bottom))] pt-2">
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 mx-auto grid h-[92px] max-w-[560px] grid-cols-5 items-center justify-items-center bg-[linear-gradient(180deg,rgb(11_11_12/0),#0b0b0c_30%)] px-3 pb-[max(20px,env(safe-area-inset-bottom))] pt-2">
         <PhoneTab to="/" end label="Holdings" icon={<HoldingsIcon size={22} />} />
         <PhoneTab to="/what-if" label="What if" icon={<WhatIfIcon size={22} />} />
         <button type="button" onClick={onLog} aria-label="Log something" className="-mt-[18px] flex size-[60px] items-center justify-center rounded-full bg-accent text-bg shadow-fab transition-transform active:scale-95">
           <PlusIcon size={28} />
         </button>
+        <PhoneTab to="/tax" label="Tax" icon={<TaxIcon size={22} />} />
         <PhoneTab to="/records" label="Records" icon={<RecordsIcon size={22} />} />
       </nav>
     </div>
@@ -232,7 +236,7 @@ function DesktopShell({ onLog }: { onLog(): void }) {
       <main className="relative min-w-0 flex-1 px-10 pb-10 pt-8">
         <DemoBanner className="mb-4" />
         <Suspense fallback={null}>
-          <Outlet />
+          <ReadyOutlet />
         </Suspense>
       </main>
     </div>

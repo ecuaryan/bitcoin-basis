@@ -5,7 +5,7 @@ test('Tax season: year view and 8949 download', async ({ page }) => {
   await openDemo(page);
   await go(page, '/tax');
   await expect(page.getByRole('region', { name: 'Digital asset question' })).toContainText('Answer: Yes');
-  await expect(page.getByRole('region', { name: '1099-DA check' })).toContainText('Some exchanges report gifts to other users as sales');
+  await expect(page.getByRole('region', { name: 'Tax forms from exchanges' })).toContainText('Exchanges send a 1099-DA listing your sales');
   await expectNoViolations(page);
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: '8949 sales list' }).click()]);
   expect(download.suggestedFilename()).toBe('form-8949-2026.csv');

@@ -92,6 +92,8 @@
   /* Short and centered text reads best with even lines. */
   h1, h2, h3, h4, label, button, .text-center { text-wrap: balance; }
   html {
+    /* Chrome's pull-to-refresh reloads the page and drops the keys; the app has its own pull to sync. */
+    overscroll-behavior-y: contain;
     line-height: normal;
     background: var(--color-bg);
     color: var(--color-text);
@@ -99,6 +101,7 @@
     -webkit-text-size-adjust: 100%;
   }
   body {
+    overscroll-behavior-y: contain;
     margin: 0;
     min-height: 100dvh;
     font-family: var(--font-sans);

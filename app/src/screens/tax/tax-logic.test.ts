@@ -73,6 +73,7 @@ describe('losses from past years', () => {
 describe('form1099Rows', () => {
   it('lists exchange wallets with their sales and the gifts sent from them', () => {
     const rows = form1099Rows(state, 2026);
+    expect(form1099Rows(state, 1999)).toEqual([]);
     const strike = rows.find((r) => r.wallet.name === 'Strike');
     expect(strike).toBeDefined();
     expect(strike?.sales).toBe(1);

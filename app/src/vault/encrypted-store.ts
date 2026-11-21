@@ -115,6 +115,8 @@ export class EncryptedLedgerStore implements LedgerStore {
   /** One retry per run after the server refused an upload for its epoch (409). */
   private conflictRetried = false;
   private view: readonly Entry[] = EMPTY;
+  /** True once the local copy has been decrypted after `start` (false while locked). */
+  private loadedLocal = false;
   private readonly listeners = new Set<() => void>();
   private running: Promise<SyncResult> | null = null;
   private again = false;
@@ -185,6 +187,11 @@ export class EncryptedLedgerStore implements LedgerStore {
     return this.current;
   }
 
+  /** The local copy is decrypted and in `list()` (never waits for the network). */
+  isLoaded(): boolean {
+    return this.loadedLocal;
+  }
+
   get unlocked(): boolean {
     return this.keys !== null;
   }
@@ -223,8 +230,10 @@ export class EncryptedLedgerStore implements LedgerStore {
     this.clearTimer();
     const hadData = this.view.length > 0;
     this.view = EMPTY;
+    const wasLoaded = this.loadedLocal;
+    this.loadedLocal = false;
     this.setStatus(OFF);
-    if (hadData) this.notify();
+    if (hadData || wasLoaded) this.notify();
   }
 
   dispose(): void {
@@ -424,11 +433,16 @@ export class EncryptedLedgerStore implements LedgerStore {
     let rejected = 0;
     const nowReadable: string[] = [];
     const stillUnreadable: string[] = [];
-    for (const [k, v] of blobs) {
-      if (this.blobEntries.has(k) && !this.unreadable.has(k)) continue;
+    // Decrypt in parallel: a long book can hold hundreds of blobs, and this is what the unlock waits for.
+    const todo = blobs.filter(([k]) => !this.blobEntries.has(k) || this.unreadable.has(k));
+    const opened = await Promise.all(
+      todo.map(async ([k, v]) => {
+        const blob = asBlob(v);
+        return [k, blob === null ? null : await this.tryOpen(blob)] as const;
+      }),
+    );
+    for (const [k, entries] of opened) {
       const retry = this.unreadable.has(k);
-      const blob = asBlob(v);
-      const entries = blob === null ? null : await this.tryOpen(blob);
       if (entries === null) {
         stillUnreadable.push(k);
         if (!retry) rejected++;
@@ -457,6 +471,7 @@ export class EncryptedLedgerStore implements LedgerStore {
     this.outboxEntries.clear();
     for (const [k, v] of newOutbox) this.outboxEntries.set(k, v);
     if (rejected > 0) this.setStatus({ ...this.current, rejected: this.current.rejected + rejected });
+    this.loadedLocal = true;
     this.changed();
   }
 

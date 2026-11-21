@@ -13,6 +13,8 @@ export interface LedgerStore {
   append(entries: readonly Entry[]): Promise<void>;
   /** Remove everything (used to leave demo mode). */
   clear(): Promise<void>;
+  /** Optional: false while the local copy is still loading (or locked); `list()` is then not the book. */
+  isLoaded?(): boolean;
   /** Called after any change, including changes from another tab. Returns an unsubscribe function. */
   subscribe(listener: () => void): () => void;
 }

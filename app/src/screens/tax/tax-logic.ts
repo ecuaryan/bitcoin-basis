@@ -124,14 +124,20 @@ export interface Form1099Row {
   giftCostCents: Cents;
 }
 
-/** Per exchange wallet: what its 1099-DA should show, and the gifts that could show up as "sales". */
-export function form1099Rows(state: LedgerState, year: number): Form1099Row[] {
+/**
+ * Per exchange wallet with activity that year: what its 1099-DA should show, and the gifts that could show up as
+ * "sales". Self-custody wallets are not listed (no broker form). `entries` lets a year with only purchases or moves
+ * still count as activity.
+ */
+export function form1099Rows(state: LedgerState, year: number, entries: readonly Entry[] = []): Form1099Row[] {
+  const touched = new Set<string>();
+  for (const e of entries) if ('wallet' in e && typeof e.wallet === 'string' && Number(e.at.slice(0, 4)) === year) touched.add(e.wallet);
   const rows: Form1099Row[] = [];
   for (const w of state.wallets) {
     if (w.type !== 'exchange') continue;
     const sold = state.disposals.filter((d) => d.year === year && d.wallet === w.id && (d.kind === 'sell' || d.kind === 'spend'));
     const gifts = [...state.gifts, ...state.charityGifts].filter((g) => g.year === year && g.wallet === w.id);
-    if (sold.length === 0 && gifts.length === 0 && w.archived) continue;
+    if (sold.length === 0 && gifts.length === 0 && !touched.has(w.id)) continue;
     rows.push({
       wallet: w,
       sales: sold.length,

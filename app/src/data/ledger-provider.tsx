@@ -56,7 +56,8 @@ export function LedgerProvider({
     const load = () => {
       void store.list().then((list) => {
         if (!live) return;
-        setLoaded({ from: store, list });
+        // A store still loading (or locked) has not answered: its empty list is not the book.
+        setLoaded(store.isLoaded?.() === false ? null : { from: store, list });
       });
     };
     load();

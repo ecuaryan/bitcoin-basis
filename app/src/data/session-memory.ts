@@ -1,6 +1,5 @@
 /**
- * Small things that belong to the unlocked session and are never written to storage: saved What-if scenarios and
- * the 1099 "checked" ticks. They are gone when the app locks (or the page reloads).
+ * Small things that belong to the unlocked session and are never written to storage: saved What-if scenarios. They are gone when the app locks (or the page reloads).
  */
 const mem = new Map<string, unknown>();
 

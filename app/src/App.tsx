@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router';
 import { Holdings } from './screens/Holdings.tsx';
 import { NotFound } from './screens/stubs.tsx';
 import { RequireVault } from './screens/auth/RequireVault.tsx';
+import { ReadyGate } from './ui/ready-gate.tsx';
 import { AppShell, useLogSheet } from './ui/AppShell.tsx';
 import { lazy, Suspense, useEffect } from 'react';
 import { useServiceWorkerUpdateToast } from './register-sw.ts';
@@ -42,8 +43,8 @@ export function App() {
           <Route path="wallet/:id" element={<WalletDetail />} />
           <Route path="log" element={<LogRoute />} />
         </Route>
-        <Route path="tax/summary/:year" element={<RequireVault><TaxSummary /></RequireVault>} />
-        <Route path="gift-note/:id" element={<RequireVault><GiftNotePage /></RequireVault>} />
+        <Route path="tax/summary/:year" element={<RequireVault><ReadyGate><TaxSummary /></ReadyGate></RequireVault>} />
+        <Route path="gift-note/:id" element={<RequireVault><ReadyGate><GiftNotePage /></ReadyGate></RequireVault>} />
         <Route path="welcome" element={<Welcome />} />
         <Route path="unlock" element={<RequireVault><Navigate to="/" replace /></RequireVault>} />
         <Route path="kit" element={<RequireVault><Kit /></RequireVault>} />
