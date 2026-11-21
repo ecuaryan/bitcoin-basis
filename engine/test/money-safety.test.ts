@@ -6,7 +6,7 @@ import { exportOpeningLotsCsv } from '../src/io.ts';
 import { divRoundHalfUp, MAX_ENTRY_CENTS, MAX_ENTRY_SATS, mulDivOrNull } from '../src/money.ts';
 import { replay } from '../src/replay.ts';
 import { averageCostPerBtc, holdings } from '../src/reports.ts';
-import type { Entry, LedgerState } from '../src/types.ts';
+import type { CoinEntry, Entry, LedgerState } from '../src/types.ts';
 import { buy, cents, edit, errorCodes, move, noon, pick, receive, sats, sell, testBook, TZ, wallet } from './helpers.ts';
 
 const del = (id: string, target: string): Entry => ({ id, kind: 'delete', at: noon('2026-06-01'), tz: TZ, replaces: target, reason: 'r' });
@@ -56,7 +56,7 @@ describe('lot ids never collide', () => {
   });
   test('defensively, a lot id already in use is refused (handlers called directly, past validation)', () => {
     const book = newBook(replay([]), new Map());
-    const at = (e: Entry): ReturnType<typeof applyEntry> => applyEntry(book, e, '2024-01-01');
+    const at = (e: CoinEntry): ReturnType<typeof applyEntry> => applyEntry(book, e, '2024-01-01');
     expect(at(wallet('ex'))).toBeNull();
     expect(at(wallet('cold'))).toBeNull();
     expect(at(buy('B', 'ex', '2024-01-01', '1', '1'))).toBeNull();

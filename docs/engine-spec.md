@@ -60,6 +60,7 @@ Common fields: `id` (UUIDv7 in practice; any 1-64 letters, digits, `_` or `-`, n
 | `close-year` / `unlock-year` | year, reason for unlock | |
 | `giving-paid` | year, cents | |
 | `delete` | `replaces` + reason | removes the target from replay |
+| `loan`, `loan-update`, `loan-link`, `loan-draw`, `loan-payment`, `loan-statement` | see [loans-spec.md](loans-spec.md) | tracking only: never change lots, cost basis or gains |
 
 `receive.source`:
 - `income` (promos, rewards, mining): ordinary income at value received; that value is the lot's cost.
@@ -100,7 +101,8 @@ Filing status, wages, state (flat-rate, no-tax or custom rate), losses from past
 - **Average cost** = total cost ÷ BTC held, in cents per BTC, half-up (null if nothing is held or the figure is too large to represent).
 - Money put in = sum of buy costs + earlier money in. Never touches tax math.
 - Per year: disposals with ST/LT gains (sales, spending, fees), close-out losses and recoveries, income received, gifts given (flag total over the annual exclusion per recipient per year; $19,000 in 2026), charity gifts (held > 1 year → value that day; ≤ 1 year → cost; over $5,000 → qualified appraisal flag), the 1040 digital-asset answer (Yes if any disposal, income or fee that year).
-- Exports: Form 8949-style CSV, income list, opening-lots CSV, full entries JSON. Text cells starting with `= + - @`, tab or CR get a leading `'` (OWASP CSV-injection guidance); numeric columns are never changed. Import of the opening-lots CSV (columns `wallet, acquired_utc, btc, sats, cost_usd, cost_per_btc, tier, origin`, optional trailing `tz`; sats are authoritative) and of entries JSON. Export then import reproduces every number.
+- Loans (purchases funded by a HELOC or other loan): interest paid, owed now, value, break-even and payoff figures; see [loans-spec.md](loans-spec.md).
+- Exports: Form 8949-style CSV, income list, opening-lots CSV, full entries JSON. Text cells starting with `= + - @`, tab or CR get a leading `'` (OWASP CSV-injection guidance); numeric columns are never changed. Import of the opening-lots CSV (columns `wallet, acquired_utc, btc, sats, cost_usd, cost_per_btc, tier, origin`, optional trailing `tz`; sats are authoritative) and of entries JSON. Export then import reproduces every number. The opening-lots CSV has an optional `funded_by` column (loan name; [loans-spec.md](loans-spec.md)).
 
 ## Tax module
 
@@ -192,3 +194,4 @@ Readings chosen where the spec is silent or ambiguous. Conservative and simple f
 19. **Tax tables:** a year before the earliest table uses the earliest; a year after the latest uses the latest; `fellBack` is set and the note names the table used and whether it is the earliest or latest.
 20. **Rounding** is half away from zero, symmetric for negatives (−0.5 → −1), everywhere "half-up" appears (`divRoundHalfUp`, `mulDivRoundHalfUp`, `splitProportional`). Kept deliberately: it treats gains and losses alike, and splits still add back exactly because the remainder goes on the last piece.
 21. **Losses from past years are saved for one year.** `carryforwardStCents` and `carryforwardLtCents` apply only to `carryforwardYear` (one optional year for both); any other year gets zero (`carryforwardFor`). Entries written before the field existed have no year: the app treats them as the current year, and the planner (which has no "today") applies them to the year it is asked about, exactly as before. Saving the amounts in Settings stamps the current year. Closing a tax year offers the losses it leaves for the next year and saves them with `carryforwardYear: year + 1`. Tax season and Sell show a one-line prompt when the saved year is earlier than the year shown. The user-facing name is "losses from past years"; the field names keep the code word.
+22. **Loans are tracking only** ([loans-spec.md](loans-spec.md)). Loan records replay after every coin entry and read the finished lots without changing them; they cannot replace coin entries (or be replaced by them), are exempt from closed years, and a property test checks that adding or removing them leaves lots, holdings and every year summary unchanged. Coins are traced from their origin lot (`originLotId`: the last part of a moved piece's id).

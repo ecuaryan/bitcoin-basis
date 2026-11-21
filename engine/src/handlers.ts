@@ -25,7 +25,7 @@ import type {
   BalanceConfirmEntry,
   BuyEntry,
   CloseOut,
-  Entry,
+  CoinEntry,
   GiftGiven,
   GiveEntry,
   LocalDate,
@@ -254,7 +254,7 @@ export function applyBalanceConfirm(book: Book, e: BalanceConfirmEntry, date: Lo
 const nameTakenProblem = (name: string): Problem => problem('wallet-name-taken', `another wallet is already named "${name.trim()}"`);
 
 /** Apply any entry kind. */
-export function applyEntry(book: Book, e: Entry, date: LocalDate): Problem | null {
+export function applyEntry(book: Book, e: CoinEntry, date: LocalDate): Problem | null {
   switch (e.kind) {
     case 'wallet':
       if (book.wallets.has(e.wallet)) return problem('wallet-exists', `wallet ${e.wallet} already exists`);

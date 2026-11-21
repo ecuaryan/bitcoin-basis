@@ -1,4 +1,4 @@
-import type { Lot, LedgerState } from '@bitcoin-basis/engine';
+import { traceCoins, type Lot, type LedgerState } from '@bitcoin-basis/engine';
 import { satsToCents } from './format.ts';
 
 /** What some coins are worth at the live price, against what they cost. Money is whole cents. */
@@ -54,29 +54,19 @@ export interface EntryWorth {
   gone: GonePart[];
 }
 
-/** The lot an id belongs to: pieces moved to other wallets are named `<lot>:<source lot>`. */
-function rootOf(id: string): string {
-  const i = id.indexOf(':');
-  return i === -1 ? id : id.slice(0, i);
-}
-
 /**
  * The coins that came from one buy or receive entry (any of its versions, `entryIds`): what is still held, wherever it
- * moved, and what has been sold, spent, given or lost. Coins in a frozen wallet are not counted as held.
+ * moved, and what has been sold, spent, given or lost (one part per entry that took some). Coins in a frozen wallet are
+ * not counted as held. Thin wrapper over the engine's `traceCoins`.
  */
 export function entryWorth(state: LedgerState, entryIds: readonly string[], priceCents: number | null): EntryWorth {
-  const ids = new Set(entryIds);
-  const mine = (lotId: string) => ids.has(rootOf(lotId));
-  const frozen = new Set(state.wallets.filter((w) => w.frozen).map((w) => w.id));
-  const held = state.lots.filter((l) => !frozen.has(l.wallet) && (ids.has(l.originEntryId) || mine(l.id)));
-  const gone: GonePart[] = [];
-  const take = (kind: PartKind, date: string, picks: readonly { lotId: string; sats: number }[]) => {
-    const sats = picks.filter((p) => mine(p.lotId)).reduce((s, p) => s + p.sats, 0);
-    if (sats > 0) gone.push({ kind, sats, date });
-  };
-  for (const d of state.disposals) take(d.kind === 'sell' ? 'sold' : d.kind === 'spend' ? 'spent' : 'fees', d.date, d.picks);
-  for (const g of state.gifts) take('given', g.date, g.picks);
-  for (const l of state.lost) take('lost', l.date, l.picks);
-  gone.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  return { held: sumWorth(held, priceCents), gone };
+  const traced = traceCoins(state, entryIds);
+  const parts = new Map<string, GonePart>();
+  for (const g of traced.gone) {
+    if (g.kind === 'closed-out') continue;
+    const part = parts.get(g.entryId);
+    if (part === undefined) parts.set(g.entryId, { kind: g.kind, sats: g.sats, date: g.date });
+    else part.sats += g.sats;
+  }
+  return { held: sumWorth(traced.held, priceCents), gone: [...parts.values()] };
 }

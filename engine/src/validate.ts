@@ -6,7 +6,7 @@ import { instantMs, isValidInstant, isValidLocalDate, isValidTimeZone } from './
 import { STATE_RATES } from './tax/tables/state.ts';
 import { MAX_ENTRY_CENTS, MAX_ENTRY_SATS } from './money.ts';
 import { err, ok } from './result.ts';
-import { FILING_STATUSES, LOST_CAUSES, TIERS, WALLET_TYPES, type Entry, type EntryKind, type Result } from './types.ts';
+import { DAY_COUNTS, FILING_STATUSES, LOST_CAUSES, TIERS, WALLET_TYPES, type Entry, type EntryKind, type Result } from './types.ts';
 
 type Check = (v: unknown) => boolean;
 type Field = readonly [check: Check, required: boolean];
@@ -102,6 +102,10 @@ const wallet = req(isText);
 const sats = req(isSats);
 const cents = req(isCents);
 const tier = req(oneOf(TIERS));
+const loan = req(isId);
+/** APR in millionths: 0 to 100% (1,000,000). */
+const isApr = intIn(0, 1_000_000);
+const isStatementDay = intIn(1, 31);
 
 const KIND_SCHEMAS: Readonly<Record<EntryKind, Schema>> = {
   wallet: { wallet, name: req(isText), type: req(oneOf(WALLET_TYPES)), defaultProof: req(isString) },
@@ -121,6 +125,12 @@ const KIND_SCHEMAS: Readonly<Record<EntryKind, Schema>> = {
   'close-year': { year: req(isYear) },
   'unlock-year': { year: req(isYear), reason: req(isText) },
   'giving-paid': { year: req(isYear), cents },
+  loan: { loan, name: req(isText), opened: req(isDate), aprMillionths: req(isApr), dayCount: opt(oneOf(DAY_COUNTS)), creditLimitCents: opt(isCents), statementDay: opt(isStatementDay) },
+  'loan-update': { loan, name: opt(isText), creditLimitCents: opt(isCents), statementDay: opt(isStatementDay), closed: opt(isBoolean), aprMillionths: opt(isApr), rateFrom: opt(isDate) },
+  'loan-draw': { loan, cents: req(intIn(1, MAX_ENTRY_CENTS)) },
+  'loan-link': { loan, lot: req(isId), drawCents: opt(isCents), drawDate: opt(isDate) },
+  'loan-payment': { loan, interestCents: cents, principalCents: cents, interestThrough: opt(isDate) },
+  'loan-statement': { loan, balanceCents: cents },
   delete: { replaces: req(isId), reason: req(isText) },
 };
 
@@ -140,6 +150,8 @@ function crossFieldError(e: Entry): string | null {
   if (e.replaces !== undefined && e.reason === undefined) return 'an edit or delete needs a reason';
   if (e.replaces === e.id) return 'an entry cannot replace itself';
   if ((e.kind === 'close-year' || e.kind === 'unlock-year') && e.replaces !== undefined) return 'closing or unlocking a year cannot be edited';
+  if (e.kind === 'loan-update' && e.rateFrom !== undefined && e.aprMillionths === undefined) return 'a rate date needs a rate';
+  if (e.kind === 'loan-payment' && e.interestCents + e.principalCents === 0) return 'a payment needs an amount';
   if (e.kind === 'move' && e.from === e.to) return 'a move needs two different wallets';
   if (e.kind === 'move' && e.feeSats === 0 && e.feeValueCents !== 0) return 'fee value without fee sats';
   if (e.kind === 'receive' && e.source.type === 'gift' && e.source.giverAcquiredAt !== undefined && instantMs(e.source.giverAcquiredAt) > instantMs(e.at)) {

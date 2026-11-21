@@ -2,8 +2,9 @@
 import { newBook } from './book.ts';
 import { DEFAULT_TIME_ZONE, localDate } from './dates.ts';
 import { applyEntry, settleFrozenWallets } from './handlers.ts';
+import { applyLoanEntries } from './loan-book.ts';
 import { compareEntries } from './order.ts';
-import type { Entry, LedgerState, Settings } from './types.ts';
+import { LOAN_KINDS, type CoinEntry, type Entry, type EntryKind, type LedgerState, type LoanRecordEntry, type Settings } from './types.ts';
 import { resolveVersions } from './versions.ts';
 
 /** Charity gifts above this total value in one year need a qualified appraisal ($5,000). */
@@ -65,16 +66,20 @@ export function replay(entries: readonly Entry[]): LedgerState {
     cpaFlags: [],
     errors: resolution.errors,
     applied: [],
+    loans: [],
   };
   const book = newBook(state, resolution.roots);
   // Wallets exist for the whole timeline, so a wallet added today can hold coins bought years ago.
-  const ordered = [...resolution.applied].sort((a, b) => Number(b.kind === 'wallet') - Number(a.kind === 'wallet') || compareEntries(a, b));
+  const isLoanRecord = (e: Entry): e is LoanRecordEntry => (LOAN_KINDS as readonly EntryKind[]).includes(e.kind);
+  const ordered = resolution.applied.filter((e): e is CoinEntry => !isLoanRecord(e)).sort((a, b) => Number(b.kind === 'wallet') - Number(a.kind === 'wallet') || compareEntries(a, b));
   for (const e of ordered) {
     const problem = applyEntry(book, e, localDate(e.at, e.tz));
     if (problem === null) state.applied.push(e.id);
     else state.errors.push({ entryId: e.id, ...problem });
   }
   settleFrozenWallets(book);
+  // Loan records last: they read the finished lots and never change them.
+  applyLoanEntries(book, resolution.applied.filter(isLoanRecord), new Map(resolution.applied.map((e) => [e.id, e])));
   flagAppraisals(state);
   state.wallets = [...book.wallets.values()].map((w) => ({ ...w }));
   state.lots = [...book.lots.values()].filter((l) => l.sats > 0).map((l) => ({ ...l }));

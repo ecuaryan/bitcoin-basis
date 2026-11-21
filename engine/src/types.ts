@@ -10,6 +10,8 @@ export type Result<T, E> = { readonly ok: true; readonly value: T } | { readonly
 /** Letters, digits, `_` and `-`, 1 to 64 characters (a UUIDv7 in practice). Never contains `:`. */
 export type EntryId = string;
 export type WalletId = string;
+/** A loan's own id (same format as an entry id), chosen when the loan is created. */
+export type LoanId = string;
 /**
  * The root entry id of the version chain that created the coins, or `<moveRootId>:<sourceLotId>` for the
  * piece of a lot moved by a move (e.g. `M2:M1:L1` for coins moved twice).
@@ -166,6 +168,72 @@ export interface GivingPaidEntry extends EntryBase<'giving-paid'> {
   readonly year: number;
   readonly cents: Cents;
 }
+// Loans (docs/loans-spec.md). Tracking only: they never change lots, cost basis or gains.
+
+/** How the lender turns an APR into a daily rate: APR ÷ 365 (most HELOCs) or APR ÷ 360. */
+export type DayCount = 'actual/365' | 'actual/360';
+export const DAY_COUNTS: readonly DayCount[] = ['actual/365', 'actual/360'];
+
+/**
+ * A line of credit or loan that paid for some purchases (e.g. a HELOC). `aprMillionths` is the APR as a whole
+ * number of millionths: 65_000 = 6.5%, 78_750 = 7.875% (prime + margin in eighths of a percent stays exact).
+ */
+export interface LoanEntry extends EntryBase<'loan'> {
+  readonly loan: LoanId;
+  readonly name: string;
+  /** First day of the loan (the rate in force from then is `aprMillionths`). */
+  readonly opened: LocalDate;
+  readonly aprMillionths: number;
+  /** Default `actual/365`. */
+  readonly dayCount?: DayCount;
+  readonly creditLimitCents?: Cents;
+  /** Day of the month each billing cycle ends (statement closing date), 1-31; 31 means the month's last day. */
+  readonly statementDay?: number;
+}
+/** Rename, change the credit limit or statement day, close/reopen, or record a rate change from `rateFrom`. */
+export interface LoanUpdateEntry extends EntryBase<'loan-update'> {
+  readonly loan: LoanId;
+  readonly name?: string;
+  readonly creditLimitCents?: Cents;
+  readonly statementDay?: number;
+  readonly closed?: boolean;
+  readonly aprMillionths?: number;
+  /** First day the new rate applies (default: this entry's local date). Only with `aprMillionths`. */
+  readonly rateFrom?: LocalDate;
+}
+/** Money drawn that did not pay for a tracked purchase (so what is owed stays true). Dated by `at`. */
+export interface LoanDrawEntry extends EntryBase<'loan-draw'> {
+  readonly loan: LoanId;
+  readonly cents: Cents;
+}
+/**
+ * This purchase (a buy or opening lot, named by its lot id: the root id of the entry that created it) was paid
+ * with money drawn from `loan`. The draw is the purchase's cost on its acquired date unless given. Unlink by
+ * deleting this entry. A purchase belongs to at most one loan.
+ */
+export interface LoanLinkEntry extends EntryBase<'loan-link'> {
+  readonly loan: LoanId;
+  readonly lot: LotId;
+  readonly drawCents?: Cents;
+  readonly drawDate?: LocalDate;
+}
+/**
+ * A payment, dated by `at`: the interest part and the principal part (total = both). Also records "interest
+ * paid so far" when tracking starts (principal 0). `interestThrough` is the last day the interest covers
+ * (default: the latest statement closing date on or before the payment, else the payment date).
+ */
+export interface LoanPaymentEntry extends EntryBase<'loan-payment'> {
+  readonly loan: LoanId;
+  readonly interestCents: Cents;
+  readonly principalCents: Cents;
+  readonly interestThrough?: LocalDate;
+}
+/** The principal balance the lender's statement shows on its date (`at`), to check against the records. */
+export interface LoanStatementEntry extends EntryBase<'loan-statement'> {
+  readonly loan: LoanId;
+  readonly balanceCents: Cents;
+}
+
 export interface DeleteEntry extends EntryBase<'delete'> {
   readonly replaces: EntryId;
   readonly reason: string;
@@ -189,9 +257,23 @@ export type Entry =
   | CloseYearEntry
   | UnlockYearEntry
   | GivingPaidEntry
+  | LoanEntry
+  | LoanUpdateEntry
+  | LoanDrawEntry
+  | LoanLinkEntry
+  | LoanPaymentEntry
+  | LoanStatementEntry
   | DeleteEntry;
 
 export type EntryKind = Entry['kind'];
+
+/** Records that only track a loan; they never change lots, cost basis or gains. */
+export type LoanRecordEntry = LoanEntry | LoanUpdateEntry | LoanDrawEntry | LoanLinkEntry | LoanPaymentEntry | LoanStatementEntry;
+/** Every other entry: the ones that make up the coin ledger. */
+export type CoinEntry = Exclude<Entry, LoanRecordEntry>;
+
+/** Entry kinds that only track a loan; they never change lots, cost basis or gains. */
+export const LOAN_KINDS: readonly LoanRecordEntry['kind'][] = ['loan', 'loan-update', 'loan-draw', 'loan-link', 'loan-payment', 'loan-statement'];
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -464,7 +546,12 @@ export type LedgerErrorCode =
   | 'invalid-loss-date'
   | 'wallet-name-taken'
   | 'duplicate-lot'
-  | 'out-of-range';
+  | 'out-of-range'
+  | 'unknown-loan'
+  | 'loan-exists'
+  | 'loan-name-taken'
+  | 'unknown-purchase'
+  | 'already-linked';
 
 /** An entry that could not be applied. The rest of the ledger replays without it. */
 export interface LedgerError {
@@ -497,4 +584,48 @@ export interface LedgerState {
   errors: LedgerError[];
   /** Ids of the entries applied, in replay order. */
   applied: EntryId[];
+  /** Loans and their records (tracking only; see docs/loans-spec.md). */
+  loans: Loan[];
+}
+
+/** An APR in force from `from` (inclusive) until the next rate's `from`. */
+export interface LoanRate {
+  entryId: EntryId;
+  from: LocalDate;
+  aprMillionths: number;
+}
+/** Money drawn: for a linked purchase (`lotId`) or not (`lotId` null). */
+export interface LoanDraw {
+  entryId: EntryId;
+  date: LocalDate;
+  cents: Cents;
+  lotId: LotId | null;
+}
+export interface LoanPayment {
+  entryId: EntryId;
+  date: LocalDate;
+  interestCents: Cents;
+  principalCents: Cents;
+  /** Last day the interest covers (resolved default, see `LoanPaymentEntry`). */
+  interestThrough: LocalDate;
+}
+export interface LoanStatement {
+  entryId: EntryId;
+  date: LocalDate;
+  balanceCents: Cents;
+}
+export interface Loan {
+  id: LoanId;
+  name: string;
+  opened: LocalDate;
+  dayCount: DayCount;
+  creditLimitCents: Cents | null;
+  statementDay: number | null;
+  closed: boolean;
+  /** Sorted by `from`; the first is the rate at opening. */
+  rates: LoanRate[];
+  /** Sorted by date, then purchase lot id (or draw entry id). */
+  draws: LoanDraw[];
+  payments: LoanPayment[];
+  statements: LoanStatement[];
 }

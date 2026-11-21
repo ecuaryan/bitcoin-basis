@@ -77,3 +77,30 @@ export function oneYearAnniversary(acquired: LocalDate): LocalDate {
 export function isLongTerm(acquiredLocalDate: LocalDate, disposedLocalDate: LocalDate): boolean {
   return disposedLocalDate > oneYearAnniversary(acquiredLocalDate);
 }
+
+const MS_PER_DAY = 86_400_000;
+
+/** Days since 1970-01-01 for a valid local date (whole days; no time zone involved). */
+export function dayNumber(date: LocalDate): number {
+  return Date.parse(`${date}T00:00:00Z`) / MS_PER_DAY;
+}
+
+/** The local date `n` days after 1970-01-01. */
+export function dateOfDay(n: number): LocalDate {
+  return new Date(n * MS_PER_DAY).toISOString().slice(0, 10);
+}
+
+/**
+ * The latest date on or before `date` that falls on day `day` of its month (a day past the month's end means
+ * its last day, so 31 is always month-end).
+ */
+export function latestMonthDay(date: LocalDate, day: number): LocalDate {
+  const y = yearOf(date);
+  const m = Number(date.slice(5, 7));
+  const inMonth = (year: number, month: number): LocalDate => {
+    const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(Math.min(day, last)).padStart(2, '0')}`;
+  };
+  const here = inMonth(y, m);
+  return here <= date ? here : m === 1 ? inMonth(y - 1, 12) : inMonth(y, m - 1);
+}

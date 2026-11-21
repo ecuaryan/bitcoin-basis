@@ -35,7 +35,7 @@ const lot = (id: string, wallet: string, sats: number, costCents: number, origin
 const pick = (lotId: string, sats: number) => ({ lotId, sats });
 
 function ledger(over: Record<string, unknown>) {
-  return { wallets: [{ id: 'w1', frozen: false }, { id: 'w2', frozen: false }, { id: 'fz', frozen: true }], lots: [], disposals: [], gifts: [], lost: [], ...over } as never;
+  return { wallets: [{ id: 'w1', frozen: false }, { id: 'w2', frozen: false }, { id: 'fz', frozen: true }], lots: [], disposals: [], gifts: [], charityGifts: [], lost: [], closeOuts: [], ...over } as never;
 }
 
 describe('entryWorth', () => {
@@ -51,13 +51,13 @@ describe('entryWorth', () => {
     const state = ledger({
       lots: [lot('A', 'w1', 500_000, 40_000, 'A2')],
       disposals: [
-        { kind: 'sell', date: '2026-11-20', picks: [pick('A:A', 20_000), pick('Z', 99)] },
-        { kind: 'spend', date: '2026-11-21', picks: [pick('A', 1_000)] },
-        { kind: 'fee', date: '2026-10-01', picks: [pick('A', 5)] },
-        { kind: 'sell', date: '2026-11-22', picks: [pick('Z', 5)] },
+        { entryId: 'S1', kind: 'sell', date: '2026-11-20', picks: [pick('A:A', 20_000), pick('Z', 99)] },
+        { entryId: 'S2', kind: 'spend', date: '2026-11-21', picks: [pick('A', 1_000)] },
+        { entryId: 'F1', kind: 'fee', date: '2026-10-01', picks: [pick('A', 5)] },
+        { entryId: 'S3', kind: 'sell', date: '2026-11-22', picks: [pick('Z', 5)] },
       ],
-      gifts: [{ date: '2026-09-01', picks: [pick('A', 7)] }],
-      lost: [{ date: '2026-08-01', picks: [pick('A', 3)] }],
+      gifts: [{ entryId: 'G1', date: '2026-09-01', picks: [pick('A', 7)] }],
+      lost: [{ entryId: 'L1', date: '2026-08-01', picks: [pick('A', 3)] }],
     });
     const w = entryWorth(state, ['A', 'A2'], P);
     expect(w.held.sats).toBe(500_000);

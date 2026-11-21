@@ -114,6 +114,19 @@ export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>): E
       return line('◻', `Year ${e.year} unlocked`, e.reason);
     case 'giving-paid':
       return line('♥', 'Giving paid', `For ${e.year}`, { cents: e.cents });
+    // Loan records (tracking only). Placeholder wording; the loan page owns these.
+    case 'loan':
+      return line('⌂', 'Loan added', e.name, { summary: `Added ${e.name}` });
+    case 'loan-update':
+      return line('⌂', 'Loan updated', e.name ?? '');
+    case 'loan-draw':
+      return line('⌂', 'Loan draw', '', { cents: e.cents, centsLabel: 'drawn' });
+    case 'loan-link':
+      return line('⌂', 'Paid with a loan', '');
+    case 'loan-payment':
+      return line('⌂', 'Loan payment', '', { cents: e.interestCents + e.principalCents, centsLabel: 'paid' });
+    case 'loan-statement':
+      return line('⌂', 'Loan statement', '', { cents: e.balanceCents, centsLabel: 'owed' });
     case 'delete':
       return line('×', 'Removed', e.reason, { summary: 'Removed an entry' });
   }

@@ -7,9 +7,11 @@ import { isValidInstant, isValidTimeZone } from './dates.ts';
 import { formatBtc, formatCents, parseBtc, parseDollars } from './format.ts';
 import { MAX_ENTRY_CENTS, MAX_ENTRY_SATS } from './money.ts';
 import { compareLotsOldestFirst, compareStrings } from './order.ts';
+import { loanByPurchase } from './loans.ts';
 import { averageCostPerBtc } from './reports.ts';
+import { originLotId } from './trace.ts';
 import { err, ok } from './result.ts';
-import { TIERS, type Entry, type EntryId, type LedgerState, type LocalDate, type OpeningLotEntry, type Result, type Tier, type Wallet, type WalletId } from './types.ts';
+import { TIERS, type Entry, type EntryId, type LedgerState, type LocalDate, type Loan, type LoanLinkEntry, type OpeningLotEntry, type Result, type Tier, type Wallet, type WalletId } from './types.ts';
 import { parseEntry } from './validate.ts';
 
 // ---------------------------------------------------------------------------------------------
@@ -19,7 +21,9 @@ import { parseEntry } from './validate.ts';
 /** Required columns. Export adds an optional trailing `tz` column (the lot's time zone). */
 export const OPENING_LOT_COLUMNS = ['wallet', 'acquired_utc', 'btc', 'sats', 'cost_usd', 'cost_per_btc', 'tier', 'origin'] as const;
 export const OPENING_LOT_TZ_COLUMN = 'tz';
-type OpeningLotColumn = (typeof OPENING_LOT_COLUMNS)[number] | typeof OPENING_LOT_TZ_COLUMN;
+/** Optional: the name of the loan that paid for the lot (docs/loans-spec.md). Exported only when a lot has one. */
+export const OPENING_LOT_FUNDED_BY_COLUMN = 'funded_by';
+type OpeningLotColumn = (typeof OPENING_LOT_COLUMNS)[number] | typeof OPENING_LOT_TZ_COLUMN | typeof OPENING_LOT_FUNDED_BY_COLUMN;
 
 /** Rows to CSV with every text column made safe for spreadsheets (numeric columns untouched). */
 function exportCsv(columns: readonly string[], numeric: readonly string[], rows: readonly string[][]): string {
@@ -40,10 +44,17 @@ export interface OpeningLotsImportOptions {
   readonly tz: string;
   /** Id generator for new entries (e.g. `uuidv7`). */
   readonly newId: () => EntryId;
+  /**
+   * Loans a `funded_by` cell may name (ignoring case and outer spaces, preferring open loans): the ledger's, plus
+   * any created in the same import preview. An unknown name is a row error; loans are never created here.
+   */
+  readonly loans?: readonly Pick<Loan, 'id' | 'name' | 'closed'>[];
 }
 
 export interface OpeningLotsImport {
   entries: OpeningLotEntry[];
+  /** One `loan-link` per row with a `funded_by` loan (save them with the lots). */
+  links: LoanLinkEntry[];
   /** Non-fatal notes, e.g. a `btc` value that disagrees with `sats` (sats win). */
   warnings: CsvProblem[];
 }
@@ -53,6 +64,14 @@ const tierLabel = (t: Tier): string => t.charAt(0).toUpperCase() + t.slice(1);
 function parseAcquired(text: string): string | null {
   const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,3})?$/.test(text) ? `${text.replace(' ', 'T')}Z` : text;
   return isValidInstant(iso) ? iso : null;
+}
+
+/** Loans matching a CSV name (ignoring case and outer spaces), preferring open ones. */
+function loansNamed(loans: readonly Pick<Loan, 'id' | 'name' | 'closed'>[], name: string): Pick<Loan, 'id' | 'name' | 'closed'>[] {
+  const key = name.trim().toLowerCase();
+  const all = loans.filter((l) => l.name.trim().toLowerCase() === key);
+  const open = all.filter((l) => !l.closed);
+  return open.length > 0 ? open : all;
 }
 
 /** Wallets matching a CSV name (ignoring case and outer spaces), preferring non-archived ones. */
@@ -80,6 +99,7 @@ export function importOpeningLotsCsv(text: string, options: OpeningLotsImportOpt
   const problems: CsvProblem[] = [];
   const warnings: CsvProblem[] = [];
   const entries: OpeningLotEntry[] = [];
+  const links: LoanLinkEntry[] = [];
   rows.forEach((cells, index) => {
     const row = index + 2;
     const cell = (c: OpeningLotColumn): string => restoreFormula(cells[names.indexOf(c)] ?? '').trim();
@@ -96,15 +116,21 @@ export function importOpeningLotsCsv(text: string, options: OpeningLotsImportOpt
     if (!isValidTimeZone(tz)) rowProblems.push(`tz "${tz}" is not a time zone like America/Boise`);
     const tier = TIERS.find((t) => t === cell('tier').toLowerCase());
     if (tier === undefined) rowProblems.push(`tier "${cell('tier')}" is not Documented, Reconstructed, Estimated or Unknown`);
+    const fundedBy = cell('funded_by');
+    const loans = fundedBy === '' ? [] : loansNamed(options.loans ?? [], fundedBy);
+    if (fundedBy !== '' && loans.length !== 1) rowProblems.push(loans.length === 0 ? `no loan named "${fundedBy}" (add the loan first)` : `more than one loan is named "${fundedBy}"`);
     if (rowProblems.length > 0 || acquiredAt === null || costCents === null || tier === undefined) {
       problems.push(...rowProblems.map((message) => ({ row, message })));
       return;
     }
     const btc = cell('btc');
     if (btc !== '' && parseBtc(btc) !== sats) warnings.push({ row, message: `btc ${btc} disagrees with sats ${sats}; using sats` });
-    entries.push({ id: options.newId(), kind: 'opening-lot', at: acquiredAt, tz, wallet: (matches[0] as Wallet).id, acquiredAt, sats, costCents, tier, origin: cell('origin') });
+    const lot: OpeningLotEntry = { id: options.newId(), kind: 'opening-lot', at: acquiredAt, tz, wallet: (matches[0] as Wallet).id, acquiredAt, sats, costCents, tier, origin: cell('origin') };
+    entries.push(lot);
+    const loan = loans[0];
+    if (loan !== undefined) links.push({ id: options.newId(), kind: 'loan-link', at: acquiredAt, tz, loan: loan.id, lot: lot.id });
   });
-  return problems.length > 0 ? err(problems) : ok({ entries, warnings });
+  return problems.length > 0 ? err(problems) : ok({ entries, links, warnings });
 }
 
 export interface OpeningLotsExport {
@@ -118,15 +144,20 @@ export function exportOpeningLotsCsv(state: LedgerState): OpeningLotsExport {
   const walletOrder = new Map(state.wallets.map((w, i) => [w.id, i]));
   const names = walletNames(state);
   const lots = [...state.lots].sort((a, b) => (walletOrder.get(a.wallet) as number) - (walletOrder.get(b.wallet) as number) || compareLotsOldestFirst(a, b));
+  const loanName = new Map(state.loans.map((l) => [l.id, l.name]));
+  const fundedBy = new Map([...loanByPurchase(state)].map(([lot, loan]) => [lot, loanName.get(loan) as string]));
+  const funded = lots.some((l) => fundedBy.has(originLotId(l.id)));
   const rows = lots.map((l) => {
     const perBtc = averageCostPerBtc(l.costCents, l.sats);
-    return [names(l.wallet), l.acquiredAt.replace('T', ' ').replace('Z', ''), formatBtc(l.sats), String(l.sats), formatCents(l.costCents), perBtc === null ? '' : formatCents(perBtc), tierLabel(l.tier), l.proof, l.tz];
+    const row = [names(l.wallet), l.acquiredAt.replace('T', ' ').replace('Z', ''), formatBtc(l.sats), String(l.sats), formatCents(l.costCents), perBtc === null ? '' : formatCents(perBtc), tierLabel(l.tier), l.proof, l.tz];
+    return funded ? [...row, fundedBy.get(originLotId(l.id)) ?? ''] : row;
   });
   const warnings = [
     ...lots.filter((l) => l.alwaysLongTerm).map((l) => `Lot ${l.id} is inherited (always long-term); the CSV cannot record that.`),
     ...lots.filter((l) => l.lossBasis !== null).map((l) => `Lot ${l.id} is a gift worth less than the giver's cost (dual basis); the CSV cannot record that.`),
   ];
-  return { csv: exportCsv([...OPENING_LOT_COLUMNS, OPENING_LOT_TZ_COLUMN], ['btc', 'sats', 'cost_usd', 'cost_per_btc'], rows), warnings };
+  const columns = [...OPENING_LOT_COLUMNS, OPENING_LOT_TZ_COLUMN, ...(funded ? [OPENING_LOT_FUNDED_BY_COLUMN] : [])];
+  return { csv: exportCsv(columns, ['btc', 'sats', 'cost_usd', 'cost_per_btc'], rows), warnings };
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -9,7 +9,7 @@
  */
 import { localDate, taxYear, yearOf } from './dates.ts';
 import { compareStrings } from './order.ts';
-import type { CloseYearEntry, Conflict, Entry, EntryId, EntryKind, LedgerError, UnlockYearEntry } from './types.ts';
+import { LOAN_KINDS, type CloseYearEntry, type Conflict, type Entry, type EntryId, type EntryKind, type LedgerError, type UnlockYearEntry } from './types.ts';
 import { parseEntry } from './validate.ts';
 
 export interface Resolution {
@@ -56,6 +56,34 @@ function walletEditProblem(e: Entry, target: Entry, used: ReadonlySet<string>): 
   if (target.kind !== 'wallet') return null;
   if (e.kind === 'delete') return used.has(target.wallet) ? 'a wallet with activity cannot be deleted (archive it instead)' : null;
   if (e.kind !== 'wallet' || e.wallet !== target.wallet || e.type !== target.type) return "a wallet's id and type cannot change; create a new wallet instead";
+  return null;
+}
+
+const LOAN_KIND_SET: ReadonlySet<EntryKind> = new Set(LOAN_KINDS);
+
+/** Loans that a loan record names (other than the `loan` entry that creates one). */
+function loansUsed(e: Entry): string[] {
+  switch (e.kind) {
+    case 'loan-update':
+    case 'loan-draw':
+    case 'loan-link':
+    case 'loan-payment':
+    case 'loan-statement':
+      return [e.loan];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Why `e` may not replace `target` on loan grounds, or null. Loan records only replace loan records of the same
+ * kind (so loan tracking can never remove or change a coin record), a loan's id is fixed, and a loan that any
+ * record names cannot be deleted (close it instead).
+ */
+function loanEditProblem(e: Entry, target: Entry, used: ReadonlySet<string>): string | null {
+  if (e.kind === 'delete') return target.kind === 'loan' && used.has(target.loan) ? 'a loan with records cannot be deleted (close it instead)' : null;
+  if ((LOAN_KIND_SET.has(e.kind) || LOAN_KIND_SET.has(target.kind)) && e.kind !== target.kind) return 'a loan record can only be replaced by the same kind of record';
+  if (e.kind === 'loan' && target.kind === 'loan' && e.loan !== target.loan) return "a loan's id cannot change; create a new loan instead";
   return null;
 }
 
@@ -144,11 +172,12 @@ function openingLotYears(e: Entry, entries: ReadonlyMap<EntryId, Entry>): number
  */
 function rejectLockedChanges(entries: Map<EntryId, Entry>, closedAt: (year: number, asOf: EntryId) => boolean, errors: LedgerError[]): void {
   const used = new Set([...entries.values()].flatMap(walletsUsed));
+  const usedLoans = new Set([...entries.values()].flatMap(loansUsed));
   const roots = chainRoots(entries);
   const chain = (root: EntryId): Entry[] => [...entries.values()].filter((v) => roots.get(v.id) === root);
   for (const e of [...entries.values()].sort(byId)) {
     const target = e.replaces === undefined ? undefined : entries.get(e.replaces);
-    const cannot = target === undefined ? null : target.kind === 'close-year' || target.kind === 'unlock-year' ? 'closing or unlocking a year cannot be edited' : walletEditProblem(e, target, used);
+    const cannot = target === undefined ? null : target.kind === 'close-year' || target.kind === 'unlock-year' ? 'closing or unlocking a year cannot be edited' : (walletEditProblem(e, target, used) ?? loanEditProblem(e, target, usedLoans));
     if (cannot !== null) {
       entries.delete(e.id);
       errors.push({ entryId: e.id, code: 'cannot-replace', message: cannot });
