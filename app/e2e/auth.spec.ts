@@ -108,7 +108,7 @@ test('a new device: restore with the code, then add a passkey there', async ({ p
   await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible();
 });
 
-test('Records → Security: add a device QR, passkey, auto-lock, rotate, forget', async ({ page }) => {
+test('Settings, Security and devices: add a device QR, passkey, auto-lock, rotate, forget', async ({ page }) => {
   const code = await setUp(page);
   await goSecurity(page);
   await page.getByText('Show the address and square code').click();
@@ -167,7 +167,7 @@ test('forget this device asks first, then goes back to Welcome', async ({ page }
   const dialog = page.getByRole('dialog', { name: 'Forget this device?' });
   await expect(dialog).toContainText('removes everything stored on this device');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
-  await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Security and devices' })).toBeVisible();
   await page.getByRole('button', { name: 'Forget this device' }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: 'Forget this device' }).click();
   await expect(page.getByRole('heading', { name: /already set up/ })).toBeVisible();

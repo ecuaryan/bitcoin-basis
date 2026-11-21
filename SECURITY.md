@@ -100,7 +100,7 @@ The emergency kit is a printable page with the recovery code, a QR, steps, and a
 
 ### Lost recovery code
 
-Passkeys keep working. Make a new recovery code (Records, Security) and print a new kit. If you lose both the code and every passkey, the records cannot be opened; there is no reset, by design.
+Passkeys keep working. Make a new recovery code (Settings, Security and devices) and print a new kit. If you lose both the code and every passkey, the records cannot be opened; there is no reset, by design.
 
 ## Recovery-code rotation: what it does and does not do
 

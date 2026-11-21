@@ -53,6 +53,15 @@ Nothing is done because it compiles. Before you report:
 4. Protocol, auth or deploy changes: also run the live two-device test against a real deployment of your own (see the header of `app/e2e-live/two-devices.spec.ts` for the `BB_LIVE_*` variables). Not run in CI.
 5. Tell the truth about what you could not run.
 
+## Yearly tax-table update
+
+A reminder issue opens every January 2 (`.github/workflows/tax-tables-reminder.yml`) with the checklist. In short:
+
+- **Where:** federal tables in `engine/src/tax/tables/federal-<year>.ts` (register in `tables/index.ts`); state rates in `engine/src/tax/tables/state.ts` (each rate carries its `year` and `source`).
+- **Sources:** the IRS Rev. Proc. with the year's inflation adjustments (rate brackets, standard deduction, 0%/15% capital gain thresholds, gift annual exclusion), then each flat state's statute, tax agency page or the Tax Foundation table. No figure without a source link.
+- **Tests:** add the new year to the engine tax tests (a worked example per filing status, and the table lookup), keep engine coverage at 100%. Until it lands, the app shows "Using <year> tax rates; <year+1> rates aren't in the app yet." on Sell, Borrow and Tax season.
+- **Docs:** update the tax section of `docs/engine-spec.md` and the years listed in `README.md`.
+
 ## Where the specs live
 
 - Tax and ledger rules, worked examples, decisions ledger: [docs/engine-spec.md](docs/engine-spec.md)

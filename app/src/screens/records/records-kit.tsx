@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Button } from '../../ui/Button.tsx';
+import { Link } from 'react-router';
+import { Button, buttonClasses } from '../../ui/Button.tsx';
+import { Card } from '../../ui/Card.tsx';
 import { ShieldIcon } from '../../ui/more-icons.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 
@@ -53,7 +55,7 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 }
 
 /** The "test your emergency kit" reminder and the sheet that walks through the test. */
-export function KitCard({ today }: { today: string }) {
+export function KitCard({ today, always = false }: { today: string; always?: boolean }) {
   const [tested, setTested] = useState<string | null>(readTested);
   const [firstSeen] = useState<string | null>(() => readDay(KIT_SEEN_KEY));
   useEffect(() => {
@@ -92,9 +94,21 @@ export function KitCard({ today }: { today: string }) {
     }
   }
 
-  if (!kitTestDue(tested, today, firstSeen)) return null;
+  const due = kitTestDue(tested, today, firstSeen);
+  if (!due && !always) return null;
   return (
     <>
+      {always ? (
+        <Card className="flex flex-col gap-3 !rounded-[18px] !p-4">
+          <p className="m-0 text-[13px] leading-[1.45] text-soft">The page you print and keep in a safe. {tested === null ? 'Not tested yet.' : 'Tested.'}</p>
+          <div className="flex flex-wrap gap-2.5">
+            <Link to="/kit" className={buttonClasses('secondary', 'text-text no-underline')}>
+              Print the kit
+            </Link>
+            <Button onClick={() => setOpen(true)}>Test the kit</Button>
+          </div>
+        </Card>
+      ) : (
       <section aria-label="Needs attention" className="flex items-center gap-3 rounded-[18px] border-[1.5px] border-accent bg-[linear-gradient(180deg,rgb(247_147_26/0.16),rgb(247_147_26/0.04))] px-4 py-3.5">
         <span className="flex size-10 flex-none items-center justify-center rounded-xl bg-accent text-bg">
           <ShieldIcon size={20} />
@@ -107,6 +121,7 @@ export function KitCard({ today }: { today: string }) {
           Test
         </Button>
       </section>
+      )}
       <Sheet open={open} onClose={close} title="Test your emergency kit">
         <div className="flex flex-col gap-4 pb-3">
           <ol className="m-0 flex list-none flex-col gap-4 p-0">
@@ -131,7 +146,7 @@ export function KitCard({ today }: { today: string }) {
           </ol>
           {noCode ? (
             <p className="m-0 rounded-xl border border-line bg-bg p-3 text-sm leading-snug text-soft">
-              Make a new recovery code in Records, Security. It prints a new kit, and the old code stops working.
+              Make a new recovery code in Settings, under Security and devices. It prints a new kit, and the old code stops working.
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2.5">

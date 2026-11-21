@@ -25,7 +25,7 @@ export function LinkHistoryPrompt() {
             variant="primary"
             onClick={() => {
               recoveryLinkNotice.dismiss();
-              navigate('/records?v=security&rotate=1');
+              navigate('/settings?rotate=1#security');
             }}
           >
             Make a new code

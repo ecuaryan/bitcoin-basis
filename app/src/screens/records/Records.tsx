@@ -1,6 +1,6 @@
 import { givingDue, yearOf } from '@bitcoin-basis/engine';
 import { useMemo, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, Navigate, useSearchParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { formatMoney } from '../../lib/format.ts';
@@ -12,19 +12,16 @@ import { GivingView } from './records-giving.tsx';
 import { ImportExportView } from './records-io.tsx';
 import { ClosedYearsView, WalletsView } from './records-misc.tsx';
 import { KitCard } from './records-kit.tsx';
-import { SecurityView } from './records-security.tsx';
-import { SettingsView } from './records-settings.tsx';
-import { useVaultStatusOptional } from '../../data/vault-provider.tsx';
 import { buildItems } from './records-logic.ts';
 import { useState } from 'react';
 import { useTitle } from '../../ui/use-title.ts';
 import { ChevronRightIcon } from '../../ui/icons.tsx';
 
-type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'io' | 'settings' | 'security';
-const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'io', 'settings', 'security'];
+type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'io';
+const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'io'];
 
 function viewTitle(view: View, givingName: string): string {
-  const titles: Record<View, string> = { entries: 'All entries', giving: givingName, closed: 'Closed years', wallets: 'Wallets', io: 'Import and export', settings: 'Settings', security: 'Security' };
+  const titles: Record<View, string> = { entries: 'All entries', giving: givingName, closed: 'Closed years', wallets: 'Wallets', io: 'Import and export' };
   return titles[view];
 }
 
@@ -51,7 +48,7 @@ function Tile({ to, title, sub, hot, active, className }: { to: string; title: s
 /** Records: every entry and its history, giving, closed years, wallets, import and export, settings. */
 export function Records() {
   const wide = useIsWide();
-  const { entries, state, holdings, today, isDemo } = useLedger();
+  const { entries, state, holdings, today } = useLedger();
   const [params] = useSearchParams();
   const asked = params.get('v');
   const view: View | null = VIEWS.find((v) => v === asked) ?? null;
@@ -63,16 +60,13 @@ export function Records() {
   const [openId, setOpenId] = useState<string | null>(null);
   const open = items.find((i) => i.id === openId) ?? null;
   const active = holdings.wallets.filter((w) => !w.frozen && !w.archived).length;
-  const vaultStatus = useVaultStatusOptional();
 
   const tiles: ReactNode = (
-    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-7' : 'grid-cols-6') : 'grid-cols-2 min-[480px]:grid-cols-3')}>
+    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-5' : 'grid-cols-4') : 'grid-cols-2')}>
       {due !== null && <Tile to="/records?v=giving" title={state.settings.givingName} sub={`${formatMoney(Math.max(0, due.owedCents))} due`} hot={due.owedCents > 0} active={view === 'giving'} />}
       <Tile to="/records?v=closed" title="Closed years" sub={state.closedYears.length === 0 ? 'Lock a year once filed' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
       <Tile to="/records?v=wallets" title="Wallets" sub={`${active} active`} active={view === 'wallets'} />
-      <Tile to="/records?v=io" title={'Import and\u00a0export'} sub="CSV · backup" active={view === 'io'} />
-      <Tile to="/records?v=settings" title="Settings" sub="Taxes · time zone" active={view === 'settings'} />
-      <Tile to="/records?v=security" title="Security" sub={isDemo || vaultStatus === null ? 'Demo' : vaultStatus.autoLockMinutes === 0 ? 'Never locks' : `Locks after ${vaultStatus.autoLockMinutes} min`} active={view === 'security'} className={state.settings.givingEnabled ? '' : 'col-span-2 lg:col-span-1'} />
+      <Tile to="/records?v=io" title={'Import and\u00a0export'} sub="CSV · backup" active={view === 'io'} className={state.settings.givingEnabled ? '' : 'col-span-2 lg:col-span-1'} />
       <Tile to="/records?v=entries" title="All entries" sub={`${items.length} in total`} active={view === 'entries'} className="hidden lg:order-first lg:flex" />
     </section>
   );
@@ -100,8 +94,6 @@ export function Records() {
   if (view === 'closed') body = <ClosedYearsView />;
   if (view === 'wallets') body = <WalletsView />;
   if (view === 'io') body = <ImportExportView />;
-  if (view === 'settings') body = <SettingsView />;
-  if (view === 'security') body = <SecurityView />;
 
   const searchButton = (
     <Link to="/records?v=entries&search=1" aria-label="Search entries" className="flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-soft hover:text-text">
@@ -109,6 +101,9 @@ export function Records() {
     </Link>
   );
 
+  // Old links: Settings and Security moved to their own page.
+  if (asked === 'settings') return <Navigate to="/settings#taxes" replace />;
+  if (asked === 'security') return <Navigate to={`/settings${params.get('rotate') === '1' ? '?rotate=1' : ''}#security`} replace />;
   return (
     <div className="flex flex-col gap-4 lg:gap-6">
       {wide ? (

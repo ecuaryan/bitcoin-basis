@@ -41,7 +41,7 @@ export function Kit() {
               Back
             </button>
           ) : (
-            <Link to={pending?.reason === 'setup' ? '/welcome' : '/records?v=security'} className="flex min-h-11 items-center gap-1 text-sm font-semibold text-soft no-underline hover:text-text">
+            <Link to={pending?.reason === 'setup' ? '/welcome' : '/settings#security'} className="flex min-h-11 items-center gap-1 text-sm font-semibold text-soft no-underline hover:text-text">
               <ChevronLeftIcon size={16} />
               Back
             </Link>
@@ -75,7 +75,7 @@ export function Kit() {
               <button type="button" autoFocus onClick={() => setLeaving(false)} className="press min-h-11 rounded-xl bg-accent px-4 text-sm font-bold text-bg hover:bg-amber">
                 Stay
               </button>
-              <button type="button" onClick={() => navigate('/records?v=security')} className="press min-h-11 rounded-xl border border-line bg-surface-2 px-4 text-sm font-semibold text-text hover:bg-line">
+              <button type="button" onClick={() => navigate('/settings#security')} className="press min-h-11 rounded-xl border border-line bg-surface-2 px-4 text-sm font-semibold text-text hover:bg-line">
                 Leave
               </button>
             </div>
@@ -84,8 +84,8 @@ export function Kit() {
         {code === null ? (
           <p role="note" className="m-0 rounded-xl border border-line bg-surface px-3.5 py-3 text-[13px] leading-[1.45] text-soft">
             The recovery code is only shown once, right after setup or when you make a new one, so this kit has no code on it. To print a kit with a code, make a new one in{' '}
-            <Link to="/records?v=security" className="inline-flex min-h-11 items-center underline">
-              Records → Security
+            <Link to="/settings#security" className="inline-flex min-h-11 items-center underline">
+              Settings, Security and devices
             </Link>. The old code stops working when you do.
           </p>
         ) : (
@@ -156,7 +156,7 @@ export function Kit() {
               ))}
             </ol>
             <span className="text-xs text-[#595550]">
-              {code === null ? 'No code on this copy. Make a new one in the app (Records → Security) and print again.' : 'Anyone holding this page can read the records. Keep it in the safe.'}
+              {code === null ? 'No code on this copy. Make a new one in the app (Settings, Security and devices) and print again.' : 'Anyone holding this page can read the records. Keep it in the safe.'}
             </span>
           </div>
           <div className="flex w-[150px] flex-none flex-col items-center gap-1.5 self-center sm:self-auto">

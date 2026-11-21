@@ -73,8 +73,7 @@ export function SettingsView() {
 
   return (
     <div className="flex max-w-[640px] flex-col gap-3">
-      <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Settings</h2>
-      <Group title="Your taxes">
+      <Group title="Filing and income">
         <SelectBox label="Filing status" value={draft.filingStatus} onChange={(e) => pick('filingStatus', e.target.value as SettingsDraft['filingStatus'])}>
           {FILING_STATUSES.map((f) => (
             <option key={f} value={f}>
@@ -86,13 +85,13 @@ export function SettingsView() {
         <SelectBox label="State income tax" value={draft.stateKind} onChange={(e) => pick('stateKind', e.target.value as SettingsDraft['stateKind'])}>
           <option value="none">None</option>
           <option value="flat">A state with one rate</option>
-          <option value="custom">My own rate</option>
+          <option value="custom">Other state or custom rate…</option>
         </SelectBox>
         {draft.stateKind === 'flat' && (
           <SelectBox label="State" value={draft.stateCode} onChange={(e) => pick('stateCode', e.target.value)}>
             {STATES.map((st) => (
               <option key={st.code} value={st.code}>
-                {st.name} ({st.kind === 'none' ? 'no tax' : `${st.rate / 100}%`})
+                {`${st.name} ${st.kind === 'none' ? 'no tax' : `${st.rate / 100}%`} · ${st.year} rate`}
               </option>
             ))}
           </SelectBox>

@@ -1,6 +1,6 @@
 import { flushPendingSaves } from '../lib/pending-saves.ts';
 import { createContext, lazy, useEffect, Suspense, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router';
+import { Link, NavLink, useLocation } from 'react-router';
 import { PullToSync } from './PullToSync.tsx';
 import { LoadingSkeleton, ReadyOutlet } from './ready-gate.tsx';
 import { useLedger } from '../data/ledger-provider.tsx';
@@ -9,7 +9,7 @@ import { cx } from '../lib/cx.ts';
 import { LinkHistoryPrompt } from './LinkHistoryPrompt.tsx';
 import { SyncIndicator } from './SyncIndicator.tsx';
 import type { LogPreset } from '../screens/log/draft.ts';
-import { EyeIcon, EyeOffIcon, HoldingsIcon, LockIcon, PlusIcon, RecordsIcon, TaxIcon, WhatIfIcon } from './icons.tsx';
+import { EyeIcon, EyeOffIcon, GearIcon, HoldingsIcon, LockIcon, PlusIcon, RecordsIcon, TaxIcon, WhatIfIcon } from './icons.tsx';
 import { useMediaQuery } from './motion.ts';
 import { usePrefs } from './prefs.tsx';
 import { useToast } from './Toast.tsx';
@@ -114,6 +114,25 @@ export function Brand({ size = 32, className }: { size?: number; className?: str
   );
 }
 
+/** The logo and name as a link to Holdings. Looks the same as the plain Brand; keyboard focus is outlined. */
+function BrandLink({ size, className }: { size?: number; className?: string }) {
+  return (
+    <Link to="/" aria-label="Bitcoin Basis, go to Holdings" className="-m-1 block min-w-0 rounded-xl p-1 text-text no-underline hover:text-text">
+      <Brand {...(size === undefined ? {} : { size })} {...(className === undefined ? {} : { className })} />
+    </Link>
+  );
+}
+
+/** The gear: opens Settings. Lit while Settings is open. */
+function SettingsButton() {
+  return (
+    <NavLink to="/settings" aria-label="Settings" className={({ isActive }) => cx(ICON_BUTTON, 'no-underline', isActive && 'border-accent text-amber')}>
+      <SettingsGear />
+    </NavLink>
+  );
+}
+const SettingsGear = () => <GearIcon />;
+
 /** Leaves the demo and clears its made-up records. Always at least 44px tall. */
 export function ExitDemoButton({ variant = 'link', className }: { variant?: 'link' | 'primary'; className?: string }) {
   const { clearAll } = useLedger();
@@ -183,10 +202,11 @@ function PhoneShell({ onLog }: { onLog(): void }) {
     <div className="relative mx-auto flex min-h-dvh max-w-[560px] flex-col overflow-x-clip">
       <div aria-hidden="true" className="pointer-events-none absolute -top-[180px] left-1/2 h-[420px] w-[520px] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(247_147_26/0.20),rgb(247_147_26/0))]" />
       <header className="relative flex items-center justify-between px-5 pt-5">
-        <Brand />
-        <div className="flex items-center gap-2">
+        <BrandLink />
+        <div className="flex flex-none items-center gap-2">
           <SyncIndicator />
           <HideButton />
+          <SettingsButton />
           <LockButton />
         </div>
       </header>
@@ -230,12 +250,15 @@ function DesktopShell({ onLog }: { onLog(): void }) {
     <div className="relative flex min-h-dvh overflow-x-clip">
       <div aria-hidden="true" className="pointer-events-none absolute -top-[260px] left-[30%] h-[620px] w-[900px] bg-[radial-gradient(closest-side,rgb(247_147_26/0.16),rgb(247_147_26/0))]" />
       <nav aria-label="Main" className="sticky top-0 flex h-dvh w-[220px] flex-none flex-col gap-1.5 border-r border-line-soft px-[18px] py-7">
-        <Brand size={34} className="px-2.5 pb-[22px]" />
+        <div className="pb-[22px]">
+          <BrandLink size={34} className="px-1.5" />
+        </div>
         <SideLink to="/" end also={inWallet} label="Holdings" />
         <SideLink to="/what-if" label="What if" />
         <SideLink to="/tax" label="Tax season" />
         <SideLink to="/records" label="Records" />
         <div className="flex-1" />
+        <SideLink to="/settings" label="Settings" />
         <button type="button" onClick={onLog} className="press flex min-h-12 items-center justify-center gap-2 rounded-[14px] bg-accent text-[15px] font-bold text-bg hover:bg-amber">
           <PlusIcon size={18} />
           Log

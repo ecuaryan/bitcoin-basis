@@ -1,4 +1,5 @@
 import { formatCents, oldestFirstOrder, parseDollars, planPrepareSale, type LotPick, type LedgerState, type SalePlan, type SellEntry, type MoveEntry, type WalletHolding } from '@bitcoin-basis/engine';
+import { TaxTableNotice } from '../../ui/TaxTableNotice.tsx';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useMemo, useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -231,6 +232,7 @@ export function SaleReviewSheet({
       <>
         {needsBrokerInstruction(plan) && <Note tone="warn">Tell {wallet.name} which coins to sell before you sell. Without instructions it may use its own order.</Note>}
         {plan.estimatedShareBp > 0 && <Note>Some of these coins have an Estimated or Unknown cost. Confirm how to report that with your CPA.</Note>}
+        <TaxTableNotice year={year} />
         {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
       </>
     );

@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { cx } from '../../lib/cx.ts';
 import { appAddress, shortAddress } from '../../data/app-url.ts';
 import { explainError, wasCancelled } from '../../data/explain-error.ts';
@@ -10,7 +10,7 @@ import { kitHandoff } from '../../data/recovery-handoff.ts';
 import { describeSync, syncRowText, type SyncTone } from '../../data/sync-view.ts';
 import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
 import { ExitDemoButton } from '../../ui/AppShell.tsx';
-import { Button, buttonClasses } from '../../ui/Button.tsx';
+import { Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { SelectBox } from '../../ui/Field.tsx';
 import { QrCode } from '../../ui/QrCode.tsx';
@@ -44,22 +44,48 @@ function PasskeyLine() {
   );
 }
 
-/** Records → Security: sync, this device, adding another device, the recovery code and locking. */
+/** Settings, Security and devices: sync, this device, adding another device, the recovery code and forgetting the device. */
 export function SecurityView() {
   const { isDemo } = useLedger();
   if (isDemo) {
     return (
-      <div className="flex max-w-[640px] flex-col gap-3">
-        <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Security</h2>
-        <Card className="flex flex-col items-start gap-3">
-          <p className={P}>You are looking at the demo, so there is nothing to protect yet. Exit the demo and set up your own records to get a passkey, a recovery code and syncing.</p>
-          <ExitDemoButton variant="primary" />
-        </Card>
-        <InstallGroup />
-      </div>
+      <Card className="flex max-w-[640px] flex-col items-start gap-3">
+        <p className={P}>You are looking at the demo, so there is nothing to protect yet. Exit the demo and set up your own records to get a passkey, a recovery code and syncing.</p>
+        <ExitDemoButton variant="primary" />
+      </Card>
     );
   }
   return <RealSecurity />;
+}
+
+/** Settings, App: when the app locks itself, installing it, and a note on hiding amounts. */
+export function AppView() {
+  const { isDemo } = useLedger();
+  return (
+    <div className="flex max-w-[640px] flex-col gap-3">
+      {!isDemo && <AutoLockGroup />}
+      <InstallGroup />
+      <Group title="Hide amounts">
+        <p className={P}>Amounts show when you open the app. Tap the eye at the top to hide them.</p>
+      </Group>
+    </div>
+  );
+}
+
+function AutoLockGroup() {
+  const vault = useVault();
+  const status = useVaultStatus();
+  return (
+    <Group title="Auto-lock">
+      <SelectBox label="Lock after" value={String(status.autoLockMinutes)} onChange={(e) => vault.setAutoLockMinutes(Number(e.target.value))}>
+        {LOCK_CHOICES.map((m) => (
+          <option key={m} value={m}>
+            {m === 0 ? 'Never' : `${m} ${m === 1 ? 'minute' : 'minutes'} of no activity`}
+          </option>
+        ))}
+      </SelectBox>
+    </Group>
+  );
 }
 
 const SYNC_DOT: Record<SyncTone, string> = { ok: 'bg-accent', busy: 'animate-pulse bg-amber', quiet: 'bg-muted', attention: 'bg-loss' };
@@ -113,7 +139,6 @@ function RealSecurity() {
 
   return (
     <div className="flex max-w-[640px] flex-col gap-3">
-      <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Security</h2>
       {error !== null && (
         <p role="alert" className="m-0 rounded-xl border border-loss/40 bg-loss/10 px-3.5 py-2.5 text-[13px] leading-[1.45] text-loss">
           {error}
@@ -189,17 +214,6 @@ function RealSecurity() {
             </div>
           </>
         )}
-        <SelectBox
-          label="Lock after"
-          value={String(status.autoLockMinutes)}
-          onChange={(e) => vault.setAutoLockMinutes(Number(e.target.value))}
-        >
-          {LOCK_CHOICES.map((m) => (
-            <option key={m} value={m}>
-              {m === 0 ? 'Never' : `${m} ${m === 1 ? 'minute' : 'minutes'} of no activity`}
-            </option>
-          ))}
-        </SelectBox>
       </Group>
 
       <AddDeviceGroup />
@@ -208,16 +222,11 @@ function RealSecurity() {
         <p className={P}>Opens your records if every device is lost. It is not a Bitcoin seed phrase.</p>
         <div className="flex flex-wrap gap-2.5">
           <Button onClick={() => setRotateOpen(true)}>Make a new recovery code</Button>
-          <Link to="/kit" className={buttonClasses('secondary', 'text-text no-underline')}>
-            Emergency kit
-          </Link>
         </div>
         <Disclosure label="More">
           <p className={P}>Make a new one if the kit is lost or someone else saw it. The old kit stops working.</p>
         </Disclosure>
       </Group>
-
-      <InstallGroup />
 
       <Group title="Forget this device">
         <p className={P}>Removes this device&apos;s copy. Your server keeps the encrypted one.</p>

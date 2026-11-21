@@ -1,0 +1,67 @@
+name: Tax tables reminder
+
+# Once a year, opens an issue to update the tax tables for the coming tax year (if one is not already open).
+on:
+  schedule:
+    - cron: '17 9 2 1 *' # January 2, 09:17 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  remind:
+    name: Open the yearly tax-table issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create the issue unless one is open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          next=$(( $(date -u +%Y) + 1 ))
+          title="Update tax tables for $next"
+          open=$(gh issue list --state open --search "\"$title\" in:title" --json title --jq "[.[] | select(.title == \"$title\")] | length")
+          if [ "$open" != "0" ]; then
+            echo "An issue titled '$title' is already open."
+            exit 0
+          fi
+          cat > body.md <<EOF
+          Tax tables must be in the app before $next sales are planned. Until then the app falls back to the latest table and says so. See "Yearly tax-table update" in AGENTS.md.
+
+          **Federal** (\`engine/src/tax/tables/federal-$next.ts\`, register it in \`tables/index.ts\`). Source: the IRS Rev. Proc. with the $next inflation adjustments (usually published in the fall).
+          - [ ] Rev. Proc. number and URL in \`sources\`
+          - [ ] \`ordinary\`: bracket tops for all five filing statuses (§ 4.01 tables)
+          - [ ] \`standardDeduction\` for each filing status
+          - [ ] \`longTerm\`: 0% and 15% top amounts (\`zeroTop\`, \`fifteenTop\`) for each filing status
+          - [ ] \`niitThreshold\` and \`capitalLossLimit\` (statutory: check \`statutory.ts\` still holds)
+          - [ ] \`giftAnnualExclusion\`
+
+          **Gift exclusion**
+          - [ ] Confirm the annual gift exclusion for $next (the Rev. Proc. section on Chapter 12 gifts) and the figure shown in Tax season
+
+          **State rates** (\`engine/src/tax/tables/state.ts\`; update \`rate\`, \`year\` and \`source\`; states with no tax on gains need only the year)
+          - [ ] Arizona (2.5%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Colorado (4.4%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Georgia (4.99%): https://dor.georgia.gov/taxes/important-tax-updates
+          - [ ] Idaho (5.3%): https://legislature.idaho.gov/statutesrules/idstat/Title63/T63CH30/SECT63-3024/
+          - [ ] Illinois (4.95%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Indiana (2.95%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Iowa (3.8%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Kentucky (3.5%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Louisiana (3%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Michigan (4.25%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Mississippi (4%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] North Carolina (3.99%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Ohio (2.75%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Pennsylvania (3.07%): https://taxfoundation.org/data/all/state/state-income-tax-rates-2026/
+          - [ ] Utah (4.45%): https://le.utah.gov/Session/2026/bills/enrolled/SB0060.pdf
+          - [ ] States with no income tax (AK, FL, NV, NH, SD, TN, TX, WY): confirm still true
+
+          **Finish**
+          - [ ] Add tests: a worked example per filing status and the table lookup (engine keeps 100% coverage)
+          - [ ] Bump docs: \`docs/engine-spec.md\`, README years, "Yearly tax-table update" in AGENTS.md if sources moved
+          - [ ] \`npm run check\`, both builds, and the Playwright suite pass
+          EOF
+          gh issue create --title "$title" --body-file body.md

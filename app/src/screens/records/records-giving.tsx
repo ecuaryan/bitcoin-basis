@@ -43,7 +43,7 @@ export function GivingView() {
       <Card className="flex flex-col items-start gap-3">
         <h2 className="m-0 font-display text-xl font-semibold">{s.givingName} is off</h2>
         <p className="m-0 text-[15px] leading-relaxed text-muted">
-          Turn this on to set aside a share of what your sales gain, and track what you have paid. It is off until you want it. Choose the share and its name in Settings.
+          Turn this on to set aside a share of what your sales gain, and track what you have paid. It is off until you want it. Choose the share and its name in Settings, under Taxes.
         </p>
         <Button
           variant="primary"

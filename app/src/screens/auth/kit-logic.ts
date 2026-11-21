@@ -37,5 +37,5 @@ export const KIT_STEPS: readonly string[] = [
   "Point a phone's camera at the square code below and tap the link. (No phone handy? Open the app address below in a browser.)",
   'Choose “Open my records”. The scan fills in the code; otherwise type the code below.',
   "The records open. Set up your own passkey (your fingerprint, face or screen lock) when it asks, so you won't need the code again.",
-  'Show the tax preparer Records → Tax season, and download “For my CPA”.',
+  'Show the tax preparer Tax season, and download “For my CPA”.',
 ];

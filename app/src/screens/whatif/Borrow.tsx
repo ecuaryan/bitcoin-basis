@@ -1,4 +1,5 @@
 import { parseBtc, parseDollars, planBorrow, taxContext, yearOf } from '@bitcoin-basis/engine';
+import { TaxTableNotice } from '../../ui/TaxTableNotice.tsx';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
@@ -217,6 +218,7 @@ export function Borrow() {
       <div className="flex flex-col gap-3">{inputs}</div>
       <div className="flex flex-col gap-3">
         {results}
+        <TaxTableNotice year={year} />
         <Note>Planning only. If the lender sells your coins, that is a sale, so it uses them up and can create tax. Lenders differ: check how yours picks coins. Estimates, not tax advice.</Note>
         <div className="flex gap-2.5">
           <Button className="min-h-[54px] flex-1 !rounded-2xl" onClick={save} disabled={outcome.kind !== 'plan'}>

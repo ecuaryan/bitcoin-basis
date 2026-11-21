@@ -1,4 +1,5 @@
 import { form8949Csv, incomeCsv, yearOf, yearSummary } from '@bitcoin-basis/engine';
+import { taxTableNotice } from '../../lib/tax-table-notice.ts';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
@@ -346,7 +347,7 @@ export function Tax() {
 
   const note = (
     <p className="m-0 text-xs leading-[1.45] text-muted">
-      Estimates, not tax advice. {view.fellBack ? `There is no ${year} tax table yet, so the ${view.tableYear} one is used. ` : ''}Gray areas are marked: confirm with your CPA.
+      Estimates, not tax advice. {taxTableNotice(year)} Gray areas are marked: confirm with your CPA.
     </p>
   );
 
@@ -369,7 +370,7 @@ export function Tax() {
           {stale !== null && (
             <p className="m-0 text-[13px] leading-snug text-amber">
               Your losses from past years are saved for {stale.savedFor}.{' '}
-              <Link to="/records?v=settings" className="font-semibold">
+              <Link to="/settings#taxes" className="font-semibold">
                 Update them for {year}
               </Link>
             </p>

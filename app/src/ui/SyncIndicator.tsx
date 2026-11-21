@@ -13,7 +13,7 @@ const DOT: Record<SyncTone, string> = { ok: 'bg-accent', busy: 'animate-pulse bg
  * A calm status in the header. All good: nothing on phones, a small labelled "Synced" on desktop.
  * Offline and problems are a labelled pill;
  * "Sign in to sync" is an orange-outlined button that signs in right here. Every other state opens
- * Records, Security, where syncing is explained. Hidden in the demo.
+ * Settings, where syncing is explained. Hidden in the demo.
  */
 export function SyncIndicator({ className }: { className?: string }) {
   const status = useVaultStatusOptional();
@@ -56,7 +56,7 @@ export function SyncIndicator({ className }: { className?: string }) {
   const pill = v.tone === 'quiet' || v.tone === 'attention';
   return (
     <Link
-      to="/records?v=security"
+      to="/settings#security"
       aria-label={`Sync: ${v.label}. Open sync settings.`}
       title={v.detail}
       // A bare dot on a phone means nothing to people, so phones show sync only when it needs attention.

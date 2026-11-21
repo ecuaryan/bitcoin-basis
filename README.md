@@ -30,7 +30,8 @@ All screenshots use the built-in synthetic demo data.
 - **Wallet by wallet:** coins are tracked per wallet, as the 2025 IRS rules ask (Rev. Proc. 2024-28). Saved coin choices: every sale remembers exactly which lots it used, so adding an older purchase later never changes a past sale.
 - **Sell and Borrow planners:** compare oldest first with lowest tax (coins used, short- and long-term gain, tax this adds, losses left for next year). Borrow shows loan-to-value, margin-call and liquidation prices, and the tax a liquidation would add.
 - **Tax season:** gains, losses, income and gifts for a year, the 1040 digital-asset answer, and CSV downloads (Form 8949-style, income) for your preparer. Federal tables for 2025 to 2027; state as a flat rate, no tax, or a custom rate.
-- **Records:** entries with history (edits and deletes are new entries, nothing is overwritten), close a year, import opening lots from a CSV, export everything, settings, and security.
+- **Records:** entries with history (edits and deletes are new entries, nothing is overwritten), close a year, import opening lots from a CSV, and export everything.
+- **Settings** (the gear at the top, or Settings in the sidebar): taxes, security and devices, the emergency kit, and app options.
 - **Frozen or failed platform:** close-out with the loss, and later payouts as recovery gains.
 - **Emergency kit:** a printable page with a recovery code and QR that opens your records on a new device, plus a yearly reminder to test it.
 - **Hide amounts** (your choice, off by default), installable on a phone, offline after the first load.

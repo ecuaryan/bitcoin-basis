@@ -1,4 +1,5 @@
 import { formatBtc, oldestFirstOrder, parseBtc, yearOf } from '@bitcoin-basis/engine';
+import { TaxTableNotice } from '../../ui/TaxTableNotice.tsx';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { hasLosses, staleLosses } from '../../lib/losses.ts';
@@ -175,11 +176,12 @@ export function Sell() {
           {stale !== null && (
             <Note tone="warn">
               Your losses from past years are saved for {stale.savedFor}.{' '}
-              <Link to="/records?v=settings" className="font-semibold">
+              <Link to="/settings#taxes" className="font-semibold">
                 Update them for {year}
               </Link>
             </Note>
           )}
+          <TaxTableNotice year={year} />
           {active.headsUp && <Note tone="warn">This sale adds more than $1,000 of estimated tax. You may need to make an estimated payment before filing.</Note>}
           {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
           <details className="group">
@@ -191,7 +193,7 @@ export function Sell() {
               {plans.lowestTax.deferredNote !== null && needsBrokerInstruction(plans.lowestTax) && <Note>{plans.lowestTax.deferredNote}</Note>}
               {plans.lowestTax.note !== null && <Note>{plans.lowestTax.note}</Note>}
               {needsBrokerInstruction(active) && !selfCustody && <Note>Tell {wallet.name} which coins to sell before you sell. Otherwise it may use its own order.</Note>}
-              <p className="m-0 text-xs text-muted">Estimates, not tax advice. Based on your settings in Records.</p>
+              <p className="m-0 text-xs text-muted">Estimates, not tax advice. Based on your tax settings.</p>
             </div>
           </details>
         </Card>

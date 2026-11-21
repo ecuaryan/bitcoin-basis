@@ -96,7 +96,7 @@ test('Records: changing settings changes the Sell tax', async ({ page }) => {
   const oldest = page.getByRole('radio', { name: 'Oldest first' });
   await expect(oldest).toContainText('Tax this adds');
   const before = await oldest.innerText();
-  await go(page, '/records?v=settings');
+  await go(page, '/settings');
   const losses = page.getByRole('group', { name: 'Losses from past years' });
   await expect(losses.getByLabel('Long-term')).toBeVisible();
   await expect(losses).toContainText('for 2026');
@@ -130,7 +130,7 @@ test('Records: test the emergency kit sheet, then the reminder hides', async ({ 
 
 test('Records: settings toggles save once, and the entries list keeps settings out of the way', async ({ page }) => {
   await openDemo(page);
-  await go(page, '/records?v=settings');
+  await go(page, '/settings');
   const giving = page.getByRole('group', { name: 'Giving' }).or(page.getByRole('region', { name: 'Giving' }));
   const toggle = giving.getByRole('switch').first();
   await expect(toggle).toBeVisible();

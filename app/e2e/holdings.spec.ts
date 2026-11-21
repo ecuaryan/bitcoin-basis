@@ -52,7 +52,7 @@ test('every screen names itself in the browser tab', async ({ page }) => {
     ['/what-if', 'What if'],
     ['/tax', 'Tax season'],
     ['/records', 'Records'],
-    ['/records?v=security', 'Security'],
+    ['/settings', 'Settings'],
     ['/wallet/wallet-strike', 'Strike'],
     ['/kit', 'Emergency kit'],
     ['/nowhere', 'Not found'],

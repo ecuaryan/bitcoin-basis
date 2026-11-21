@@ -45,7 +45,7 @@ export function describeSync(s: SyncStatus, now: number): SyncView {
   }
 }
 
-/** The one-line status on Records › Security. Same words as the header pill, with the time. */
+/** The one-line status on Settings, Security and devices. Same words as the header pill, with the time. */
 export function syncRowText(s: SyncStatus, now: number): { text: string; tone: SyncTone } {
   switch (s.phase) {
     case 'off':

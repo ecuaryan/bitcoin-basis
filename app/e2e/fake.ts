@@ -34,9 +34,8 @@ export async function readCode(page: Page): Promise<string> {
   return groups.join('-');
 }
 
-/** Records → Security by tapping (the fake build keeps everything in the page, so never reload). */
+/** Settings, Security and devices, by tapping the gear (the fake build keeps everything in the page, so never reload). */
 export async function goSecurity(page: Page): Promise<void> {
-  await page.getByRole('link', { name: 'Records', exact: true }).click();
-  await page.getByRole('link', { name: /^Security/ }).click();
-  await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Security and devices' })).toBeVisible();
 }

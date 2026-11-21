@@ -68,13 +68,13 @@ test('losses from past years: Holdings explains them and Settings uses the new w
   await expect(page.getByText(/Unused losses from earlier tax returns/)).toBeVisible();
   await expect(page.getByText(/your CPA has them \(Schedule D, capital loss carryover\)/)).toBeVisible();
   await expectNoViolations(page);
-  await go(page, '/records?v=settings');
+  await go(page, '/settings');
   const losses = page.getByRole('group', { name: 'Losses from past years' });
   await losses.getByRole('button', { name: 'What are losses from past years?' }).click();
   await expect(losses).toContainText("The app can't see your returns.");
   await expect(losses).toContainText('for 2026');
   await expectNoViolations(page);
-  for (const path of ['/', '/what-if', '/tax', '/records?v=settings']) {
+  for (const path of ['/', '/what-if', '/tax', '/settings']) {
     await go(page, path);
     await expect(page.locator('body')).not.toContainText(/carry-?forward/i);
   }
@@ -101,7 +101,7 @@ test('year close: offers the losses left for next year and saves them', async ({
   await expectNoViolations(page);
   await done.getByRole('button', { name: 'Use these for 2026' }).click();
   await expect(page.getByText('Saved for 2026.')).toBeVisible();
-  await go(page, '/records?v=settings');
+  await go(page, '/settings');
   await expect(page.getByRole('group', { name: 'Losses from past years' })).toContainText('for 2026');
   await go(page, '/tax');
   await expect(page.getByRole('region', { name: 'After losses from past years' })).toContainText('Losses from past years');
