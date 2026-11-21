@@ -6,6 +6,7 @@ This guide is written so you can hand it to an AI agent. Steps that need a perso
 
 ## Prerequisites
 
+- A computer for this one-time setup (a phone alone can't run it yet). Once it's done, phones and computers both work.
 - A free [Cloudflare](https://dash.cloudflare.com/sign-up) account.
 - A GitHub account and the [`gh` CLI](https://cli.github.com), signed in (`gh auth login`).
 - Node 24 (`node -v`) and npm.
