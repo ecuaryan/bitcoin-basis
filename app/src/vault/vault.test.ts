@@ -377,6 +377,27 @@ describe('locking', () => {
     a.vault.dispose();
   });
 
+  test('coming back to the foreground pulls other devices\' changes right away', async () => {
+    const server = new FakeServer(SETUP);
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' as DocumentVisibilityState });
+    const a = await makeDevice(server, new FakeAuthenticator('p'), { environment: { document: doc as unknown as Document, window: null }, autoLockMinutes: 5, pollIntervalMs: 0 });
+    const { recoveryCode } = await a.vault.create({ setupCode: SETUP });
+    const b = await makeDevice(server, null);
+    await b.vault.unlockWithRecoveryCode(recoveryCode);
+    await b.vault.store.append(BOOK);
+    await b.vault.sync();
+    expect(await a.vault.store.list()).toHaveLength(0);
+    doc.visibilityState = 'hidden';
+    doc.dispatchEvent(new Event('visibilitychange'));
+    a.scheduler.skip(60_000);
+    doc.visibilityState = 'visible';
+    doc.dispatchEvent(new Event('visibilitychange'));
+    // No poll (pollIntervalMs 0) and no explicit sync: only the foreground handler can fetch B's entries.
+    await expect.poll(async () => (await a.vault.store.list()).length, { timeout: 2000 }).toBe(BOOK.length);
+    a.vault.dispose();
+    b.vault.dispose();
+  });
+
   test('auto-lock 0 means never', async () => {
     const { a } = await setup();
     a.vault.setAutoLockMinutes(0);

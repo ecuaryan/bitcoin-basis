@@ -1049,7 +1049,11 @@ export class Vault {
     this.hiddenAt = null;
     if (since === null || this.session === null) return;
     if (this.autoLockMinutes > 0 && this.scheduler.now() - since >= this.autoLockMinutes * 60_000) this.lock('hidden');
-    else this.scheduleIdle();
+    else {
+      this.scheduleIdle();
+      // Back in the foreground: pull other devices' changes now instead of waiting for the next poll.
+      void this.store.sync();
+    }
   };
 
   private readonly onOnline = () => {
