@@ -338,13 +338,14 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
 function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots: Lot[]; today: string; entries: readonly Entry[]; walletsById: ReadonlyMap<string, Wallet>; priceCents: number | null }) {
   const [all, setAll] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
-  const sorted = useMemo(() => [...lots].sort((a, b) => (a.acquiredAt < b.acquiredAt ? -1 : a.acquiredAt > b.acquiredAt ? 1 : 0)), [lots]);
+  // Newest first: the coin you just added is the one you look for.
+  const sorted = useMemo(() => [...lots].sort((a, b) => (a.acquiredAt > b.acquiredAt ? -1 : a.acquiredAt < b.acquiredAt ? 1 : 0)), [lots]);
   const shown = all ? sorted : sorted.slice(0, 5);
   const termHelp = useHelp('What are short-term and long-term?', TERM_HELP);
   const { state } = useLedger();
   return (
     <Card as="section" aria-label="Coins in this wallet" className="flex flex-col">
-      <SectionHeader title="Coins, oldest first" help={termHelp.button} right={<span className="flex-none text-xs text-muted">Cost per BTC</span>} className="-mt-2" />
+      <SectionHeader title="Coins, newest first" help={termHelp.button} right={<span className="flex-none text-xs text-muted">Cost per BTC</span>} className="-mt-2" />
       {termHelp.panel}
       {sorted.length === 0 ? <EmptyLine>No coins here.</EmptyLine> : null}
       <ul className="m-0 flex list-none flex-col p-0">
@@ -627,11 +628,12 @@ function RetirementPurchases({ wallet, purchases, onLog }: { wallet: Wallet; pur
   const [all, setAll] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const items = useMemo(() => new Map(buildItems(entries).map((i) => [i.id, i])), [entries]);
-  const shown = all ? purchases : purchases.slice(0, 5);
+  const newest = useMemo(() => [...purchases].sort((a, b) => (a.at > b.at ? -1 : a.at < b.at ? 1 : 0)), [purchases]);
+  const shown = all ? newest : newest.slice(0, 5);
   const openItem = openId === null ? undefined : items.get(openId);
   return (
     <Card as="section" aria-label="Purchases" className="flex flex-col">
-      <SectionHeader title="Purchases, oldest first" right={<SectionCount>{countOf(purchases.length, 'purchase')}</SectionCount>} className="-mt-2" />
+      <SectionHeader title="Purchases, newest first" right={<SectionCount>{countOf(purchases.length, 'purchase')}</SectionCount>} className="-mt-2" />
       {purchases.length === 0 ? <EmptyLine>No purchases logged yet.</EmptyLine> : null}
       <ul className="m-0 flex list-none flex-col p-0">
         {shown.map((p) => (

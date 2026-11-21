@@ -6,7 +6,7 @@ export interface StackYear {
   year: number;
   sats: number;
   byTier: Record<Tier, number>;
-  /** The coins themselves, oldest first. */
+  /** The coins themselves, newest first. */
   lots: Lot[];
 }
 
@@ -82,7 +82,7 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
     row.lots.push(l);
   }
   const stack = [...byYear.values()].sort((a, b) => a.year - b.year);
-  for (const row of stack) row.lots.sort((a, b) => (a.acquiredAt < b.acquiredAt ? -1 : a.acquiredAt > b.acquiredAt ? 1 : 0));
+  for (const row of stack) row.lots.sort((a, b) => (a.acquiredAt > b.acquiredAt ? -1 : a.acquiredAt < b.acquiredAt ? 1 : 0));
 
   const card = (w: Holdings['wallets'][number]): WalletCard => {
     const checks = state.balanceChecks.filter((c) => c.wallet === w.wallet);

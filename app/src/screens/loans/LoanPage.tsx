@@ -214,10 +214,11 @@ function Purchases({ loan, purchases, onManage, onOpen }: { loan: Loan; purchase
   const { entries } = useLedger();
   const [all, setAll] = useState(false);
   const items = useMemo(() => new Map(buildItems(entries).map((i) => [i.id, i])), [entries]);
-  const shown = all ? purchases : purchases.slice(0, 5);
+  const newest = useMemo(() => [...purchases].sort((a, b) => (a.drawDate > b.drawDate ? -1 : a.drawDate < b.drawDate ? 1 : 0)), [purchases]);
+  const shown = all ? newest : newest.slice(0, 5);
   return (
     <Card as="section" aria-label="Purchases" className="flex flex-col">
-      <SectionHeader title="Purchases" right={<SectionCount>{countOf(purchases.length, 'purchase')}</SectionCount>} className="-mt-2" />
+      <SectionHeader title="Purchases, newest first" right={<SectionCount>{countOf(purchases.length, 'purchase')}</SectionCount>} className="-mt-2" />
       {purchases.length === 0 ? <EmptyLine>Nothing linked yet. Add the purchases {loan.name} paid for.</EmptyLine> : null}
       <ul className="m-0 flex list-none flex-col p-0">
         {shown.map((p, i) => (

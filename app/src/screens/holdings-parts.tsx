@@ -205,7 +205,7 @@ export function YearSheet({ row, onClose }: { row: StackYear | null; onClose(): 
       {row && (
         <>
           <p className="mb-2 text-sm text-muted">
-            {countOf(row.lots.length, 'coin')}, oldest first. Tap one to see where it came from.
+            {countOf(row.lots.length, 'coin')}, newest first. Tap one to see where it came from.
           </p>
           <TierLegend tiers={tiersPresent(row.byTier)} className="mb-2" />
           <YearTotal lots={row.lots} year={row.year} priceCents={priceCents} />

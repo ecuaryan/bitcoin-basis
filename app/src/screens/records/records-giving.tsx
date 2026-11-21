@@ -12,6 +12,7 @@ import { MoneyInput } from '../../ui/formatted-inputs.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { useWriter } from '../../ui/use-writer.ts';
 import { yearsAvailable } from '../tax/tax-logic.ts';
+import { newestFirst } from '../../lib/newest-first.ts';
 
 /** Giving: off by default. When on, shows what is due from the year's sales and spending, and records what was paid. */
 export function GivingView() {
@@ -114,7 +115,7 @@ export function GivingView() {
         {due.sales.length === 0 ? (
           <p className="m-0 text-sm text-muted">No sales or spending logged in {year}.</p>
         ) : (
-          due.sales.map((x, i) => (
+          newestFirst(due.sales, (x) => x.date).map((x, i) => (
             <div key={x.entryId} className={cx('flex items-center justify-between gap-3 py-2 text-sm', i > 0 && 'border-t border-line-soft')}>
               <span className="flex flex-col">
                 <span className="text-soft">{shortDate(x.date)}</span>
@@ -134,7 +135,7 @@ export function GivingView() {
           <Money cents={due.incomeCents} />
         </div>
         <p className="m-0 text-xs text-muted">Promos, rewards and mining are listed here but never counted toward {s.givingName}.</p>
-        {due.income.map((i) => (
+        {newestFirst(due.income, (i) => i.date).map((i) => (
           <div key={i.entryId} className="flex items-center justify-between border-t border-line-soft py-2 text-sm">
             <span className="text-soft">
               {i.description ?? 'Income'} · {shortDate(i.date)}

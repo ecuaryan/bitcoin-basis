@@ -25,6 +25,7 @@ import { useTitle } from '../../ui/use-title.ts';
 import { TERM_HELP } from '../../lib/terms.ts';
 import { useHelp } from '../../ui/Help.tsx';
 import { TaxProfilePrompt } from './TaxProfilePrompt.tsx';
+import { newestFirst } from '../../lib/newest-first.ts';
 
 /** A card of label/value rows. `help` puts a "?" after one row's label, with its answer under the rows. */
 function Rows({ rows, label, help }: { rows: readonly [string, ReactNode][]; label: string; help?: { row: string; label: string; text: string } }) {
@@ -259,7 +260,7 @@ export function Tax() {
         <>
           <p className="m-0 text-xs text-muted">Counts as ordinary income, listed on Schedule 1 (Other income), at the value the day you got it.</p>
           <ul className="m-0 flex list-none flex-col p-0">
-            {summary.income.map((i) => (
+            {newestFirst(summary.income, (i) => i.date).map((i) => (
               <li key={i.entryId} className="flex items-center justify-between gap-3 border-t border-line-soft py-2 text-sm">
                 <span className="text-soft">
                   {i.description ?? 'Income'} · {shortDate(i.date)}
