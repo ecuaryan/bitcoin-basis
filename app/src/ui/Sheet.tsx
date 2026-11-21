@@ -4,7 +4,7 @@ import { cx } from '../lib/cx.ts';
 import { CloseIcon } from './icons.tsx';
 import { ChevronLeftIcon } from './more-icons.tsx';
 import { prefersReducedMotion } from './motion.ts';
-import { trackSheet } from './sheet-history.ts';
+import { trackSheet } from './close-watch.ts';
 import { backdropOpacity, dragOffset, releaseVelocity, shouldCloseOnRelease } from './sheet-drag.ts';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -239,6 +239,8 @@ export function Sheet({
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key === 'Escape') {
+      // Handled here, so the browser's close watcher (the back gesture's handler) does not close it a second time.
+      e.preventDefault();
       e.stopPropagation();
       onCloseRef.current();
       return;

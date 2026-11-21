@@ -184,8 +184,9 @@ describe('Unlock', () => {
     const button = document.querySelector('button') as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     await click(button);
+    // Unlocking runs real WebCrypto, which can take longer than one settle on a slow CI machine.
+    await vi.waitFor(() => expect(device.vault.status.state).toBe('unlocked'), { timeout: 5000 });
     await act(settle);
-    expect(device.vault.status.state).toBe('unlocked');
     expect(auth.getSignals[0]?.aborted).toBe(true);
     expect(app.container.querySelector('[role=alert]')).toBeNull();
   });

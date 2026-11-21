@@ -107,18 +107,17 @@ test('the grab handle is decoration, Close stays the accessible control, and axe
   await expect(dialog).toBeHidden();
 });
 
-test("the phone's back gesture closes the sheet and stays on the page; closing it another way leaves no dead Back step", async ({ page }) => {
+test("the back gesture closes the sheet without touching history (close watcher), and Back still leaves normally", async ({ page }) => {
   const dialog = await openLog(page);
   const url = page.url();
-  await page.goBack();
+  const before = await page.evaluate(() => window.history.length);
+  // A close request that the sheet's own Esc handler does not see (focus outside it) is what Android's back gesture sends.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   expect(page.url()).toBe(url);
-  await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.history.length)).toBe(before);
 
-  // Open and close with the Close button, then go to What if: Back returns straight to Holdings.
-  await page.getByRole('button', { name: 'Log something' }).click();
-  await page.getByRole('dialog', { name: 'Log' }).getByRole('button', { name: 'Close' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('link', { name: 'What if', exact: true }).click();
   await expect(page).toHaveURL(/\/what-if/);
   await page.goBack();
