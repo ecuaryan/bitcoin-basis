@@ -92,33 +92,41 @@ export const BACKUP_MAX_COPIES = 300;
 export const BACKUP_MAX_PAGES = 5;
 /** Progress markers (in DATA, newest first): which `e/` key the backup has reached. Not backed up. */
 export const PROGRESS_PREFIX = 'backup-progress/';
+/** BACKUP layout: `vault/<vaultId>/<original DATA key>`. */
+export const BACKUP_VAULT_PREFIX = 'vault/';
 const OVERLAP_MS = 10 * 60 * 1000;
 const MAX_MS = 9_999_999_999_999;
 
 /**
  * Copies objects missing from BACKUP (only-if-new). Returns how many were copied.
  * `e/` is not re-listed from the start: each run writes an append-only progress marker
- * (`backup-progress/<inverted ms>`, so the newest lists first) with the last `e/` key it reached,
+ * (`backup-progress/<vaultId>/<inverted ms>`, so the newest lists first) with the last `e/` key it reached,
  * and the next run lists from ten minutes before it (uploads are stamped when they start).
  */
 export async function backup(env: Env, now = Date.now()): Promise<number> {
+  // Every object goes under its own vault's prefix, so a reset-and-reclaimed instance (same fixed keys,
+  // new vault) never collides with the locked objects of the old one. Unclaimed: nothing to back up.
+  const claimed = await getJson<Claimed>(env.DATA, 'meta/claimed');
+  if (!claimed) return 0;
+  const root = `${BACKUP_VAULT_PREFIX}${claimed.vaultId}/`;
+  const progressPrefix = `${PROGRESS_PREFIX}${claimed.vaultId}/`;
   let copied = 0;
   const copy = async (key: string): Promise<boolean> => {
     const o = await env.DATA.get(key);
     if (!o) return false;
-    if ((await env.BACKUP.put(key, await o.arrayBuffer(), ONLY_IF_NEW)) !== null) copied++;
+    if ((await env.BACKUP.put(root + key, await o.arrayBuffer(), ONLY_IF_NEW)) !== null) copied++;
     return true;
   };
   for (const prefix of SMALL_PREFIXES) {
-    const have = new Set((await listAll(env.BACKUP, prefix)).map((o) => o.key));
+    const have = new Set((await listAll(env.BACKUP, root + prefix)).map((o) => o.key));
     for (const { key } of await listAll(env.DATA, prefix)) {
-      if (have.has(key)) continue;
+      if (have.has(root + key)) continue;
       if (copied >= BACKUP_MAX_COPIES) return copied;
       await copy(key);
     }
   }
 
-  const marker = (await env.DATA.list({ prefix: PROGRESS_PREFIX, limit: 1 })).objects[0];
+  const marker = (await env.DATA.list({ prefix: progressPrefix, limit: 1 })).objects[0];
   const reached = marker ? ((await getJson<{ last: string }>(env.DATA, marker.key))?.last ?? null) : null;
   const ms = reached === null ? null : /^e\/(\d{13})/.exec(reached)?.[1];
   const startAfter = ms ? `e/${String(Math.max(0, Number(ms) - OVERLAP_MS)).padStart(13, '0')}` : undefined;
@@ -128,7 +136,7 @@ export async function backup(env: Env, now = Date.now()): Promise<number> {
     const listing = await env.DATA.list({ prefix: 'e/', limit: 1000, ...(cursor ? { cursor } : startAfter ? { startAfter } : {}) });
     for (const { key } of listing.objects) {
       // Inside the overlap only copy what BACKUP lacks; past the marker every key is new.
-      if (reached !== null && key <= reached && (await env.BACKUP.head(key)) !== null) continue;
+      if (reached !== null && key <= reached && (await env.BACKUP.head(root + key)) !== null) continue;
       if (copied >= BACKUP_MAX_COPIES) return finish();
       await copy(key);
       if (last === null || key > last) last = key;
@@ -140,7 +148,7 @@ export async function backup(env: Env, now = Date.now()): Promise<number> {
 
   async function finish(): Promise<number> {
     if (last !== null && last !== reached) {
-      const key = `${PROGRESS_PREFIX}${String(MAX_MS - now).padStart(13, '0')}-${crypto.randomUUID()}`;
+      const key = `${progressPrefix}${String(MAX_MS - now).padStart(13, '0')}-${crypto.randomUUID()}`;
       await env.DATA.put(key, JSON.stringify({ last }), ONLY_IF_NEW);
     }
     return copied;

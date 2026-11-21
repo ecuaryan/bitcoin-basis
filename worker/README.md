@@ -45,6 +45,8 @@ Tests run the real Worker in `workerd` with local R2 (`npm test -w worker`, also
 
 Secrets are set once by `npm run setup` (`tools/setup.mjs`), which generates them and pipes them to `wrangler secret put`; they are never in a file. The `vars` in `wrangler.jsonc` are local-dev defaults; the deploy workflow passes the real `ORIGIN` and `RP_ID` with `--var` and refuses to deploy if `APP_ORIGIN` is not an https origin. See [`docs/deploy.md`](../docs/deploy.md).
 
-The cron (`17 3 * * *`, daily) copies objects missing from `BACKUP`, only-if-new, at most 300 per run. It resumes `e/` from an append-only progress marker (`backup-progress/`) instead of re-listing everything, and logs only a count.
+The cron (`17 3 * * *`, daily) copies objects missing from `BACKUP` under `vault/<vaultId>/<key>` (skipped while unclaimed), only-if-new, at most 300 per run. It resumes `e/` from an append-only progress marker (`backup-progress/<vaultId>/`) instead of re-listing everything, and logs only a count.
 
 `tools/setup.mjs` also adds R2 lifecycle rules to `DATA` that expire `used/` (spent challenges), `revoked/` (ended sessions) and `backup-progress/` after 30 days. The Worker itself never deletes. If the rules can't be added from the command line, add them in the dashboard (R2 -> bucket -> Settings -> Object lifecycle rules); without them those tiny objects simply accumulate.
+
+To restore, copy `vault/<id>/*` from `BACKUP` back into `DATA` without the `vault/<id>/` prefix.
