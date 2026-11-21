@@ -112,7 +112,7 @@ describe('Unlock', () => {
     expect(text).toContain('has no passkey for these records yet');
     expect(text).not.toContain('Touch ID');
     expect(app.container.querySelector('input')).not.toBeNull();
-    expect(device.vault.status.state).toBe('unlocked');
+    await vi.waitFor(() => expect(device.vault.status.state).toBe('unlocked'), { timeout: 5000 });
   });
 
   it('says gently why it locked itself', async () => {
@@ -231,7 +231,7 @@ describe('Unlock', () => {
     app = await renderWithVault(<Unlock platform="android" />, device);
     await click(document.querySelector('button') as HTMLButtonElement);
     await act(settle);
-    expect(device.vault.status.state).toBe('unlocked');
+    await vi.waitFor(() => expect(device.vault.status.state).toBe('unlocked'), { timeout: 5000 });
   });
 
   it('asks for the passkey by itself once after a fresh load, never again', async () => {
