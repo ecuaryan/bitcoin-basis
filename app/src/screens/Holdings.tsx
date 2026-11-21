@@ -156,10 +156,13 @@ function WalletReady({ view }: { view: HoldingsView }) {
         </div>
       </Card>
       <section aria-label="Wallets" className="flex flex-col gap-2">
+        <div className="flex items-center justify-between px-0.5 pt-1">
+          <h2 className="m-0 text-[15px] font-semibold">Wallets</h2>
+          <AddWalletButton compact />
+        </div>
         {view.wallets.map((w) => (
           <WalletLinkCard key={w.id} w={w} />
         ))}
-        <AddWalletButton row className="mt-1" />
       </section>
     </DesktopCenter>
   );
@@ -237,10 +240,13 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
       </Card>
 
       <section aria-label="Wallets" className="flex flex-col gap-2">
+        <div className="flex items-center justify-between px-0.5 pt-1">
+          <h2 className="m-0 text-[15px] font-semibold">Wallets</h2>
+          <AddWalletButton compact />
+        </div>
         {view.wallets.map((w) => (
           <WalletLinkCard key={w.id} w={w} />
         ))}
-        <AddWalletButton row />
       </section>
 
       <MoneyCard view={view} />
