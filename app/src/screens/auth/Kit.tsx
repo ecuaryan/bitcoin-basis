@@ -9,7 +9,7 @@ import { PrinterIcon } from '../../ui/auth-icons.tsx';
 import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
 import { QrCode } from '../../ui/QrCode.tsx';
 import { cx } from '../../lib/cx.ts';
-import { KIT_STEPS, kitWalletRows, longDate, oneYearLater } from './kit-logic.ts';
+import { kitSteps, kitWalletRows, longDate, oneYearLater } from './kit-logic.ts';
 import { SaveCode } from './SaveCode.tsx';
 import { useTitle } from '../../ui/use-title.ts';
 
@@ -28,6 +28,7 @@ export function Kit() {
   const address = appAddress();
   const code = pending?.code ?? null;
   const wallets = kitWalletRows(state.wallets);
+  const hasRetirement = state.wallets.some((w) => !w.archived && w.type === 'retirement');
   const slots = code?.split('-') ?? Array.from({ length: 6 }, () => '');
   const link = code === null ? address : recoveryLink(address, code);
 
@@ -111,12 +112,12 @@ export function Kit() {
 
       <article
         aria-label="Emergency kit"
-        className="mx-auto flex w-full max-w-[816px] flex-col gap-[18px] bg-white px-5 py-8 text-[#161514] sm:px-12 lg:px-[72px] lg:py-12 print:min-h-[11in] print:w-[8.5in] print:max-w-none print:gap-3 print:px-[72px] print:py-7"
+        className="mx-auto flex w-full max-w-[816px] flex-col gap-[18px] bg-white px-5 py-8 text-[#161514] sm:px-12 lg:px-[72px] lg:py-12 print:w-[8.5in] print:max-w-none print:gap-2.5 print:px-[64px] print:py-6"
       >
-        <header className="flex items-start justify-between gap-4 border-b-[3px] border-accent pb-4">
+        <header className="flex items-start justify-between gap-4 border-b-[3px] border-accent pb-4 print:pb-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-xs font-bold tracking-[0.12em] text-[#9a4f00]">EMERGENCY KIT · KEEP WITH YOUR ESTATE PAPERS</span>
-            <h1 className="m-0 font-display text-[28px] font-bold leading-[1.15] tracking-[-0.02em] text-balance sm:text-[34px] print:text-[30px]">
+            <h1 className="m-0 font-display text-[28px] font-bold leading-[1.15] tracking-[-0.02em] text-balance sm:text-[34px] print:text-[26px]">
               Opening the Bitcoin records of {name.trim() === '' ? <span className="inline-block min-w-[200px] border-b border-[#161514]">&nbsp;</span> : name.trim()}
             </h1>
           </div>
@@ -126,19 +127,19 @@ export function Kit() {
         <section className="flex flex-col gap-1 rounded-xl border-2 border-[#161514] px-[18px] py-3.5">
           <span className="text-base font-bold">This app holds records, not Bitcoin.</span>
           <span className="text-sm leading-normal">
-            This opens the records. It does not open the Bitcoin. The app shows what was bought, when, and what it cost. Getting to the Bitcoin itself depends on how it&apos;s held (exchange accounts, hardware wallets, multisig). Follow the separate inheritance plan for that. No keys or passwords are ever printed here.
+            It shows what was bought, when, and for how much. It can&apos;t move or unlock any Bitcoin: for that, follow the separate inheritance plan. No Bitcoin keys or passwords are printed here.
           </span>
         </section>
 
         <section aria-label="Steps" className="flex flex-col gap-2.5">
           <h2 className="m-0 text-lg font-bold">Steps</h2>
           <ol className="m-0 flex list-none flex-col gap-2.5 p-0 print:gap-1.5">
-            {KIT_STEPS.map((text, i) => (
+            {kitSteps(code !== null).map((text, i) => (
               <li key={i} className="flex items-start gap-3.5">
                 <span aria-hidden="true" className="flex size-[26px] flex-none items-center justify-center rounded-full bg-accent text-[13px] font-bold text-[#161514]">
                   {i + 1}
                 </span>
-                <span className="pt-[3px] text-sm leading-normal">{text}</span>
+                <span className="pt-[3px] text-sm leading-normal print:text-[13px] print:leading-snug">{text}</span>
               </li>
             ))}
           </ol>
@@ -147,7 +148,7 @@ export function Kit() {
         <section aria-label="Recovery code" className="flex flex-col gap-6 sm:flex-row sm:items-stretch">
           <div className="flex flex-1 flex-col gap-2.5">
             <h2 className="m-0 text-lg font-bold">Recovery code</h2>
-            <span className="text-[13px] font-semibold leading-[1.45]">This is NOT a Bitcoin seed phrase. It can&apos;t move Bitcoin. It only opens the records.</span>
+            <span className="text-[13px] font-semibold leading-[1.45]">This is NOT a Bitcoin seed phrase. It only opens the records.</span>
             <ol aria-label="Recovery code groups" className="m-0 grid list-none grid-cols-3 gap-2 p-0">
               {slots.map((g, i) => (
                 <li key={i} className={cx('flex h-10 items-center justify-center rounded-lg border-[1.5px] border-[#161514] font-display text-[17px] font-semibold tracking-[0.08em]', g === '' ? 'text-[#595550]' : 'text-[#161514]')}>
@@ -156,7 +157,7 @@ export function Kit() {
               ))}
             </ol>
             <span className="text-xs text-[#595550]">
-              {code === null ? 'No code on this copy. Make a new one in the app (Settings, Security and devices) and print again.' : 'Anyone holding this page can read the records. Keep it in the safe.'}
+              {code === null ? 'No code on this copy. Write it in, or make a new one in the app (Settings, Security and devices) and print again.' : 'Anyone holding this page can read the records. Keep it in the safe.'}
             </span>
           </div>
           <div className="flex w-[150px] flex-none flex-col items-center gap-1.5 self-center sm:self-auto">
@@ -167,13 +168,12 @@ export function Kit() {
 
         <section aria-label="Where the Bitcoin is held" className="flex flex-col gap-2">
           <h2 className="m-0 text-lg font-bold">Where the Bitcoin is held</h2>
-          <span className="text-xs text-[#595550]">Filled in from the app&apos;s wallets when printed. Names and types only.</span>
-          <ul className="m-0 list-none overflow-hidden rounded-[10px] border-[1.5px] border-[#161514] p-0">
+          <ul className={cx('m-0 grid list-none gap-px overflow-hidden rounded-[10px] border-[1.5px] border-[#161514] bg-[#d9d5cf] p-0', wallets.length > 3 && 'sm:grid-cols-2 print:grid-cols-2')}>
             {wallets.length === 0 ? (
-              <li className="flex min-h-9 items-center px-3.5 text-[13px] text-[#595550]">No wallets are recorded yet.</li>
+              <li className="flex min-h-9 items-center bg-white px-3.5 text-[13px] text-[#595550]">No wallets are recorded yet.</li>
             ) : (
               wallets.map((w, i) => (
-                <li key={i} className={cx('flex min-h-9 items-center justify-between gap-3 px-3.5', i < wallets.length - 1 && 'border-b border-[#d9d5cf]')}>
+                <li key={i} className={cx('flex min-h-9 items-center justify-between gap-3 bg-white px-3.5', wallets.length > 3 && i === wallets.length - 1 && i % 2 === 0 && 'sm:col-span-2 print:col-span-2')}>
                   <span className="text-sm font-semibold">{w.name}</span>
                   <span className="text-[13px] normal-nums text-[#595550]">{w.type}</span>
                 </li>
@@ -194,14 +194,15 @@ export function Kit() {
             </span>
           </div>
           <p className="m-0 text-[13px] leading-normal sm:col-span-2">
-            <strong>Test it once a year.</strong> Open a private window (Incognito in Chrome), follow the steps above, and check the records open. Then write the date here: ______________
+            <strong>Test it once a year.</strong> On a computer, open the app address in a private window, choose “I already use Bitcoin Basis” and type the code. At “Records restored”, tap “Not now” and close the window. Tested on: __________
           </p>
         </section>
 
         <section className="flex flex-col gap-1 rounded-xl bg-[#fff4e5] px-[18px] py-3.5">
           <span className="text-sm font-bold">For the tax preparer</span>
           <span className="text-[13px] leading-normal normal-nums">
-            Inherited Bitcoin generally gets a new cost basis: its value on the date of death. In community-property states this can apply to a surviving spouse&apos;s half too. The records show everything bought, given and sold before then.
+            Inherited Bitcoin generally gets a new cost basis: its value on the date of death (in community-property states, often the surviving spouse&apos;s half too). The records show everything bought, given and sold before then.
+            {hasRetirement ? ' Bitcoin in retirement accounts (IRA, Roth IRA) follows that account’s rules instead.' : ''}
           </span>
         </section>
       </article>

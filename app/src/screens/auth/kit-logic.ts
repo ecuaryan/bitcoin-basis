@@ -24,9 +24,14 @@ export function oneYearLater(date: string): string {
   return `${y + 1}-${String(m).padStart(2, '0')}-${String(leapDay ? 28 : d).padStart(2, '0')}`;
 }
 
-export const KIT_STEPS: readonly string[] = [
-  "Point a phone's camera at the square code below and tap the link. (No phone handy? Open the app address below in a browser.)",
-  'Choose “I already use Bitcoin Basis”. The scan fills in the code; otherwise type the code below.',
-  "The records open. Set up your own passkey (your fingerprint, face or screen lock) when it asks, so you won't need the code again.",
-  'Show the tax preparer Tax season, and download “For my CPA”.',
-];
+/** The kit's steps. With a code printed, the square code fills it in; without one, it only opens the app. */
+export function kitSteps(hasCode: boolean): readonly string[] {
+  return [
+    "Scan the square code below with a phone's camera and open the link. No phone? Type the app address below into a web browser.",
+    hasCode
+      ? 'If you scanned, the code is already filled in: tap “Restore my records”. If you typed the address, choose “I already use Bitcoin Basis” and type the code below.'
+      : 'Choose “I already use Bitcoin Basis” and type the recovery code written below.',
+    'When it asks, add a passkey (fingerprint, face or screen lock) so you won’t need the code again. If it offers a new recovery code, take it and print a new kit.',
+    'For taxes, open “Tax season” and download “For my CPA”.',
+  ];
+}

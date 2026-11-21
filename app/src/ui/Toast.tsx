@@ -63,7 +63,7 @@ export function ToastProvider({ children, durationMs = 2500 }: { children: React
       <div
         role="status"
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+72px)] z-[60] flex justify-center px-4 lg:inset-x-auto lg:bottom-[max(24px,env(safe-area-inset-bottom))] lg:right-6 lg:top-auto lg:justify-end lg:px-0"
+        className="pointer-events-none fixed print:hidden inset-x-0 top-[calc(env(safe-area-inset-top)+72px)] z-[60] flex justify-center px-4 lg:inset-x-auto lg:bottom-[max(24px,env(safe-area-inset-bottom))] lg:right-6 lg:top-auto lg:justify-end lg:px-0"
       >
         {message && (
           <div key={message.id} className={`animate-toast-in flex items-center gap-3 rounded-2xl border border-line bg-surface-2 py-3 text-sm font-medium text-text shadow-[0_12px_32px_rgb(0_0_0/0.5)] ${message.success ? 'pl-3' : 'pl-4'} ${message.action ? 'pointer-events-auto pr-1.5' : 'pr-4'}`}>
