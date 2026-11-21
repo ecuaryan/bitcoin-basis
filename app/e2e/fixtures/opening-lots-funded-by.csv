@@ -1,0 +1,4 @@
+wallet,acquired_utc,btc,sats,cost_usd,cost_per_btc,tier,origin,funded_by
+Strike,2024-03-15 15:00:00,0.10000000,10000000,6500.00,65000.00,Documented,Synthetic receipt F,HELOC
+Strike,2024-05-15 15:00:00,0.10000000,10000000,6100.00,61000.00,Documented,Synthetic receipt G,heloc
+Strike,2024-06-15 15:00:00,0.01000000,1000000,640.00,64000.00,Documented,Synthetic receipt H,

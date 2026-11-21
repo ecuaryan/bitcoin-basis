@@ -1,4 +1,4 @@
-import { form8949Csv, incomeCsv, yearOf, yearSummary } from '@bitcoin-basis/engine';
+import { form8949Csv, incomeCsv, LOAN_INTEREST_CPA_NOTE, loanInterestByYear, yearOf, yearSummary } from '@bitcoin-basis/engine';
 import { taxTableNotice } from '../../lib/tax-table-notice.ts';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useMemo, useState, type ReactNode } from 'react';
@@ -72,7 +72,7 @@ function CloseYearSheet({ year, onClose }: { year: number; onClose(): void }) {
   });
   const saver = useSubmit(async () => {
     if (carry === null) return;
-    await write({ kind: 'settings', patch: { carryforwardStCents: carry.st, carryforwardLtCents: carry.lt, carryforwardYear: year + 1 } });
+    await write({ kind: 'settings', patch: { carryforwardByYear: { [String(year + 1)]: carry } } });
     toast.show(`Saved for ${year + 1}.`, { success: true });
     onClose();
   });
@@ -174,6 +174,7 @@ export function Tax() {
   const forms = useMemo(() => form1099Rows(state, year, entries), [state, year, entries]);
   const gifts = useMemo(() => overExclusion(state, year), [state, year]);
   const flags = useMemo(() => flagsForYear(state, year), [state, year]);
+  const loanInterest = useMemo(() => loanInterestByYear(state).find((y) => y.year === year) ?? null, [state, year]);
   const closed = state.closedYears.includes(year);
   const stale = year === yearOf(today) ? staleLosses(state.settings, year) : null;
   const yes = summary.digitalAssetAnswer === 'yes';
@@ -298,6 +299,34 @@ export function Tax() {
     </Card>
   );
 
+  const loanCard =
+    loanInterest === null ? null : (
+      <Card as="section" aria-label="Loan interest" className="flex flex-col gap-2.5 !rounded-[18px] !p-4">
+        <h2 className="m-0 text-[15px] font-semibold">Loan interest paid in {year}</h2>
+        <ul className="m-0 flex list-none flex-col p-0">
+          {loanInterest.loans.map((l) => (
+            <li key={l.loanId} className="flex flex-col gap-0.5 border-t border-line-soft py-2 text-sm first:border-t-0 first:pt-0">
+              <span className="flex items-baseline justify-between gap-3">
+                <span className="text-soft">{l.name}</span>
+                <span className="font-semibold">
+                  <Money cents={l.interestPaidCents} />
+                </span>
+              </span>
+              {l.onPurchasesCents !== l.interestPaidCents ? (
+                <span className="text-xs text-muted">
+                  About <Money cents={l.onPurchasesCents} /> of it on money used to buy Bitcoin
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        <p className="m-0 flex items-start gap-2.5 text-[13px] leading-[1.4] text-soft">
+          <InfoIcon size={16} className="mt-px flex-none text-accent" />
+          {LOAN_INTEREST_CPA_NOTE}
+        </p>
+      </Card>
+    );
+
   const flagCard =
     flags.length > 0 ? (
       <Card as="section" aria-label="Ask your CPA" className="flex flex-col gap-2 !rounded-[18px] !p-4">
@@ -382,6 +411,7 @@ export function Tax() {
         <div className="flex flex-col gap-3">
           {form1099}
           {giftCard}
+          {loanCard}
           {flagCard}
           {downloads}
           {closeArea}

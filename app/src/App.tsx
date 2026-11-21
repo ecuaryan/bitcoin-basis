@@ -15,6 +15,7 @@ const Settings = lazy(() => import('./screens/settings/Settings.tsx').then((m) =
 const Records = lazy(() => import('./screens/records/Records.tsx').then((m) => ({ default: m.Records })));
 const Tax = lazy(() => import('./screens/tax/Tax.tsx').then((m) => ({ default: m.Tax })));
 const TaxSummary = lazy(() => import('./screens/tax/TaxSummary.tsx').then((m) => ({ default: m.TaxSummary })));
+const LoanPage = lazy(() => import('./screens/loans/LoanPage.tsx').then((m) => ({ default: m.LoanPage })));
 const WalletDetail = lazy(() => import('./screens/wallet/WalletDetail.tsx').then((m) => ({ default: m.WalletDetail })));
 const Welcome = lazy(() => import('./screens/auth/Welcome.tsx').then((m) => ({ default: m.Welcome })));
 const Kit = lazy(() => import('./screens/auth/Kit.tsx').then((m) => ({ default: m.Kit })));
@@ -48,6 +49,7 @@ export function App() {
             <Route path="settings" element={<Settings />} />
             <Route path="tax" element={<Tax />} />
             <Route path="wallet/:id" element={<WalletDetail />} />
+            <Route path="loans/:id" element={<LoanPage />} />
             <Route path="log" element={<LogRoute />} />
           </Route>
           <Route path="tax/summary/:year" element={<RequireVault><ReadyGate><TaxSummary /></ReadyGate></RequireVault>} />

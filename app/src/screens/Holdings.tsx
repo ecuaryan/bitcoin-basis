@@ -7,6 +7,7 @@ import { demoPriceAt } from '../demo/demo-data.ts';
 import { cx } from '../lib/cx.ts';
 import { buildHoldingsView, type HoldingsView } from '../lib/holdings-view.ts';
 import { BalanceNudge } from './BalanceNudge.tsx';
+import { LoanNudge, LoansSection } from './loans/loan-parts.tsx';
 import { LOSSES_HELP, LOSSES_TITLE } from '../lib/losses.ts';
 import { useHelp } from '../ui/Help.tsx';
 import { AddWalletButton, AddWalletSheet } from './wallet/AddWallet.tsx';
@@ -215,6 +216,7 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
       </section>
 
       <BalanceNudge />
+      <LoanNudge />
 
       <Card as="section" aria-label="Average cost versus price" className="flex flex-col gap-3">
         <div className="flex items-start justify-between">
@@ -251,6 +253,8 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
           <WalletLinkCard key={w.id} w={w} />
         ))}
       </section>
+
+      <LoansSection />
 
       <MoneyCard view={view} />
       <RetirementCard view={view} priceCents={priceCents} />
@@ -293,6 +297,7 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
       </header>
 
       <BalanceNudge />
+      <LoanNudge />
 
       <div className="grid grid-cols-3 gap-4">
         <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
@@ -330,6 +335,8 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
           <AddWalletButton className="mt-2 self-start" />
         </Card>
       </div>
+
+      <LoansSection />
 
       <Card as="section" aria-label="Your coins by age" className="flex flex-col gap-3.5">
         <div className="flex flex-wrap items-center justify-between gap-2">

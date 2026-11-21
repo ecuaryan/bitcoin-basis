@@ -22,4 +22,11 @@ describe('losses from past years', () => {
     expect(staleLosses(saved, 2026)).toBeNull();
     expect(staleLosses({ ...DEFAULT_SETTINGS, carryforwardYear: 2020 }, 2026)).toBeNull();
   });
+  it('with losses saved per year, asks only when this year has none and an earlier year has some', () => {
+    const byYear = (o: Record<string, { st: number; lt: number }>) => ({ ...DEFAULT_SETTINGS, carryforwardByYear: o });
+    expect(staleLosses(byYear({ '2024': { st: 1, lt: 0 }, '2025': { st: 0, lt: 5 } }), 2026)).toEqual({ savedFor: 2025 });
+    expect(staleLosses(byYear({ '2025': { st: 0, lt: 5 }, '2026': { st: 0, lt: 0 } }), 2026)).toBeNull();
+    expect(staleLosses(byYear({ '2025': { st: 0, lt: 0 } }), 2026)).toBeNull();
+    expect(staleLosses(byYear({ '2027': { st: 3, lt: 0 } }), 2026)).toBeNull();
+  });
 });

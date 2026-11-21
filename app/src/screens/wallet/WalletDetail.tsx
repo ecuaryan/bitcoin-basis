@@ -32,6 +32,8 @@ import { useHelp } from '../../ui/Help.tsx';
 import { WorthLine } from '../../ui/WorthLine.tsx';
 import { WALLET_TYPE_LABEL } from '../../lib/wallet-label.ts';
 import { worthNow } from '../../lib/worth-now.ts';
+import { loanTagFor } from '../../lib/loans-view.ts';
+import { LoanBadge } from '../loans/loan-parts.tsx';
 
 
 function DotsIcon() {
@@ -337,6 +339,7 @@ function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots:
   const sorted = useMemo(() => [...lots].sort((a, b) => (a.acquiredAt < b.acquiredAt ? -1 : a.acquiredAt > b.acquiredAt ? 1 : 0)), [lots]);
   const shown = all ? sorted : sorted.slice(0, 5);
   const termHelp = useHelp('What are short-term and long-term?', TERM_HELP);
+  const { state } = useLedger();
   return (
     <Card as="section" aria-label="Coins in this wallet" className="flex flex-col">
       <SectionHeader title="Coins, oldest first" help={termHelp.button} right={<span className="flex-none text-xs text-muted">Cost per BTC</span>} className="-mt-2" />
@@ -348,6 +351,7 @@ function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots:
           const perBtc = l.sats === 0 ? null : mulDivRoundHalfUp(l.costCents, SATS_PER_BTC, l.sats);
           const open = openId === l.id;
           const origin = entries.find((e) => e.id === l.originEntryId);
+          const loan = loanTagFor(state, l.id);
           return (
             <li key={l.id} className="border-b border-line last:border-b-0">
               <button type="button" aria-expanded={open} onClick={() => setOpenId(open ? null : l.id)} className="flex min-h-[54px] w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
@@ -356,8 +360,9 @@ function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots:
                   <span className="text-sm font-semibold">
                     <Amount sats={l.sats} interactive={false} />
                   </span>
-                  <span className="text-xs text-muted">
+                  <span className="flex items-center gap-1.5 text-xs text-muted">
                     {shortDate(l.acquiredDate, today)} · {TIER_LABEL[l.tier]}
+                    {loan ? <LoanBadge tag={loan.tag} /> : null}
                   </span>
                   <WorthLine worth={worthNow(l.sats, l.costCents, priceCents)} className="mt-0.5 text-xs" />
                 </span>

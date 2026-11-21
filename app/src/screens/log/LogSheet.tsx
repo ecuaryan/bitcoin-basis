@@ -100,7 +100,8 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
       ...d,
       replacing: head.id,
       savedMessage: 'Change saved.',
-      build: (reason) => d.build(reason).map((e) => ({ ...e, replaces: head.id, reason }) as Entry),
+      // Only the entry itself becomes a new version; anything saved with it (a loan link) stays its own record.
+      build: (reason) => d.build(reason).map((e, i) => (i === 0 ? ({ ...e, replaces: head.id, reason } as Entry) : e)),
     };
   }
 

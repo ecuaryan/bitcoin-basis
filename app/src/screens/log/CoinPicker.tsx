@@ -7,6 +7,9 @@ import { Amount, Money } from '../../ui/Amount.tsx';
 import { Segmented } from '../../ui/Segmented.tsx';
 import { TIER_BG } from '../holdings-parts.tsx';
 import { longDate, nextDay, type PickMode } from './model.ts';
+import { useLedger } from '../../data/ledger-provider.tsx';
+import { loanTagFor } from '../../lib/loans-view.ts';
+import { LoanBadge } from '../loans/loan-parts.tsx';
 
 /** Which coins a sale, move or gift will use. Oldest first by default; or tick the ones you want. */
 export function CoinPicker({
@@ -37,6 +40,7 @@ export function CoinPicker({
   walletName?: string;
 }) {
   const id = useId();
+  const { state } = useLedger();
   const used = new Map((picks ?? []).map((p) => [p.lotId, p.sats]));
   const have = lots.reduce((s, l) => s + l.sats, 0);
   const chosenSats = lots.filter((l) => chosen.has(l.id)).reduce((s, l) => s + l.sats, 0);
@@ -114,8 +118,9 @@ export function CoinPicker({
                       </span>
                     ) : null}
                   </span>
-                  <span className="text-xs text-muted">
+                  <span className="flex items-center gap-1.5 text-xs text-muted">
                     {shortDate(lot.acquiredDate, today)} · {TIER_LABEL[lot.tier]}
+                    {loanTagFor(state, lot.id) ? <LoanBadge tag={loanTagFor(state, lot.id)?.tag ?? ''} /> : null}
                   </span>
                   <span className={cx('text-xs normal-nums', long ? 'text-muted' : 'font-semibold text-amber')}>{term}</span>
                 </span>

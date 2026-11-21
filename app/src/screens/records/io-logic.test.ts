@@ -1,7 +1,7 @@
 import { exportEntriesJson, exportOpeningLotsCsv, replay, createUuidV7 } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook } from '../../demo/demo-data.ts';
-import { chunk, guessWalletType, lotsTemplateCsv, planWallets, previewImport, previewJson, previewLots, walletEntries, withoutBadRows } from './io-logic.ts';
+import { chunk, guessWalletType, linkedRows, loanEntries, lotsTemplateCsv, newLoanNames, planWallets, previewImport, previewJson, previewLots, walletEntries, withoutBadRows } from './io-logic.ts';
 
 const state = replay(buildDemoBook().entries);
 const newId = createUuidV7();
@@ -87,7 +87,7 @@ describe('previewLots', () => {
   });
   it('round-trips the book\'s own export', () => {
     const csv = exportOpeningLotsCsv(state).csv;
-    expect(previewLots(csv, state.wallets, 'America/Boise', newId).problems).toEqual([]);
+    expect(previewLots(csv, state.wallets, 'America/Boise', newId, state.loans).problems).toEqual([]);
   });
 });
 
@@ -113,5 +113,50 @@ describe('lotsTemplateCsv', () => {
     const p = previewLots(csv, state.wallets, 'America/Boise', newId);
     expect(p.problems).toEqual([]);
     expect(p.entries).toHaveLength(1);
+  });
+});
+
+describe('funded_by: purchases paid with a loan', () => {
+  const FHEAD = `${HEAD},funded_by`;
+  it('plans a loan the book does not have yet and links its rows', () => {
+    const p = previewImport(`${FHEAD}\n${good},HELOC\n${good.replace('2021-03-15', '2021-02-01')}, heloc \n${good},\n`, state.wallets, 'America/Boise', newId, [], state.loans);
+    expect(p.problems).toEqual([]);
+    expect(p.newLoans).toHaveLength(1);
+    expect(p.newLoans[0]).toMatchObject({ name: 'HELOC', coins: 2, opened: '2021-02-01' });
+    expect(p.links).toHaveLength(2);
+    expect(p.links.every((l) => l.loan === p.newLoans[0]?.id)).toBe(true);
+  });
+  it('uses a loan the book already has (case ignored)', () => {
+    const p = previewImport(`${FHEAD}\n${good},home EQUITY line\n`, state.wallets, 'America/Boise', newId, [], state.loans);
+    expect(p.newLoans).toEqual([]);
+    expect(p.links[0]?.loan).toBe('loan-home-equity');
+  });
+  it('makes the loan entries only once every new loan has a readable rate', () => {
+    const p = previewImport(`${FHEAD}\n${good},HELOC\n`, state.wallets, 'America/Boise', newId, [], state.loans);
+    expect(loanEntries(p.newLoans, {}, '2026-01-01T00:00:00Z', 'America/Boise')).toBeNull();
+    expect(loanEntries(p.newLoans, { HELOC: 'abc' }, '2026-01-01T00:00:00Z', 'America/Boise')).toBeNull();
+    const made = loanEntries(p.newLoans, { HELOC: '7.875' }, '2026-01-01T00:00:00Z', 'America/Boise');
+    expect(made?.[0]).toMatchObject({ kind: 'loan', name: 'HELOC', aprMillionths: 78_750, opened: '2021-03-15' });
+    // Saved together, the book takes it without problems.
+    const after = replay([...buildDemoBook().entries, ...(made ?? []), ...p.entries, ...p.links]);
+    expect(after.errors).toEqual([]);
+    expect(after.loans.find((l) => l.name === 'HELOC')?.draws).toHaveLength(1);
+  });
+  it('lists only names that are new', () => {
+    expect(newLoanNames(`${FHEAD}\n${good},HELOC\n${good},Heloc\n${good},Home equity line\n`, state.loans)).toEqual(['HELOC']);
+    expect(newLoanNames(`${HEAD}\n${good}\n`, state.loans)).toEqual([]);
+  });
+});
+
+describe('funded_by_id and split purchases', () => {
+  const H = `${HEAD},funded_by,funded_by_id,funded_draw_usd,funded_draw_date,origin_id`;
+  it('a known loan id is never a new loan, and rows of one purchase make one link', () => {
+    const text = `${H}\n${good},Renamed,loan-home-equity,,,\n${good},HELOC,,,2021-03-01,P1\n${good},HELOC,,,,P1\n`;
+    expect(newLoanNames(text, state.loans)).toEqual(['HELOC']);
+    const p = previewImport(text, state.wallets, 'America/Boise', newId, [], state.loans);
+    expect(p.problems).toEqual([]);
+    expect(p.links).toHaveLength(2);
+    expect(p.newLoans[0]).toMatchObject({ name: 'HELOC', coins: 2, opened: '2021-03-01' });
+    expect(linkedRows(p.links)).toBe(3);
   });
 });

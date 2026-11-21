@@ -1,4 +1,4 @@
-import { TIERS, yearOf, type Holdings, type LedgerState, type Lot, type Tier, type WalletType } from '@bitcoin-basis/engine';
+import { carryforwardFor, TIERS, yearOf, type Holdings, type LedgerState, type Lot, type Tier, type WalletType } from '@bitcoin-basis/engine';
 import { confirmedLabel, satsToCents } from './format.ts';
 import { WALLET_TYPE_LABEL } from './wallet-label.ts';
 
@@ -106,8 +106,8 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
     retirement: h.retirement.map((r) => ({ id: r.wallet, name: r.name, sats: r.sats })),
     moneyInCents: h.moneyPutInCents,
     moneyOutCents: state.disposals.reduce((s, d) => s + d.proceedsCents, 0),
-    carryforwardCents: state.settings.carryforwardStCents + state.settings.carryforwardLtCents,
-    lossesYear: state.settings.carryforwardYear ?? null,
+    carryforwardCents: (({ st, lt }) => st + lt)(carryforwardFor(state.settings, yearOf(today), yearOf(today))),
+    lossesYear: yearOf(today),
     isEmpty: state.wallets.length === 0 && state.lots.length === 0,
   };
 }

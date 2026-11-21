@@ -1,4 +1,4 @@
-import { yearSummary } from '@bitcoin-basis/engine';
+import { LOAN_INTEREST_CPA_NOTE, loanInterestByYear, yearSummary } from '@bitcoin-basis/engine';
 import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { formatMoney } from '../../lib/format.ts';
@@ -24,6 +24,7 @@ export function TaxSummary() {
   const t = totalsByKind(s);
   const gifts = overExclusion(state, year);
   const flags = flagsForYear(state, year);
+  const loanInterest = loanInterestByYear(state).find((y) => y.year === year) ?? null;
   useTitle(`${year} tax summary`);
   const m = (c: number) => formatMoney(c);
   const th = 'border-b border-neutral-400 px-2 py-1 text-left text-xs font-semibold';
@@ -165,6 +166,24 @@ export function TaxSummary() {
             {gifts.over.length === 0 ? `None over ${m(gifts.limitCents)} to one person.` : gifts.over.map((g) => `${g.recipient}: ${m(g.valueCents)} is over ${m(gifts.limitCents)} (confirm with your CPA)`).join('; ')}
           </p>
         </section>
+
+        {loanInterest !== null && (
+          <section className="flex flex-col gap-1">
+            <h2 className="m-0 text-base font-semibold">Loan interest paid: {m(loanInterest.interestPaidCents)}</h2>
+            <table className="w-full border-collapse">
+              <tbody>
+                {loanInterest.loans.map((l) => (
+                  <tr key={l.loanId}>
+                    <td className={td}>{l.name}</td>
+                    <td className={`${td} text-right`}>{m(l.interestPaidCents)}</td>
+                    <td className={`${td} text-right`}>{l.onPurchasesCents === l.interestPaidCents ? 'all on Bitcoin purchases' : `about ${m(l.onPurchasesCents)} on Bitcoin purchases`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="m-0">{LOAN_INTEREST_CPA_NOTE}</p>
+          </section>
+        )}
 
         {flags.length > 0 && (
           <section className="flex flex-col gap-1">

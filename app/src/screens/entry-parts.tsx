@@ -1,11 +1,14 @@
-import { localDate, type Entry, type LedgerState, type Wallet } from '@bitcoin-basis/engine';
+import { formatAprPercent, localDate, type Entry, type LedgerState, type Wallet } from '@bitcoin-basis/engine';
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router';
+import { useLedger } from '../data/ledger-provider.tsx';
 import { usePrice } from '../data/price-provider.tsx';
+import { loanTags, statementDayText } from '../lib/loans-view.ts';
+import { LoanBadge } from './loans/loan-parts.tsx';
 import { cx } from '../lib/cx.ts';
 import { describeEntry, entryNoun } from '../lib/describe-entry.ts';
 import { isRecheck, userEdited, type EntryItem, type EntryRun } from '../lib/entry-list.ts';
-import { countOf, shortDate } from '../lib/format.ts';
+import { countOf, longDate, shortDate } from '../lib/format.ts';
 import { TIER_LABEL } from '../lib/origin.ts';
 import { entryWorth, type PartKind } from '../lib/worth-now.ts';
 import { Amount, Money } from '../ui/Amount.tsx';
@@ -35,8 +38,10 @@ function badgeFor(item: EntryItem): ReactNode {
 /** One row in any list of entries (Records, a wallet). A button: it opens the entry with its history and actions. */
 export function EntryRow({ run, wallets, today, onOpen, last }: { run: EntryRun; wallets: ReadonlyMap<string, Wallet>; today: string; onOpen(): void; last: boolean }) {
   const { item, count, net } = run;
+  const { state } = useLedger();
   const e = item.current;
-  const line = describeEntry(e, wallets);
+  const line = describeEntry(e, wallets, loanNames(state));
+  const paidWith = (e.kind === 'buy' || e.kind === 'opening-lot') && !item.deleted ? loanTags(state).get(item.id) : undefined;
   return (
     <li className={cx(!last && 'border-b border-line')}>
       <button type="button" aria-haspopup="dialog" onClick={onOpen} className="flex min-h-[60px] w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
@@ -49,6 +54,7 @@ export function EntryRow({ run, wallets, today, onOpen, last }: { run: EntryRun;
               {line.title}
               {count > 1 ? ` ×${count}` : ''}
             </span>
+            {paidWith ? <LoanBadge tag={paidWith.tag} /> : null}
             {badgeFor(item)}
           </span>
           <span className="truncate text-xs text-muted">
@@ -77,7 +83,18 @@ export function EntryRow({ run, wallets, today, onOpen, last }: { run: EntryRun;
   );
 }
 
-function facts(e: Entry, name: (id: string) => string): [string, ReactNode][] {
+const namesCache = new WeakMap<LedgerState, Map<string, string>>();
+/** Loan id to name, worked out once per replayed state. */
+function loanNames(state: LedgerState): Map<string, string> {
+  let m = namesCache.get(state);
+  if (m === undefined) {
+    m = new Map(state.loans.map((l) => [l.id, l.name]));
+    namesCache.set(state, m);
+  }
+  return m;
+}
+
+function facts(e: Entry, name: (id: string) => string, loan: (id: string) => string): [string, ReactNode][] {
   const coins = (label: string, sats: number): [string, ReactNode] => [label, <Amount key={label} sats={sats} showUnit interactive={false} />];
   const cash = (label: string, cents: number): [string, ReactNode] => [label, <Money key={label} cents={cents} />];
   switch (e.kind) {
@@ -103,6 +120,25 @@ function facts(e: Entry, name: (id: string) => string): [string, ReactNode][] {
     case 'close-year':
     case 'unlock-year':
       return [['Year', String(e.year)]];
+    case 'loan':
+      return [['Loan', e.name], ['Rate', formatAprPercent(e.aprMillionths)], ['Started', longDate(e.opened)], ['Statement closing day', statementDayText(e.statementDay ?? null)], ...(e.creditLimitCents === undefined ? [] : [cash('Credit limit', e.creditLimitCents)])];
+    case 'loan-update':
+      return [
+        ['Loan', loan(e.loan)],
+        ...(e.name !== undefined ? ([['New name', e.name]] as [string, ReactNode][]) : []),
+        ...(e.aprMillionths !== undefined ? ([['New rate', `${formatAprPercent(e.aprMillionths)}${e.rateFrom ? ` from ${longDate(e.rateFrom)}` : ''}`]] as [string, ReactNode][]) : []),
+        ...(e.creditLimitCents !== undefined ? [cash('Credit limit', e.creditLimitCents)] : []),
+        ...(e.statementDay !== undefined ? ([['Statement closing day', statementDayText(e.statementDay)]] as [string, ReactNode][]) : []),
+        ...(e.closed !== undefined ? ([['Status', e.closed ? 'Closed' : 'Open']] as [string, ReactNode][]) : []),
+      ];
+    case 'loan-draw':
+      return [['Loan', loan(e.loan)], cash('Drawn', e.cents)];
+    case 'loan-link':
+      return [['Loan', loan(e.loan)], ...(e.drawDate ? ([['Money drawn on', longDate(e.drawDate)]] as [string, ReactNode][]) : []), ...(e.drawCents !== undefined ? [cash('Drawn', e.drawCents)] : [])];
+    case 'loan-payment':
+      return [['Loan', loan(e.loan)], cash('Paid', e.interestCents + e.principalCents), cash('Interest part', e.interestCents), cash('Lowered what you owe by', e.principalCents)];
+    case 'loan-statement':
+      return [['Loan', loan(e.loan)], cash('Statement shows owed', e.balanceCents)];
     default:
       return 'wallet' in e ? [['Wallet', name(e.wallet)]] : [];
   }
@@ -201,11 +237,23 @@ export function EntrySheet({ run, state, today, onClose }: { run: EntryRun; stat
   const { item, count } = run;
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
   const name = (id: string) => wallets.get(id)?.name ?? 'Unknown wallet';
+  const loans = loanNames(state);
   const e = item.current;
-  const line = describeEntry(e, wallets);
+  const line = describeEntry(e, wallets, loans);
+  const paidWith = (e.kind === 'buy' || e.kind === 'opening-lot') && !item.deleted ? loanTags(state).get(item.id) : undefined;
   const rows: [string, ReactNode][] = [
     ['When', `${shortDate(localDate(e.at, e.tz), today)} · ${e.tz.replace('_', ' ')}`],
-    ...facts(e, name),
+    ...facts(e, name, (id) => loans.get(id) ?? 'A loan'),
+    ...(paidWith
+      ? ([
+          [
+            'Paid with',
+            <Link key="loan" to={`/loans/${paidWith.loanId}`} onClick={onClose} className="font-semibold">
+              {paidWith.name}
+            </Link>,
+          ],
+        ] as [string, ReactNode][])
+      : []),
     ...(e.proof ? ([['Receipt', e.proof]] as [string, ReactNode][]) : []),
     ...(e.note ? ([['Note', e.note]] as [string, ReactNode][]) : []),
   ];
@@ -235,7 +283,7 @@ export function EntrySheet({ run, state, today, onClose }: { run: EntryRun; stat
           <h2 className="m-0 text-[15px] font-semibold">History</h2>
           <ol className="m-0 flex list-none flex-col gap-2 p-0">
             {history.map((v, i) => {
-              const l = describeEntry(v, wallets);
+              const l = describeEntry(v, wallets, loans);
               const n = history.length - i;
               const isNow = v.id === e.id && !item.deleted && i === 0;
               return (

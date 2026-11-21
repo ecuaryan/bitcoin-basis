@@ -3,7 +3,7 @@ import { describeEntry, describeSettingChange } from './describe-entry.ts';
 
 /**
  * The one source for every list of entries (Records' recent and all entries, a wallet's entries): versions folded into
- * one item, settings changes hidden unless asked for, settings changes in a row collapsed (`×3`), balance confirmations never listed. Counts shown anywhere are the
+ * one item, settings changes and loan records hidden unless asked for, settings changes in a row collapsed (`×3`), balance confirmations never listed. Counts shown anywhere are the
  * number of rows the list shows.
  */
 
@@ -60,7 +60,7 @@ export function buildItems(entries: readonly Entry[]): EntryItem[] {
   return items.sort((a, b) => (a.current.at === b.current.at ? (a.id < b.id ? 1 : -1) : a.current.at < b.current.at ? 1 : -1));
 }
 
-export type KindGroup = 'bought' | 'received' | 'moved' | 'sold' | 'gave' | 'lost' | 'imported' | 'wallets' | 'checks' | 'settings' | 'years' | 'giving';
+export type KindGroup = 'bought' | 'received' | 'moved' | 'sold' | 'gave' | 'lost' | 'imported' | 'wallets' | 'checks' | 'settings' | 'years' | 'giving' | 'loans';
 export const KIND_GROUPS: readonly { value: KindGroup; label: string }[] = [
   { value: 'bought', label: 'Bought' },
   { value: 'received', label: 'Received' },
@@ -74,6 +74,7 @@ export const KIND_GROUPS: readonly { value: KindGroup; label: string }[] = [
   { value: 'settings', label: 'Settings' },
   { value: 'years', label: 'Year closings' },
   { value: 'giving', label: 'Giving paid' },
+  { value: 'loans', label: 'Loan' },
 ];
 
 export function kindGroup(kind: EntryKind): KindGroup {
@@ -102,6 +103,13 @@ export function kindGroup(kind: EntryKind): KindGroup {
       return 'years';
     case 'giving-paid':
       return 'giving';
+    case 'loan':
+    case 'loan-update':
+    case 'loan-draw':
+    case 'loan-link':
+    case 'loan-payment':
+    case 'loan-statement':
+      return 'loans';
     default:
       return 'wallets';
   }
@@ -141,8 +149,9 @@ export function matches(item: EntryItem, f: EntryFilter, wallets: ReadonlyMap<st
   const e = item.current;
   // Balance confirmations are never listed: they show only as "Confirmed Nov 21" on the wallet.
   if (e.kind === 'balance-confirm') return false;
-  // Settings changes are noise in the everyday list: they show under Kind = Settings.
-  if (f.group === '' && kindGroup(e.kind) === 'settings') return false;
+  // Settings changes and loan records are noise in the everyday list: they show under Kind = Settings or Loan
+  // (a loan's own page lists its payments, and a purchase paid with a loan carries its badge).
+  if (f.group === '' && (kindGroup(e.kind) === 'settings' || kindGroup(e.kind) === 'loans')) return false;
   if (f.group !== '' && kindGroup(e.kind) !== f.group) return false;
   if (f.wallet !== '' && !item.versions.some((v) => walletsOf(v).includes(f.wallet))) return false;
   if (f.year !== '' && String(taxYear(e.at, e.tz)) !== f.year) return false;

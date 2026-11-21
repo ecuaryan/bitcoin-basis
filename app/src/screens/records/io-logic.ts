@@ -1,7 +1,12 @@
-import { importEntriesJson, importOpeningLotsCsv, OPENING_LOT_COLUMNS, parseCsv, taxYear, toCsv, type CsvProblem, type Entry, type OpeningLotEntry, type Tier, type Wallet, type WalletEntry, type WalletType } from '@bitcoin-basis/engine';
+import { importEntriesJson, importOpeningLotsCsv, localDate, OPENING_LOT_COLUMNS, OPENING_LOT_FUNDED_BY_COLUMN, parseAprPercent, parseCsv, taxYear, toCsv, type CsvProblem, type Entry, type Loan, type LoanEntry, type LoanLinkEntry, type OpeningLotEntry, type Tier, type Wallet, type WalletEntry, type WalletType } from '@bitcoin-basis/engine';
+
+/** The loans a `funded_by` cell may name: the book's, plus any the preview will create. */
+export type LoanRef = Pick<Loan, 'id' | 'name' | 'closed'>;
 
 export interface LotsPreview {
   entries: OpeningLotEntry[];
+  /** One link per row with a `funded_by` loan (saved after the coins). */
+  links: LoanLinkEntry[];
   warnings: CsvProblem[];
   problems: CsvProblem[];
   /** Rows that are fine when some rows are not (they can still be added on their own). */
@@ -12,13 +17,13 @@ export interface LotsPreview {
  * Read an opening-lots CSV. When some rows have problems, `entries` holds nothing and `problems` lists each
  * row; `goodRows` says how many rows were fine so the caller can offer to add just those.
  */
-export function previewLots(text: string, wallets: readonly Wallet[], tz: string, newId: () => string): LotsPreview {
-  const r = importOpeningLotsCsv(text, { wallets, tz, newId });
-  if (r.ok) return { entries: r.value.entries, warnings: r.value.warnings, problems: [], goodRows: r.value.entries.length };
+export function previewLots(text: string, wallets: readonly Wallet[], tz: string, newId: () => string, loans: readonly LoanRef[] = []): LotsPreview {
+  const r = importOpeningLotsCsv(text, { wallets, tz, newId, loans });
+  if (r.ok) return { entries: r.value.entries, links: r.value.links, warnings: r.value.warnings, problems: [], goodRows: r.value.entries.length };
   const parsed = parseCsv(text);
   const rows = parsed.ok ? parsed.value.length - 1 : 0;
   const bad = new Set(r.error.map((p) => p.row));
-  return { entries: [], warnings: [], problems: r.error, goodRows: bad.has(0) || bad.has(1) ? 0 : Math.max(0, rows - bad.size) };
+  return { entries: [], links: [], warnings: [], problems: r.error, goodRows: bad.has(0) || bad.has(1) ? 0 : Math.max(0, rows - bad.size) };
 }
 
 /** The same file without the rows that had problems, so the good rows can be imported on their own. */
@@ -128,8 +133,60 @@ export function planWallets(text: string, wallets: readonly Wallet[]): WalletPla
   return { created: [...created.values()], matched: [...matched.values()], text: toCsv([header, ...out]) };
 }
 
+/** A loan named in the `funded_by` column that the book does not have yet: created with the coins (name and rate). */
+export interface NewLoan {
+  id: string;
+  /** The loan entry's id, made now so it sorts before the coins. */
+  entryId: string;
+  name: string;
+  coins: number;
+  /** The earliest purchase it paid for (the loan's start). */
+  opened: string;
+}
+
+/** Names in the `funded_by` column that match no loan in the book (case and outer spaces ignored), first spelling kept. */
+export function newLoanNames(text: string, loans: readonly LoanRef[]): string[] {
+  const parsed = parseCsv(text);
+  if (!parsed.ok) return [];
+  const [header, ...rows] = parsed.value;
+  const find = (name: string): number => header?.findIndex((h) => h.trim().toLowerCase() === name) ?? -1;
+  const col = find(OPENING_LOT_FUNDED_BY_COLUMN);
+  const idCol = find('funded_by_id');
+  if (col < 0) return [];
+  const ids = new Set(loans.map((l) => l.id));
+  // Matched the way the importer matches: outer spaces and case ignored.
+  const key = (n: string): string => n.trim().toLowerCase();
+  const have = new Set(loans.map((l) => key(l.name)));
+  const out = new Map<string, string>();
+  for (const cells of rows) {
+    const raw = (cells[col] ?? '').trim();
+    // A row naming a loan the book already has by its id is not a new loan, whatever its name says.
+    if (idCol >= 0 && ids.has((cells[idCol] ?? '').trim())) continue;
+    if (raw !== '' && !have.has(key(raw)) && !out.has(key(raw))) out.set(key(raw), raw);
+  }
+  return [...out.values()];
+}
+
+/** How many imported rows (lots) these links cover: each link's lot plus the rows of the same purchase. */
+export function linkedRows(links: readonly LoanLinkEntry[]): number {
+  return links.reduce((n, k) => n + 1 + (k.alsoLots?.length ?? 0), 0);
+}
+
+/** The loan entries for new loans, with the rate typed for each (by name). Null while a rate is missing or unreadable. */
+export function loanEntries(loans: readonly NewLoan[], rates: Readonly<Record<string, string>>, at: string, tz: string): LoanEntry[] | null {
+  const out: LoanEntry[] = [];
+  for (const l of loans) {
+    const apr = parseAprPercent((rates[l.name] ?? '').trim());
+    if (apr === null) return null;
+    out.push({ id: l.entryId, kind: 'loan', loan: l.id, name: l.name, opened: l.opened, aprMillionths: apr, at, tz });
+  }
+  return out;
+}
+
 export interface ImportPreview extends LotsPreview {
   newWallets: NewWallet[];
+  /** Loans the file names that will be created (each needs its rate). */
+  newLoans: NewLoan[];
   matched: WalletMatch[];
   sats: number;
   costCents: number;
@@ -149,20 +206,28 @@ function slugOf(name: string): string {
  * Read an opening-lots CSV where some wallets may not exist yet. New wallets are described in `newWallets`
  * (the coins already point at their ids) so the caller can add the wallets first, then the coins.
  */
-export function previewImport(text: string, wallets: readonly Wallet[], tz: string, newId: () => string, closedYears: readonly number[]): ImportPreview {
+export function previewImport(text: string, wallets: readonly Wallet[], tz: string, newId: () => string, closedYears: readonly number[], loans: readonly LoanRef[] = []): ImportPreview {
   const plan = planWallets(text, wallets);
   const newWallets: NewWallet[] = plan.created.map((c) => {
     const entryId = newId();
     return { id: `${slugOf(c.name)}-${entryId.slice(-6)}`, name: c.name, coins: c.coins, guessedType: guessWalletType(c.name), entryId };
   });
   const pretend: Wallet[] = newWallets.map((w) => ({ id: w.id, name: w.name, type: w.guessedType, defaultProof: '', archived: false, frozen: false, closeOutEntryId: null, recoveredCents: 0 }));
-  const p = previewLots(plan.text, [...wallets, ...pretend], tz, newId);
+  const planned = newLoanNames(plan.text, loans).map((name) => ({ name, entryId: newId(), id: newId() }));
+  const p = previewLots(plan.text, [...wallets, ...pretend], tz, newId, [...loans, ...planned.map((l) => ({ id: l.id, name: l.name, closed: false }))]);
+  const lotDate = new Map(p.entries.map((e) => [e.id, localDate(e.acquiredAt, e.tz)]));
+  const newLoans: NewLoan[] = planned.flatMap((l) => {
+    const mine = p.links.filter((k) => k.loan === l.id);
+    const dates = mine.map((k) => k.drawDate ?? lotDate.get(k.lot) ?? '').filter((d) => d !== '').sort();
+    return dates.length === 0 ? [] : [{ ...l, coins: linkedRows(mine), opened: dates[0] as string }];
+  });
   const tiers: Partial<Record<Tier, number>> = {};
   for (const e of p.entries) tiers[e.tier] = (tiers[e.tier] ?? 0) + e.sats;
   const years = new Set(p.entries.map((e) => taxYear(e.at, e.tz)).filter((y) => closedYears.includes(y)));
   return {
     ...p,
     newWallets,
+    newLoans,
     matched: plan.matched,
     sats: p.entries.reduce((s, e) => s + e.sats, 0),
     costCents: p.entries.reduce((s, e) => s + e.costCents, 0),

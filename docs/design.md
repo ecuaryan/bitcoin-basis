@@ -41,7 +41,7 @@ Type: hero 46px (phone) / 64px (desktop) Space Grotesk 600, tracking -0.03em, `l
 - Phone (< 1024px): header (brand, hide, lock), scrolling `main` (20px side padding), fixed bottom nav 92px with 4 tabs: Holdings, What if, orange + (opens the Log sheet), Records. Column is max 560px, centered.
 - Desktop (>= 1024px): 220px sidebar (Holdings, What if, Tax season, Records, orange Log button), main padded 32/40. The screen draws its own Hide amounts / Lock text buttons in its header.
 - Screens choose layout with `useIsWide()` (a media query hook), not by rendering both. Use `useLogSheet().open()` to open the Log sheet.
-- Routes: `/` Holdings, `/what-if`, `/records`, `/tax`, `/wallet/:id`, `/log` (opens the sheet), plus full-screen `/welcome`, `/unlock`, `/kit`. Add real screens by replacing the stub in `screens/stubs.tsx` and the element in `App.tsx`.
+- Routes: `/` Holdings, `/what-if`, `/records`, `/tax`, `/wallet/:id`, `/loans/:id`, `/log` (opens the sheet), plus full-screen `/welcome`, `/unlock`, `/kit`. Add real screens by replacing the stub in `screens/stubs.tsx` and the element in `App.tsx`.
 
 ## Components (`app/src/ui/`)
 
@@ -57,6 +57,7 @@ Type: hero 46px (phone) / 64px (desktop) Space Grotesk 600, tracking -0.03em, `l
 - Hide amounts: `usePrefs()` gives `hidden`, `masked`, `toggleHidden`. Holding any masked amount (pointer or Space/Enter) or the eye button shows everything until release. A hidden amount is always one fixed shape (`$•••••`, `•.•••• ••••`; `maskDigits`), so its length never hints at its size.
 - `SectionHeader` (`ui/SectionHeader.tsx`): the one section header. Title left (with its "?" right after the words), a count (`SectionCount`, e.g. `9 entries`) or one action (`SectionLink`, e.g. `All 9 entries`) right. Under a shortened list, `ShowMore` (quiet button, left): `Show all 12 entries`. Empty lists use `EmptyLine`.
 - Entry lists: every list of entries (Records' recent and all entries, a wallet's entries) comes from `entryRows` in `lib/entry-list.ts` and renders `EntryRow`; tapping a row opens `EntrySheet` (details, history, `Edit purchase` / `Remove this purchase`). Settings changes are hidden unless filtered for, balance confirmations are never listed (they show as `Confirmed Nov 21` on the wallet), and every count is the number of rows shown. Strikethrough means removed and always comes with a `Removed` badge; `Edited` appears only for the person's own edits.
+- Loans (`screens/loans/`): Holdings shows a Loans section only when a loan is open; every figure comes from the engine (`loanSummary`, `loanPurchases`, `suggestLoanPayment`). Estimates carry a quiet `≈` (`Approx`) and the section's "?" says what is estimated. Loan-funded purchases show `LoanBadge` (`HELOC` or `Loan`) wherever a purchase or its coins are listed. Loan records stay out of entry lists unless Kind = Loan.
 - Field errors use `ErrorLine` (built into every field): once shown, its line stays reserved after the fix so the form does not jump. One back button style (44px, `rounded-xl`, `ChevronLeftIcon`); in a pair of buttons the cancel comes first and the primary last.
 
 Documentation tiers (`TIER_BG`, `TIER_LABEL` in `screens/holdings-parts.tsx` and `lib/origin.ts`): Documented orange, Reconstructed cream, Estimated tan, Unknown grey. Always show the tier by color plus text.

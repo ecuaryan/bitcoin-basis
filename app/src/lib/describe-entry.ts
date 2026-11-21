@@ -1,4 +1,5 @@
-import type { Cents, Entry, Sats, Wallet } from '@bitcoin-basis/engine';
+import { formatAprPercent, type Cents, type Entry, type Sats, type Wallet } from '@bitcoin-basis/engine';
+import { longDate } from './format.ts';
 
 /** One entry in words, for history lists and review rows. Amounts stay numbers so screens can mask them. */
 export interface EntryLine {
@@ -54,9 +55,10 @@ export function describeSettingChange(key: string, value: unknown): string {
 }
 export const settingLabel = (key: string): string => SETTING_LABELS[key] ?? key;
 
-/** The one place that turns an entry into words. */
-export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>): EntryLine {
+/** The one place that turns an entry into words. `loans` names loan records' loans (loan id to name). */
+export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>, loans: ReadonlyMap<string, string> = new Map()): EntryLine {
   const w = (id: string): string => wallets.get(id)?.name ?? 'Unknown wallet';
+  const ln = (id: string): string => loans.get(id) ?? 'A loan';
   const line = (glyph: string, title: string, detail: string, o: { summary?: string; sats?: Sats | null; sign?: EntryLine['sign']; cents?: Cents | null; centsLabel?: string } = {}): EntryLine => ({
     glyph,
     title,
@@ -114,19 +116,22 @@ export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>): E
       return line('◻', `Year ${e.year} unlocked`, e.reason);
     case 'giving-paid':
       return line('♥', 'Giving paid', `For ${e.year}`, { cents: e.cents });
-    // Loan records (tracking only). Placeholder wording; the loan page owns these.
+    // Loan records (tracking only: they never change coins, cost or taxes).
     case 'loan':
-      return line('⌂', 'Loan added', e.name, { summary: `Added ${e.name}` });
-    case 'loan-update':
-      return line('⌂', 'Loan updated', e.name ?? '');
+      return line('⌂', 'Loan added', `${e.name} · ${formatAprPercent(e.aprMillionths)}`, { summary: `Started tracking ${e.name}` });
+    case 'loan-update': {
+      const title = e.closed === true ? 'Loan closed' : e.closed === false ? 'Loan reopened' : e.aprMillionths !== undefined ? 'Rate changed' : e.name !== undefined ? 'Loan renamed' : 'Loan settings changed';
+      const detail = e.aprMillionths !== undefined ? `${ln(e.loan)} · ${formatAprPercent(e.aprMillionths)}${e.rateFrom ? ` from ${longDate(e.rateFrom)}` : ''}` : (e.name ?? ln(e.loan));
+      return line('⌂', title, detail);
+    }
     case 'loan-draw':
-      return line('⌂', 'Loan draw', '', { cents: e.cents, centsLabel: 'drawn' });
+      return line('⌂', 'Money drawn', ln(e.loan), { cents: e.cents, centsLabel: 'drawn' });
     case 'loan-link':
-      return line('⌂', 'Paid with a loan', '');
+      return line('⌂', 'Purchase linked', `Paid with ${ln(e.loan)}`, { summary: `Paid with ${ln(e.loan)}` });
     case 'loan-payment':
-      return line('⌂', 'Loan payment', '', { cents: e.interestCents + e.principalCents, centsLabel: 'paid' });
+      return line('⌂', 'Loan payment', ln(e.loan), { summary: `Paid ${ln(e.loan)}`, cents: e.interestCents + e.principalCents, centsLabel: 'paid' });
     case 'loan-statement':
-      return line('⌂', 'Loan statement', '', { cents: e.balanceCents, centsLabel: 'owed' });
+      return line('⌂', 'Statement checked', ln(e.loan), { cents: e.balanceCents, centsLabel: 'owed' });
     case 'delete':
       return line('×', 'Removed', e.reason, { summary: 'Removed an entry' });
   }
@@ -151,6 +156,18 @@ export function entryNoun(e: Entry): string {
       return 'balance check';
     case 'retirement-snapshot':
       return 'balance note';
+    case 'loan':
+      return 'loan';
+    case 'loan-update':
+      return 'loan change';
+    case 'loan-draw':
+      return 'draw';
+    case 'loan-link':
+      return 'link to the loan';
+    case 'loan-payment':
+      return 'payment';
+    case 'loan-statement':
+      return 'statement check';
     default:
       return 'entry';
   }

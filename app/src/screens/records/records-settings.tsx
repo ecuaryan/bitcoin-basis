@@ -1,4 +1,4 @@
-import { FILING_STATUSES, STATE_RATES, yearOf } from '@bitcoin-basis/engine';
+import { carryforwardFor, FILING_STATUSES, STATE_RATES, yearOf } from '@bitcoin-basis/engine';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useDelayedSave } from '../../ui/use-delayed-save.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -30,13 +30,12 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 export function SettingsView() {
   const { state, today } = useLedger();
   const thisYear = yearOf(today);
-  const lossesYear = state.settings.carryforwardYear ?? thisYear;
   const stale = staleLosses(state.settings, thisYear);
   const help = useHelp(`What are ${LOSSES_TITLE.toLowerCase()}?`, LOSSES_HELP);
   const write = useWriter();
   const toast = useToast();
   const s = state.settings;
-  const [draft, setDraft] = useState<SettingsDraft>(() => draftFrom(s));
+  const [draft, setDraft] = useState<SettingsDraft>(() => draftFrom(s, thisYear));
   const [errors, setErrors] = useState<Partial<Record<keyof SettingsDraft, string>>>({});
   const err = (k: keyof SettingsDraft) => errors[k];
 
@@ -48,8 +47,14 @@ export function SettingsView() {
       return;
     }
     setErrors({});
-    const patch = relabelYear ? { ...r.patch, carryforwardYear: thisYear } : r.patch;
+    // "Still right": the last saved year's figures are copied to this year (that year keeps its own).
+    const copied = relabelYear && stale !== null ? carryforwardFor(s, stale.savedFor) : null;
+    const patch = copied !== null ? { ...r.patch, carryforwardByYear: { [String(thisYear)]: copied } } : r.patch;
     if (Object.keys(patch).length === 0) return;
+    if (copied !== null) {
+      const shown = draftFrom({ ...s, carryforwardByYear: { ...s.carryforwardByYear, [String(thisYear)]: copied } }, thisYear);
+      setDraft((cur) => ({ ...cur, carryforwardSt: shown.carryforwardSt, carryforwardLt: shown.carryforwardLt }));
+    }
     await write({ kind: 'settings', patch });
     toast.show('Saved.', { success: true });
   }
@@ -103,12 +108,12 @@ export function SettingsView() {
               {LOSSES_TITLE}
               {help.button}
             </span>
-            <span className="text-xs text-muted">for {lossesYear}</span>
+            <span className="text-xs text-muted">for {thisYear}</span>
           </div>
           {help.panel}
           {stale !== null && (
             <p className="m-0 flex flex-wrap items-center gap-x-3 text-xs text-amber">
-              These are for {stale.savedFor}. Update them for {thisYear}.
+              Saved for {stale.savedFor}, not yet for {thisYear}. Enter this year&apos;s, or:
               <Button variant="ghost" onClick={() => void save({ ...draft }, true)}>
                 Still right for {thisYear}
               </Button>

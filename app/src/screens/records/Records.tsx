@@ -13,17 +13,18 @@ import { EmptyLine, SectionHeader, SectionLink } from '../../ui/SectionHeader.ts
 import { GivingView } from './records-giving.tsx';
 import { ImportExportView } from './records-io.tsx';
 import { ClosedYearsView, WalletsView } from './records-misc.tsx';
+import { LoansView } from './records-loans.tsx';
 import { KitCard } from './records-kit.tsx';
 import { buildItems, entryRows, NO_FILTER } from '../../lib/entry-list.ts';
 import { useState } from 'react';
 import { useTitle } from '../../ui/use-title.ts';
 import { ChevronRightIcon } from '../../ui/icons.tsx';
 
-type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'io';
-const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'io'];
+type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'loans' | 'io';
+const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'loans', 'io'];
 
 function viewTitle(view: View, givingName: string): string {
-  const titles: Record<View, string> = { entries: 'All entries', giving: givingName, closed: 'Closed years', wallets: 'Wallets', io: 'Import and export' };
+  const titles: Record<View, string> = { entries: 'All entries', giving: givingName, closed: 'Closed years', wallets: 'Wallets', loans: 'Loans', io: 'Import and export' };
   return titles[view];
 }
 
@@ -64,13 +65,15 @@ export function Records() {
   const open = rows.find((r) => r.item.id === openId) ?? null;
   // The same wallets the Wallets view lists as active (retirement included).
   const active = state.wallets.filter((w) => !w.frozen && !w.archived).length;
+  const openLoans = state.loans.filter((l) => !l.closed).length;
 
   const tiles: ReactNode = (
-    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-5' : 'grid-cols-4') : 'grid-cols-2')}>
+    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-6' : 'grid-cols-5') : 'grid-cols-2')}>
       {due !== null && <Tile to="/records?v=giving" title={state.settings.givingName} sub={<><PlainMoney cents={Math.max(0, due.owedCents)} /> still to give</>} hot={due.owedCents > 0} active={view === 'giving'} />}
       <Tile to="/records?v=closed" title="Closed years" sub={state.closedYears.length === 0 ? 'Lock a year once filed' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
       <Tile to="/records?v=wallets" title="Wallets" sub={`${active} active`} active={view === 'wallets'} />
-      <Tile to="/records?v=io" title={'Import and\u00a0export'} sub="CSV · backup" active={view === 'io'} className={state.settings.givingEnabled ? '' : 'col-span-2 lg:col-span-1'} />
+      <Tile to="/records?v=loans" title="Loans" sub={openLoans === 0 ? (state.loans.length === 0 ? 'Track a loan' : 'None open') : `${openLoans} open`} active={view === 'loans'} />
+      <Tile to="/records?v=io" title={'Import and\u00a0export'} sub="CSV · backup" active={view === 'io'} className={state.settings.givingEnabled ? 'col-span-2 lg:col-span-1' : ''} />
       <Tile to="/records?v=entries" title="All entries" sub={entriesCount(rows.length)} active={view === 'entries'} className="hidden lg:order-first lg:flex" />
     </section>
   );
@@ -95,6 +98,7 @@ export function Records() {
   if (view === 'giving') body = <GivingView />;
   if (view === 'closed') body = <ClosedYearsView />;
   if (view === 'wallets') body = <WalletsView />;
+  if (view === 'loans') body = <LoansView />;
   if (view === 'io') body = <ImportExportView />;
 
   const searchButton = (

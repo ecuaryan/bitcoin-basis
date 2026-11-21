@@ -14,6 +14,8 @@ const ROUTES: { path: string }[] = [
   { path: '/records?v=closed' },
   { path: '/records?v=wallets' },
   { path: '/records?v=io' },
+  { path: '/records?v=loans' },
+  { path: '/loans/loan-home-equity' },
   { path: '/settings' },
   { path: '/wallet/wallet-strike' },
   { path: '/wallet/wallet-cold' },

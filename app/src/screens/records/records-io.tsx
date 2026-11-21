@@ -16,7 +16,8 @@ import { DownloadIcon } from '../../ui/more-icons.tsx';
 import { newIdGenerator } from '../../ui/new-entry.ts';
 import { useToast } from '../../ui/Toast.tsx';
 import { yearsAvailable } from '../tax/tax-logic.ts';
-import { chunk, lotsTemplateCsv, previewImport, previewJson, walletEntries, withoutBadRows, type ImportPreview, type JsonPreview } from './io-logic.ts';
+import { chunk, linkedRows, loanEntries, lotsTemplateCsv, previewImport, previewJson, walletEntries, withoutBadRows, type ImportPreview, type JsonPreview } from './io-logic.ts';
+import { AprInput } from '../../ui/formatted-inputs.tsx';
 
 function FilePicker({ label, accept, onText }: { label: string; accept: string; onText(text: string, name: string): void }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -62,19 +63,24 @@ function ImportLots() {
   const navigate = useNavigate();
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
   const [types, setTypes] = useState<Record<string, WalletType>>({});
+  const [rates, setRates] = useState<Record<string, string>>({});
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [failed, setFailed] = useState(false);
   const tz = state.settings.timeZone;
-  const run = (text: string) => previewImport(text, state.wallets, tz, newIdGenerator(entries), state.closedYears);
-  const preview = useMemo(() => (file ? run(file.text) : null), [file, state.wallets, state.closedYears]); // eslint-disable-line react-hooks/exhaustive-deps
+  const run = (text: string) => previewImport(text, state.wallets, tz, newIdGenerator(entries), state.closedYears, state.loans);
+  const preview = useMemo(() => (file ? run(file.text) : null), [file, state.wallets, state.closedYears, state.loans]); // eslint-disable-line react-hooks/exhaustive-deps
   const goodOnly = useMemo(() => (preview && preview.problems.length > 0 && preview.goodRows > 0 ? run(withoutBadRows(preview.text, preview.problems)) : null), [preview]); // eslint-disable-line react-hooks/exhaustive-deps
   const read = (text: string, name: string) => {
     setTypes({});
+    setRates({});
     setFailed(false);
     setFile({ name, text });
   };
   const adder = useSubmit(async (p: ImportPreview) => {
-    const batches = [...chunk(walletEntries(p.newWallets, types, nowInstant(Date.now()), tz), BATCH), ...chunk(p.entries, BATCH)];
+    const loans = loanEntries(p.newLoans, rates, nowInstant(Date.now()), tz);
+    if (loans === null) return;
+    // New loans and wallets first, then the coins, then the links from loans to the coins they paid for.
+    const batches = [...chunk([...loans, ...walletEntries(p.newWallets, types, nowInstant(Date.now()), tz)], BATCH), ...chunk(p.entries, BATCH), ...chunk(p.links, BATCH)];
     const total = batches.reduce((s, b) => s + b.length, 0);
     let done = 0;
     setFailed(false);
@@ -91,7 +97,9 @@ function ImportLots() {
       return;
     }
     const n = p.entries.length;
-    toast.show(`Added ${countOf(n, 'coin')}${p.newWallets.length > 0 ? ` and ${countOf(p.newWallets.length, 'wallet')}` : ''}.`, { success: true });
+    const made = [...(p.newWallets.length > 0 ? [countOf(p.newWallets.length, 'wallet')] : []), ...(p.newLoans.length > 0 ? [countOf(p.newLoans.length, 'loan')] : [])];
+    const parts = [countOf(n, 'coin'), ...made];
+    toast.show(`Added ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`}.`, { success: true });
     setFile(null);
     setProgress(null);
     navigate('/');
@@ -114,14 +122,14 @@ function ImportLots() {
       <details className="text-[13px] text-muted">
         <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-soft">What columns?</summary>
         <p className="m-0 pb-1 leading-[1.5]">
-          wallet (a name you have, or a new one), acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked.
+          wallet (a name you have, or a new one), acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked. An optional funded_by column names the loan that paid for a row, like HELOC.
         </p>
       </details>
       {file && preview && (
         <div role="status" className="flex flex-col gap-3 rounded-2xl border border-line bg-bg p-3 text-sm">
           <span className="text-xs text-muted">{file.name}</span>
           {preview.problems.length === 0 ? (
-            <ReadyBlock p={preview} types={types} setTypes={setTypes} progress={progress} failed={failed} onAdd={() => void add(preview)} />
+            <ReadyBlock p={preview} types={types} setTypes={setTypes} rates={rates} setRates={setRates} progress={progress} failed={failed} onAdd={() => void add(preview)} />
           ) : (
             <>
               <span className="font-semibold text-loss">
@@ -135,7 +143,7 @@ function ImportLots() {
                 ))}
               </ul>
               {goodOnly && goodOnly.problems.length === 0 && goodOnly.entries.length > 0 ? (
-                <ReadyBlock p={goodOnly} types={types} setTypes={setTypes} progress={progress} failed={failed} onAdd={() => void add(goodOnly)} goodOnly />
+                <ReadyBlock p={goodOnly} types={types} setTypes={setTypes} rates={rates} setRates={setRates} progress={progress} failed={failed} onAdd={() => void add(goodOnly)} goodOnly />
               ) : (
                 <span className="text-xs text-muted">Fix the file and choose it again.</span>
               )}
@@ -147,14 +155,29 @@ function ImportLots() {
   );
 }
 
-function ReadyBlock({ p, types, setTypes, progress, failed, onAdd, goodOnly = false }: { p: ImportPreview; types: Record<string, WalletType>; setTypes(t: Record<string, WalletType>): void; progress: { done: number; total: number } | null; failed: boolean; onAdd(): void; goodOnly?: boolean }) {
+function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onAdd, goodOnly = false }: { p: ImportPreview; types: Record<string, WalletType>; setTypes(t: Record<string, WalletType>): void; rates: Record<string, string>; setRates(r: Record<string, string>): void; progress: { done: number; total: number } | null; failed: boolean; onAdd(): void; goodOnly?: boolean }) {
   const n = p.entries.length;
   const coins = (k: number) => countOf(k, 'coin');
   const mix = TIERS.filter((t) => (p.tiers[t] ?? 0) > 0).map((t) => `${TIER_LABEL[t]} ${Math.max(1, Math.round(((p.tiers[t] ?? 0) * 100) / p.sats))}%`);
   const busy = progress !== null;
   const make = p.newWallets.length > 0;
+  const ratesReady = loanEntries(p.newLoans, rates, '', '') !== null;
+  const linked = linkedRows(p.links);
   return (
     <>
+      {p.newLoans.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <span className="font-semibold">{countOf(p.newLoans.length, 'loan')} will be created</span>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="New loans">
+            {p.newLoans.map((l) => (
+              <li key={l.entryId}>
+                <AprInput label={`Interest rate for ${l.name} (${coins(l.coins)})`} value={rates[l.name] ?? ''} onChange={(v) => setRates({ ...rates, [l.name]: v })} />
+              </li>
+            ))}
+          </ul>
+          <span className="text-xs text-muted">Add the statement day, limit and payments on the loan&apos;s page afterwards.</span>
+        </div>
+      )}
       {make && (
         <div className="flex flex-col gap-2">
           <span className="font-semibold">
@@ -183,6 +206,7 @@ function ReadyBlock({ p, types, setTypes, progress, failed, onAdd, goodOnly = fa
           {coins(n)} · <Amount sats={p.sats} showUnit short interactive={false} /> · <Money cents={p.costCents} precision="dollars" /> cost
         </span>
         <span className="text-xs text-muted">{mix.join(' · ')}</span>
+        {linked > 0 ? <span className="text-xs text-muted">{countOf(linked, 'coin')} paid with a loan</span> : null}
       </div>
       {p.closedYears.length > 0 && (
         <span className="text-xs text-amber">
@@ -195,7 +219,8 @@ function ReadyBlock({ p, types, setTypes, progress, failed, onAdd, goodOnly = fa
         </span>
       ))}
       {failed && <span className="text-xs text-loss">Something went wrong. Nothing more was added. Try again; coins already added are skipped.</span>}
-      <Button variant="primary" className="self-start" disabled={busy} onClick={onAdd}>
+      {!ratesReady ? <span className="text-xs text-amber">Enter each new loan&apos;s rate, like 6.5.</span> : null}
+      <Button variant="primary" className="self-start" disabled={busy || !ratesReady} onClick={onAdd}>
         {busy ? `Adding ${progress.done.toLocaleString('en-US')} of ${progress.total.toLocaleString('en-US')}…` : make ? `Create ${p.newWallets.length === 1 ? 'wallet' : 'wallets'} and add ${goodOnly ? 'the ' : ''}${coins(n)}` : `Add ${goodOnly ? 'the ' : ''}${coins(n)}`}
       </Button>
     </>

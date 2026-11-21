@@ -6,7 +6,7 @@
  * The book is built to land on the figures in the approved Holdings design: 3.36672105 BTC across
  * Cold storage, Strike and River; an average cost of $41,250.18; 94% documented.
  */
-import { createUuidV7, mulDivRoundHalfUp, oldestFirst, replay, SATS_PER_BTC, type Entry, type LedgerState, type LotPick, type Tier, type WalletId } from '@bitcoin-basis/engine';
+import { createUuidV7, mulDivRoundHalfUp, oldestFirst, replay, SATS_PER_BTC, suggestLoanPayment, type BuyEntry, type Entry, type LedgerState, type LotPick, type Tier, type WalletId } from '@bitcoin-basis/engine';
 
 export const DEMO_TODAY = '2026-11-20';
 export const DEMO_PRICE_CENTS = 9_481_240;
@@ -319,6 +319,53 @@ function measure(entries: readonly Entry[]): { cells: Map<string, number>; cost:
   return { cells, cost, sats, lots };
 }
 
+/** The demo's loan: a made-up home equity line that paid for four Strike purchases in 2025. */
+export const DEMO_LOAN_ID = 'loan-home-equity';
+
+/**
+ * A synthetic HELOC so the demo shows loan tracking: opened mid-2025, four purchases paid with it, two rate
+ * cuts, interest-only payments on the 15th for the month before (one also pays some of it down) and a matching
+ * statement. Interest is the engine's own estimate for each month, so the records and the statement agree.
+ */
+function demoLoan(coins: readonly Entry[]): Entry[] {
+  const rand = mulberry32(20_250_701);
+  let clock = 0;
+  const nextId = createUuidV7({
+    now: () => clock,
+    random: (bytes) => {
+      for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(rand() * 256);
+    },
+  });
+  const tz = 'America/Boise';
+  const out: Entry[] = [];
+  const add = (atMs: number, e: Record<string, unknown>): void => {
+    clock = atMs;
+    out.push({ id: nextId(), at: iso(atMs), tz, ...e } as unknown as Entry);
+  };
+  add(at('2025-07-01', 16), { kind: 'loan', loan: DEMO_LOAN_ID, name: 'Home equity line', opened: '2025-07-01', aprMillionths: 82_500, creditLimitCents: 1_000_000, statementDay: 31 });
+  // The four largest Strike purchases from July to October 2025, oldest first.
+  const picked = coins
+    .filter((e): e is BuyEntry => e.kind === 'buy' && e.wallet === W.strike && e.at >= '2025-07-01' && e.at < '2025-11-01')
+    .sort((a, b) => b.costCents - a.costCents)
+    .slice(0, 4)
+    .sort((a, b) => (a.at < b.at ? -1 : 1));
+  for (const b of picked) add(Date.parse(b.at) + 60_000, { kind: 'loan-link', loan: DEMO_LOAN_ID, lot: b.id });
+  add(at('2025-09-18', 16), { kind: 'loan-update', loan: DEMO_LOAN_ID, aprMillionths: 80_000, rateFrom: '2025-09-18' });
+  add(at('2025-12-11', 16), { kind: 'loan-update', loan: DEMO_LOAN_ID, aprMillionths: 77_500, rateFrom: '2025-12-11' });
+  out.sort((a, b) => (a.at < b.at ? -1 : 1));
+  for (let m = 0; m < 15; m++) {
+    const month = 9 + m; // Sep 2025 to Nov 2026 (nothing was owed in July)
+    const date = `${2025 + Math.floor((month - 1) / 12)}-${String(((month - 1) % 12) + 1).padStart(2, '0')}-15`;
+    const s = suggestLoanPayment(replay([...coins, ...out]), DEMO_LOAN_ID, date);
+    const principalCents = date === '2026-04-15' ? 30_000 : 0;
+    add(at(date), { kind: 'loan-payment', loan: DEMO_LOAN_ID, interestCents: s?.interestCents ?? 0, principalCents });
+  }
+  const owed = replay([...coins, ...out]).loans.find((l) => l.id === DEMO_LOAN_ID);
+  const drawn = (owed?.draws ?? []).reduce((n, d) => n + d.cents, 0) - (owed?.payments ?? []).reduce((n, p) => n + p.principalCents, 0);
+  add(at('2026-10-31', 20), { kind: 'loan-statement', loan: DEMO_LOAN_ID, balanceCents: drawn });
+  return out;
+}
+
 export interface DemoBook {
   entries: Entry[];
   /** `YYYY-MM-DD` the book was built to. */
@@ -368,6 +415,7 @@ export function buildDemoBook(): DemoBook {
     if (clean) break;
     entries = build(tuning);
   }
+  entries = [...entries, ...demoLoan(entries)];
   cached = { entries, today: DEMO_TODAY, priceCents: DEMO_PRICE_CENTS, prevDayPriceCents: DEMO_PREV_DAY_CENTS };
   return cached;
 }

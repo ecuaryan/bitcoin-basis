@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 
 /** The test-only build (fake server and authenticator) lives on its own port. */
-export const FAKE_URL = 'http://127.0.0.1:4174';
+export const FAKE_URL = `http://127.0.0.1:${process.env['BB_E2E_FAKE_PORT'] ?? 4174}`;
 export const SETUP_CODE = 'ABCD-1234-ABCD-1234-ABCD-1234-ABCD-1234';
 
 /** Walk through first-run setup on the fake build and land on the app. Returns the recovery code. */

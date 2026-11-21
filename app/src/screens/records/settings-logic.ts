@@ -1,4 +1,4 @@
-import { isValidTimeZone, parseDollars, type FilingStatus, type Settings, type SettingsPatch, type StateTaxSetting } from '@bitcoin-basis/engine';
+import { carryforwardFor, isValidTimeZone, parseDollars, type FilingStatus, type Settings, type SettingsPatch, type StateTaxSetting } from '@bitcoin-basis/engine';
 import { parsePercentBp } from '../whatif/borrow-logic.ts';
 
 export const FILING_LABELS: Record<FilingStatus, string> = {
@@ -36,15 +36,17 @@ const percent = (bp: number): string => {
   return frac === 0 ? String(bp / 100) : `${Math.floor(bp / 100)}.${String(frac).padStart(2, '0').replace(/0$/, '')}`;
 };
 
-export function draftFrom(s: Settings): SettingsDraft {
+/** The form for `s`; losses from past years are the ones saved for `year` (the current tax year). */
+export function draftFrom(s: Settings, year?: number): SettingsDraft {
+  const losses = year === undefined ? { st: s.carryforwardStCents, lt: s.carryforwardLtCents } : carryforwardFor(s, year);
   return {
     filingStatus: s.filingStatus,
     wages: dollars(s.wagesCents),
     stateKind: s.state.kind,
     stateCode: s.state.kind === 'flat' ? s.state.state : 'ID',
     stateRate: s.state.kind === 'custom' ? percent(s.state.rate) : '5',
-    carryforwardSt: dollars(s.carryforwardStCents),
-    carryforwardLt: dollars(s.carryforwardLtCents),
+    carryforwardSt: dollars(losses.st),
+    carryforwardLt: dollars(losses.lt),
     givingEnabled: s.givingEnabled,
     givingName: s.givingName,
     givingPercent: percent(s.givingPercentBp),
@@ -57,7 +59,10 @@ export function draftFrom(s: Settings): SettingsDraft {
 export type DraftResult = { ok: true; patch: SettingsPatch } | { ok: false; errors: Partial<Record<keyof SettingsDraft, string>> };
 
 /** The settings that changed, or what is wrong with the form. */
-/** `year` is the tax year typed-in losses are for (the current year); changing the losses saves it with them. */
+/**
+ * `year` is the tax year typed-in losses are for (the current year): changed losses save under that year only
+ * (`carryforwardByYear`), so another year's figure never changes. Without a year they save as the plain fields.
+ */
 export function patchFrom(current: Settings, d: SettingsDraft, year?: number): DraftResult {
   const errors: Partial<Record<keyof SettingsDraft, string>> = {};
   const money = (key: keyof SettingsDraft, text: string): number => {
@@ -86,8 +91,7 @@ export function patchFrom(current: Settings, d: SettingsDraft, year?: number): D
     filingStatus: d.filingStatus,
     wagesCents: wages,
     state,
-    carryforwardStCents: st,
-    carryforwardLtCents: lt,
+    ...(year === undefined ? { carryforwardStCents: st, carryforwardLtCents: lt } : {}),
     givingEnabled: d.givingEnabled,
     givingName: d.givingName.trim(),
     givingPercentBp: pct ?? 0,
@@ -99,7 +103,10 @@ export function patchFrom(current: Settings, d: SettingsDraft, year?: number): D
   for (const key of Object.keys(next) as (keyof Settings)[]) {
     if (JSON.stringify(next[key]) !== JSON.stringify(current[key])) patch[key] = next[key];
   }
-  if (year !== undefined && (st !== current.carryforwardStCents || lt !== current.carryforwardLtCents)) patch.carryforwardYear = year;
+  if (year !== undefined) {
+    const now = carryforwardFor(current, year);
+    if (st !== now.st || lt !== now.lt) patch.carryforwardByYear = { [String(year)]: { st, lt } };
+  }
   return { ok: true, patch: patch as SettingsPatch };
 }
 

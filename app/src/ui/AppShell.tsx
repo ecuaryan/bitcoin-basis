@@ -191,9 +191,10 @@ function PhoneTab({ to, label, icon, end, also = false }: { to: string; label: s
   );
 }
 
-/** A wallet page belongs to Holdings, so that tab stays lit there. */
+/** A wallet or loan page belongs to Holdings, so that tab stays lit there. */
 function useInWallet(): boolean {
-  return useLocation().pathname.startsWith('/wallet/');
+  const path = useLocation().pathname;
+  return path.startsWith('/wallet/') || path.startsWith('/loans/');
 }
 
 function PhoneShell({ onLog }: { onLog(): void }) {

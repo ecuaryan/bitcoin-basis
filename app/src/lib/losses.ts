@@ -15,8 +15,20 @@ export function hasLosses(settings: Settings, year: number, today: string): bool
   return l.st + l.lt > 0;
 }
 
-/** Saved losses that are for an earlier year than `year`: ask the person to update them. */
+/**
+ * `year` has no losses saved for it while an earlier year has some: ask the person to update them (`savedFor` is the
+ * latest such year). Older books without a per-year list fall back to the year saved with the plain fields.
+ */
 export function staleLosses(settings: Settings, year: number): { savedFor: number } | null {
+  const byYear = settings.carryforwardByYear ?? {};
+  if (Object.keys(byYear).length > 0) {
+    if (byYear[String(year)] !== undefined) return null;
+    const earlier = Object.entries(byYear)
+      .filter(([y, v]) => Number(y) < year && v.st + v.lt > 0)
+      .map(([y]) => Number(y))
+      .sort((a, b) => b - a);
+    return earlier[0] === undefined ? null : { savedFor: earlier[0] };
+  }
   const savedFor = settings.carryforwardYear;
   if (savedFor === undefined || savedFor >= year || settings.carryforwardStCents + settings.carryforwardLtCents === 0) return null;
   return { savedFor };

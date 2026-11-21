@@ -1,4 +1,4 @@
-import { mulDivRoundHalfUp, parseDollars, SATS_PER_BTC, uuidv7, type BuyEntry, type Tier } from '@bitcoin-basis/engine';
+import { mulDivRoundHalfUp, parseDollars, SATS_PER_BTC, uuidv7, type BuyEntry, type Entry, type Tier } from '@bitcoin-basis/engine';
 import { useSaving } from './saving.ts';
 import { useState } from 'react';
 import { formatMoney } from '../../lib/format.ts';
@@ -9,8 +9,12 @@ import { MoneyInput } from '../../ui/formatted-inputs.tsx';
 import { SelectField, TextAreaField, TextField } from '../../ui/form-fields.tsx';
 import type { FormProps } from './draft.ts';
 import { useAmount, useFormEnv, usePriceAt, withSource, stripSource } from './hooks.ts';
-import { centsText, cleanNumber, localInputFor, nowInstant, usableWallets, usualWallet, whenLabel, zonedInstant } from './model.ts';
+import { centsText, chainIds, cleanNumber, localInputFor, nowInstant, usableWallets, usualWallet, whenLabel, zonedInstant } from './model.ts';
 import { AmountInput, FormFooter, WalletSelect, WhenField } from './parts.tsx';
+import { LoanSetupSheet } from '../loans/LoanSetup.tsx';
+import { drawLots } from '../../lib/loans-view.ts';
+
+const ADD_LOAN = '__new-loan__';
 
 const TIERS: Tier[] = ['documented', 'reconstructed', 'estimated', 'unknown'];
 
@@ -29,6 +33,14 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
   const [tier, setTier] = useState<Tier>(edit?.tier ?? 'documented');
   const [note, setNote] = useState(stripSource(edit?.note));
   const [tried, setTried] = useState(false);
+  // Paid with: bank or cash, or a loan (saved as a link from the loan to this purchase, in the same save).
+  const lotId = edit === null ? id : ([...chainIds(entries, edit.id)].find((x) => entries.find((e) => e.id === x)?.replaces === undefined) ?? edit.id);
+  const link = state.loans.flatMap((l) => l.draws.filter((d) => drawLots(d).includes(lotId)).map((d) => ({ loanId: l.id, entryId: d.entryId }))).at(0) ?? null;
+  const [paidWith, setPaidWith] = useState(link?.loanId ?? '');
+  const [addingLoan, setAddingLoan] = useState(false);
+  const [linkIds] = useState(() => [uuidv7(), uuidv7()] as const);
+  const loans = state.loans.filter((l) => !l.closed || l.id === link?.loanId);
+  const loan = state.loans.find((l) => l.id === paidWith);
 
   const wallets = usableWallets(state, edit?.wallet);
   const w = state.wallets.find((x) => x.id === wallet);
@@ -61,6 +73,14 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
       ...(proofText.trim() === '' ? {} : { proof: proofText.trim() }),
       ...(note.trim() === '' && !usd ? {} : { note: withSource(note, usd ? `Price source: ${price.source} at ${formatMoney(price.cents ?? 0)} per BTC` : '') }),
     };
+    const was = link?.loanId ?? '';
+    const linkEntries = (reason: string): Entry[] => {
+      if (paidWith === was) return [];
+      const out: Entry[] = [];
+      if (link !== null) out.push({ id: linkIds[0], kind: 'delete', at: nowInstant(nowMs), tz, replaces: link.entryId, reason: reason === '' ? 'Paid with changed' : reason });
+      if (paidWith !== '') out.push({ id: linkIds[1], kind: 'loan-link', at: edit === null ? at : nowInstant(nowMs), tz, loan: paidWith, lot: lotId });
+      return out;
+    };
     onReview({
       title: 'Review purchase',
       saveLabel: 'Save purchase',
@@ -72,10 +92,11 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
         ...(perBtc === null ? [] : [{ label: 'Cost per BTC', value: <Money cents={perBtc} /> }]),
         { label: 'When', value: whenLabel(at, tz, nowMs) },
         { label: 'Wallet', value: w.name },
+        ...(loan !== undefined || was !== '' ? [{ label: 'Paid with', value: loan?.name ?? 'Bank or cash' }] : []),
         { label: 'Receipt', value: proofText || 'None yet' },
         { label: 'How sure', value: TIER_LABEL[tier] },
       ],
-      build: () => [entry],
+      build: (reason) => [entry, ...linkEntries(reason)],
     });
   }
 
@@ -102,6 +123,14 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
       ) : (
         <MoneyInput label="Total paid, including fees" value={paid} onChange={setPaid} error={tried ? errors.paid : null} trailing={perBtc === null ? null : `${formatMoney(perBtc)} per BTC`} />
       )}
+      <SelectField
+        label="Paid with"
+        value={paidWith}
+        onChange={(e) => (e.target.value === ADD_LOAN ? setAddingLoan(true) : setPaidWith(e.target.value))}
+        options={[{ value: '', label: 'Bank or cash' }, ...loans.map((l) => ({ value: l.id, label: l.name })), ...(edit === null ? [{ value: ADD_LOAN, label: 'Add a loan…' }] : [])]}
+        hint={loan !== undefined ? `Counts as money drawn from ${loan.name} that day.` : undefined}
+      />
+      <LoanSetupSheet open={addingLoan} quick onClose={() => setAddingLoan(false)} onAdded={setPaidWith} />
       <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
       <TextField label="Receipt" value={proofText} onChange={(e) => setProof(e.target.value)} autoComplete="off" hint={w && proof === null ? `${w.name}'s usual` : undefined} />
       <details className="rounded-2xl border border-line px-3.5 py-1">

@@ -358,8 +358,8 @@ export function computeEffect(entry: Entry, before: LedgerState, after: LedgerSt
 
 /** Kinds that can be edited from a wallet's history. */
 export const EDITABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give']);
-/** Kinds that can be removed (balance confirmations are not listed, so they have no Remove). */
-export const DELETABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'lost']);
+/** Kinds that can be removed (balance confirmations are not listed, so they have no Remove; a loan itself is closed, not removed). */
+export const DELETABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'lost', 'loan-update', 'loan-draw', 'loan-link', 'loan-payment', 'loan-statement']);
 const TAX_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'lost', 'wallet-close-out']);
 
 /** The closed year an entry sits in, or null if it can still be changed. */

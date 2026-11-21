@@ -100,3 +100,8 @@ export function BtcInput(props: NumberBoxProps) {
 export function PercentInput({ trailing, ...props }: NumberBoxProps) {
   return <NumberBox placeholder="0" {...props} trailing={trailing ?? '%'} maxDecimals={2} pretty={(c) => c} />;
 }
+
+/** An interest rate: `6.5` or `7.875` (up to four decimals) with a `%` that stays put. Value: `7.875`. */
+export function AprInput({ trailing, ...props }: NumberBoxProps) {
+  return <NumberBox placeholder="0.00" {...props} trailing={trailing ?? '%'} maxDecimals={4} pretty={(c) => c} />;
+}

@@ -17,6 +17,8 @@ import { usePrice } from '../data/price-provider.tsx';
 import { walletKindLabel } from '../lib/wallet-label.ts';
 import { sumWorth, worthNow } from '../lib/worth-now.ts';
 import { GainWords, WorthLine } from '../ui/WorthLine.tsx';
+import { loanTagFor } from '../lib/loans-view.ts';
+import { LoanBadge } from './loans/loan-parts.tsx';
 
 export const TIER_BG: Record<Tier, string> = {
   documented: 'bg-accent',
@@ -149,13 +151,15 @@ function CoinRow({ lot, priceCents }: { lot: Lot; priceCents: number | null }) {
   const wallets = new Map(state.wallets.map((w) => [w.id, w]));
   const wallet = wallets.get(lot.wallet);
   const perBtc = lot.sats === 0 ? null : mulDivRoundHalfUp(lot.costCents, SATS_PER_BTC, lot.sats);
+  const loan = loanTagFor(state, lot.id);
   return (
     <li className="border-b border-line last:border-b-0">
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex min-h-14 w-full items-center gap-3 bg-transparent py-2 text-left text-text">
         <span className={cx('h-8 w-1.5 flex-none rounded-full', TIER_BG[lot.tier])} aria-hidden="true" />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-sm font-semibold">
+          <span className="flex items-center gap-1.5 text-sm font-semibold">
             <Amount sats={lot.sats} interactive={false} />
+            {loan ? <LoanBadge tag={loan.tag} /> : null}
           </span>
           <span className="truncate text-xs text-muted">
             {shortDate(lot.acquiredDate, today)} · {wallet?.name ?? 'Unknown wallet'}
