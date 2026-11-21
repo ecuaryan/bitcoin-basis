@@ -10,7 +10,8 @@ import { useToast } from './Toast.tsx';
 const DOT: Record<SyncTone, string> = { ok: 'bg-accent', busy: 'animate-pulse bg-amber', quiet: 'bg-muted', attention: 'bg-loss' };
 
 /**
- * A small calm status in the header. Synced is just a dot; Offline and problems are a pill;
+ * A calm status in the header. All good: nothing on phones, a small labelled "Synced" on desktop.
+ * Offline and problems are a labelled pill;
  * "Sign in to sync" is an orange-outlined button that signs in right here. Every other state opens
  * Records, Security, where syncing is explained. Hidden in the demo.
  */
@@ -58,11 +59,12 @@ export function SyncIndicator({ className }: { className?: string }) {
       to="/records?v=security"
       aria-label={`Sync: ${v.label}. Open sync settings.`}
       title={v.detail}
-      className={cx('flex min-h-11 min-w-11 items-center justify-center text-xs text-muted no-underline hover:text-text', className)}
+      // A bare dot on a phone means nothing to people, so phones show sync only when it needs attention.
+      className={cx('min-h-11 min-w-11 items-center justify-center text-xs text-muted no-underline hover:text-text', pill ? 'flex' : 'hidden lg:flex', className)}
     >
       <span className={cx('flex items-center gap-1.5', pill && 'rounded-full border border-line bg-surface px-3 py-1.5')}>
         <span aria-hidden="true" className={cx('size-2 rounded-full', DOT[v.tone])} />
-        <span className={pill ? '' : 'hidden lg:inline'}>{v.label}</span>
+        <span>{v.label}</span>
       </span>
     </Link>
   );

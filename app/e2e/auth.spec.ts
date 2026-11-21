@@ -175,7 +175,11 @@ test('forget this device asks first, then goes back to Welcome', async ({ page }
 
 test('sync indicator shows offline and a Connect button when signed out', async ({ page }) => {
   await setUp(page);
-  await expect(page.getByRole('link', { name: /^Sync: Synced/ }).first()).toBeAttached();
+  // Synced: a labelled status on desktop, nothing on phones (a bare dot meant nothing to people).
+  const synced = page.locator('a[aria-label^="Sync: Synced"]').first();
+  await expect(synced).toBeAttached();
+  if ((page.viewportSize()?.width ?? 0) < 1024) await expect(synced).toBeHidden();
+  else await expect(synced).toBeVisible();
   await page.evaluate(() => {
     const f = window.__bbFake;
     if (f) f.client.offline = true;
