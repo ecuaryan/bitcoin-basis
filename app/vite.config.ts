@@ -43,7 +43,7 @@ function serviceWorkerManifest(): Plugin {
     writeBundle(_options, bundle) {
       // Latin font subsets only; other unicode ranges are cached when first used.
       const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && (!f.endsWith('.woff2') || f.includes('-latin-wght-')));
-      const statics = ['/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-32.png', '/icons/favicon-16.png', '/icons/icon-maskable-512.png', '/icons/logo-mark.webp'];
+      const statics = ['/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-48.png', '/icons/favicon-32.png', '/icons/favicon-16.png', '/icons/icon-maskable-512.png', '/icons/logo-mark.webp'];
       const urls = [...files.filter((f) => f !== 'index.html').map((f) => `/${f}`), ...statics].sort();
       const version = createHash('sha256').update(urls.join('\n')).digest('hex').slice(0, 12);
       const path = resolve(outDir, 'sw.js');
