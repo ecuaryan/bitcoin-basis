@@ -127,6 +127,7 @@ const KIND_SCHEMAS: Readonly<Record<EntryKind, Schema>> = {
   lost: { wallet, sats, cause: req(oneOf(LOST_CAUSES)), picks: req(isPicks) },
   'balance-confirm': { wallet, sats: req(isSatsOrZero) },
   'retirement-snapshot': { wallet, sats: req(isSatsOrZero) },
+  'retirement-buy': { wallet, sats, costCents: cents },
   settings: { patch: req(isSettingsPatch) },
   'close-year': { year: req(isYear) },
   'unlock-year': { year: req(isYear), reason: req(isText) },

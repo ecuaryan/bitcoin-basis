@@ -1,8 +1,9 @@
 /** Read-only views over ledger state: holdings, average cost, per-year summaries and gift totals. */
 import { sum } from './book.ts';
+import { instantMs } from './dates.ts';
 import { mulDivOrNull, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
 import { compareStrings } from './order.ts';
-import { TIERS, type CharityGift, type CloseOut, type Disposal, type GiftGiven, type IncomeItem, type LedgerState, type LostRecord, type Recovery, type Tier, type WalletId, type WalletType } from './types.ts';
+import { TIERS, type CharityGift, type EntryId, type LocalDate, type CloseOut, type Disposal, type GiftGiven, type IncomeItem, type LedgerState, type LostRecord, type Recovery, type Tier, type WalletId, type WalletType } from './types.ts';
 
 /**
  * Average cost in cents per BTC (total cost ÷ BTC held, half-up), or null when nothing is held or the
@@ -23,11 +24,42 @@ export interface WalletHolding {
   averageCostCentsPerBtc: Cents | null;
 }
 
+/** The latest balance note of a retirement wallet, checked against the purchases recorded up to its time. */
+export interface RetirementSnapshotCheck {
+  entryId: EntryId;
+  date: LocalDate;
+  /** What the custodian showed. */
+  sats: Sats;
+  /** Purchases recorded up to the note's time. */
+  purchasedSats: Sats;
+  /** sats − purchasedSats: more (positive) or less (negative) than the purchases add up to. */
+  differenceSats: Sats;
+  matches: boolean;
+}
+
+/**
+ * A retirement wallet. Shown separately; never in tax, taxable cost or taxable average-cost figures.
+ *
+ * Balance rule: with any purchase recorded, the balance is the purchases' total (they carry the cost); with none, it is
+ * the latest balance note (0 if none), so a book with balance notes only looks as it always did. When both exist the
+ * latest note is checked against the purchases up to its time (`snapshot.differenceSats`), never silently preferred.
+ */
 export interface RetirementHolding {
   wallet: WalletId;
   name: string;
-  /** Latest snapshot (0 if none yet). Shown separately; never in tax or cost figures. */
+  archived: boolean;
+  /** The balance shown (see the balance rule above). */
   sats: Sats;
+  /** Where `sats` comes from. */
+  balanceFrom: 'purchases' | 'snapshot' | 'none';
+  purchaseCount: number;
+  purchaseSats: Sats;
+  /** Total paid for the purchases (0 if none). */
+  costCents: Cents;
+  /** Over the purchases; null with none (or when too large to represent). */
+  averageCostCentsPerBtc: Cents | null;
+  /** The latest balance note, or null. */
+  snapshot: RetirementSnapshotCheck | null;
 }
 
 export interface Holdings {
@@ -41,7 +73,34 @@ export interface Holdings {
   documentationMix: Record<Tier, Sats>;
   /** Buy costs plus "earlier money in" from settings. Never used in tax math. */
   moneyPutInCents: Cents;
+  /** Retirement wallets, in creation order. */
   retirement: RetirementHolding[];
+}
+
+/** One retirement wallet's purchases, balance note check and the balance it shows. */
+function retirementHolding(state: LedgerState, w: LedgerState['wallets'][number]): RetirementHolding {
+  const buys = state.retirementBuys.filter((b) => b.wallet === w.id);
+  const purchaseSats = sum(buys.map((b) => b.sats));
+  const costCents = sum(buys.map((b) => b.costCents));
+  const last = state.retirementSnapshots.filter((s) => s.wallet === w.id).at(-1);
+  let snapshot: RetirementSnapshotCheck | null = null;
+  if (last !== undefined) {
+    const purchasedSats = sum(buys.filter((b) => instantMs(b.at) <= instantMs(last.at)).map((b) => b.sats));
+    snapshot = { entryId: last.entryId, date: last.date, sats: last.sats, purchasedSats, differenceSats: last.sats - purchasedSats, matches: last.sats === purchasedSats };
+  }
+  const balanceFrom = buys.length > 0 ? 'purchases' : snapshot !== null ? 'snapshot' : 'none';
+  return {
+    wallet: w.id,
+    name: w.name,
+    archived: w.archived,
+    sats: balanceFrom === 'purchases' ? purchaseSats : (snapshot?.sats ?? 0),
+    balanceFrom,
+    purchaseCount: buys.length,
+    purchaseSats,
+    costCents,
+    averageCostCentsPerBtc: averageCostPerBtc(costCents, purchaseSats),
+    snapshot,
+  };
 }
 
 /** Per-wallet balances and cost, totals, documentation mix and money put in. */
@@ -53,8 +112,7 @@ export function holdings(state: LedgerState): Holdings {
   let totalCostCents = 0;
   for (const w of state.wallets) {
     if (w.type === 'retirement') {
-      const snaps = state.retirementSnapshots.filter((s) => s.wallet === w.id);
-      retirement.push({ wallet: w.id, name: w.name, sats: snaps.at(-1)?.sats ?? 0 });
+      retirement.push(retirementHolding(state, w));
       continue;
     }
     const lots = state.lots.filter((l) => l.wallet === w.id);

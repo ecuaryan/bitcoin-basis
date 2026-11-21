@@ -1,11 +1,11 @@
-import { mulDivRoundHalfUp, oneYearAnniversary, SATS_PER_BTC, termFor, uuidv7, type BalanceConfirmEntry, type Entry, type Lot, type RetirementSnapshotEntry, type Wallet } from '@bitcoin-basis/engine';
+import { mulDivRoundHalfUp, oneYearAnniversary, retirementPurchases, SATS_PER_BTC, termFor, uuidv7, worthOf, type BalanceConfirmEntry, type Entry, type Lot, type RetirementHolding, type RetirementPurchaseView, type RetirementSnapshotCheck, type RetirementSnapshotEntry, type Wallet, type Worth } from '@bitcoin-basis/engine';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { confirmedLabel, countOf, satsToCents, shortDate } from '../../lib/format.ts';
+import { confirmedLabel, countOf, heldLabel, satsToCents, shortDate } from '../../lib/format.ts';
 import { describeOrigin, TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
@@ -29,7 +29,8 @@ import { WalletMenu, type WalletMenuStart } from './WalletMenu.tsx';
 import { useTitle } from '../../ui/use-title.ts';
 import { TERM_HELP } from '../../lib/terms.ts';
 import { useHelp } from '../../ui/Help.tsx';
-import { WorthLine } from '../../ui/WorthLine.tsx';
+import { GainWords, WorthLine } from '../../ui/WorthLine.tsx';
+import { PlainMoney } from '../../ui/plain-money.tsx';
 import { WALLET_TYPE_LABEL } from '../../lib/wallet-label.ts';
 import { worthNow } from '../../lib/worth-now.ts';
 import { loanTagFor } from '../../lib/loans-view.ts';
@@ -503,11 +504,67 @@ function FrozenSections({ wallet, sats, costCents, rows, onCloseOut }: { wallet:
 
 // ---- Retirement wallets ----------------------------------------------------------------
 
-function RetirementDetail({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): void; wide: boolean }) {
+/** The balance a retirement wallet shows: its purchases' total (with cost and gain), else its latest balance note. */
+function RetirementBalance({ holding, worth }: { holding: RetirementHolding | undefined; worth: Worth }) {
+  const from = holding?.balanceFrom ?? 'none';
+  return (
+    <section aria-label="Balance" className="flex flex-col gap-1.5">
+      <span className="text-xs normal-nums tracking-[0.06em] text-muted">RETIREMENT · KEPT APART FROM TAX</span>
+      <span className="font-display text-[34px] font-semibold leading-none tracking-[-0.02em] lg:text-5xl">{from === 'none' ? '—' : <Amount sats={holding?.sats ?? 0} showUnit />}</span>
+      {from === 'purchases' ? (
+        <>
+          {worth.valueCents !== null ? (
+            <span className="text-sm">
+              <Money cents={worth.valueCents} precision="dollars" /> · <GainWords worth={worth} precision="dollars" className="font-semibold" /> <span className="text-muted">on paper</span>
+            </span>
+          ) : null}
+          <span className="text-[13px] text-muted">
+            Cost <Money cents={worth.costCents} precision="dollars" /> · average {holding?.averageCostCentsPerBtc == null ? '—' : <Money cents={holding.averageCostCentsPerBtc} />} per BTC
+          </span>
+        </>
+      ) : from === 'snapshot' && holding?.snapshot ? (
+        <span className="text-[13px] text-muted">
+          From your balance note on {longDate(holding.snapshot.date)}
+          {worth.valueCents !== null ? (
+            <>
+              , worth <Money cents={worth.valueCents} precision="dollars" />
+            </>
+          ) : null}
+          . Log its purchases to see cost and gain.
+        </span>
+      ) : (
+        <span className="text-[13px] text-muted">Nothing logged yet. Log a purchase to see cost and gain.</span>
+      )}
+      <span className="text-[13px] text-muted">Never part of tax math.</span>
+    </section>
+  );
+}
+
+/** The latest balance note does not match the purchases logged up to its date: say by how much, never pick one silently. */
+function NoteDiffers({ wallet, check, onLog }: { wallet: Wallet; check: RetirementSnapshotCheck; onLog(sats: number): void }) {
+  const diff = check.differenceSats;
+  return (
+    <div role="status" className="flex flex-col gap-2.5 rounded-2xl border border-amber/40 bg-amber/10 p-3.5 text-[13px] leading-snug">
+      <p className="m-0">
+        <strong className="font-semibold text-amber">
+          Your note from {longDate(check.date)} shows <Amount sats={Math.abs(diff)} interactive={false} showUnit /> {diff > 0 ? 'more' : 'less'}
+        </strong>{' '}
+        than the purchases logged up to then. {diff > 0 ? 'A purchase may be missing.' : 'Some coins may have left the account. Sales inside a retirement account are not tracked yet.'}
+      </p>
+      {diff > 0 && !wallet.archived ? (
+        <Button variant="secondary" onClick={() => onLog(diff)} className="self-start">
+          Log the missing <Amount sats={diff} interactive={false} showUnit />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Note the balance the custodian shows. Used to check that the purchases add up. */
+function BalanceNote({ wallet, holding }: { wallet: Wallet; holding: RetirementHolding | undefined }) {
   const { state, append, today } = useLedger();
   const toast = useToast();
-  const snaps = state.retirementSnapshots.filter((s) => s.wallet === wallet.id);
-  const last = snaps.at(-1);
+  const last = state.retirementSnapshots.filter((s) => s.wallet === wallet.id).at(-1);
   const amount = useAmount(null, null);
   const [error, setError] = useState<string | null>(null);
   const note = useSubmit(async () => {
@@ -525,29 +582,128 @@ function RetirementDetail({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): 
     amount.setText('');
     setError(null);
   });
+  const check = holding?.snapshot ?? null;
+  const status = last === undefined ? 'No note yet' : check !== null && holding?.balanceFrom === 'purchases' ? (check.matches ? `Matched ${shortDate(last.date, today)}` : `Noted ${shortDate(last.date, today)}`) : `Noted ${shortDate(last.date, today)}`;
+  return (
+    <Card as="section" aria-label="Balance note" className="flex flex-col gap-3">
+      <SectionHeader title="Balance note" right={<SectionCount>{status}</SectionCount>} className="-my-2" />
+      <p className="-mt-1.5 m-0 text-xs leading-snug text-muted">What {wallet.name} shows. It is checked against the purchases you log.</p>
+      {last !== undefined ? (
+        <p className="m-0 text-[15px] leading-snug">
+          Last noted{' '}
+          <strong className="font-semibold">
+            <Amount sats={last.sats} showUnit interactive={false} />
+          </strong>{' '}
+          on {longDate(last.date)}.
+        </p>
+      ) : null}
+      {wallet.archived ? (
+        <span className="text-xs text-muted">Bring the wallet back from its options to note its balance.</span>
+      ) : (
+        <>
+          <form
+            className="flex items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void note.run();
+            }}
+          >
+            <TextField label={`What ${wallet.name} shows today (BTC)`} inputMode="decimal" autoComplete="off" value={amount.text} onChange={(e) => amount.setText(e.target.value)} frameClassName="flex-1" error={error} />
+            <Button type="submit" variant="secondary" disabled={note.busy} className="h-[52px]">
+              {note.busy ? 'Saving…' : 'Save'}
+            </Button>
+          </form>
+          <span className="text-xs text-muted">Today is {longDate(today)}.</span>
+        </>
+      )}
+    </Card>
+  );
+}
+
+/** Each purchase with what it cost and what it is worth now. A row opens the entry (history, Edit, Remove). */
+function RetirementPurchases({ wallet, purchases, onLog }: { wallet: Wallet; purchases: RetirementPurchaseView[]; onLog(): void }) {
+  const { entries, state, today } = useLedger();
+  const [all, setAll] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const items = useMemo(() => new Map(buildItems(entries).map((i) => [i.id, i])), [entries]);
+  const shown = all ? purchases : purchases.slice(0, 5);
+  const openItem = openId === null ? undefined : items.get(openId);
+  return (
+    <Card as="section" aria-label="Purchases" className="flex flex-col">
+      <SectionHeader title="Purchases, oldest first" right={<SectionCount>{countOf(purchases.length, 'purchase')}</SectionCount>} className="-mt-2" />
+      {purchases.length === 0 ? <EmptyLine>No purchases logged yet.</EmptyLine> : null}
+      <ul className="m-0 flex list-none flex-col p-0">
+        {shown.map((p) => (
+          <li key={p.id} className="border-b border-line last:border-b-0">
+            <button type="button" aria-haspopup="dialog" onClick={() => setOpenId(p.id)} className="flex min-h-[60px] w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-semibold">
+                  <Amount sats={p.sats} interactive={false} />
+                </span>
+                <span className="text-xs text-muted">
+                  {shortDate(p.date, today)} · {heldLabel(p.heldDays)}
+                </span>
+                <WorthLine worth={p} className="mt-0.5 text-xs" />
+              </span>
+              <span className="flex flex-col items-end text-right">
+                <span className="text-sm font-semibold">
+                  <PlainMoney cents={p.costCents} />
+                </span>
+                <span className="text-xs text-muted">{p.averageCostCentsPerBtc === null ? 'paid' : <><PlainMoney cents={p.averageCostCentsPerBtc} precision="dollars" /> per BTC</>}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {purchases.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {countOf(purchases.length, 'purchase')}</ShowMore> : null}
+      {!wallet.archived ? (
+        <Button variant="primary" onClick={onLog} className="mt-3 self-start">
+          Log a purchase
+        </Button>
+      ) : null}
+      {openItem ? <EntrySheet run={{ item: openItem, count: 1, items: [openItem], net: null }} state={state} today={today} onClose={() => setOpenId(null)} /> : null}
+    </Card>
+  );
+}
+
+function RetirementDetail({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): void; wide: boolean }) {
+  const { state, holdings, today } = useLedger();
+  const { quote } = usePrice();
+  const { open } = useLogSheet();
+  const priceCents = quote?.usdCents ?? null;
+  const holding = holdings.retirement.find((r) => r.wallet === wallet.id);
+  const purchases = useMemo(() => retirementPurchases(state, wallet.id, priceCents, today), [state, wallet.id, priceCents, today]);
+  const worth = holding === undefined ? worthOf(0, 0, priceCents) : worthOf(holding.sats, holding.costCents, priceCents);
+  const log = (sats?: number) => open({ kind: 'retirement-buy', wallet: wallet.id, ...(sats === undefined ? {} : { sats }) });
+  const differs = holding?.balanceFrom === 'purchases' && holding.snapshot !== null && !holding.snapshot.matches ? holding.snapshot : null;
+  const left = (
+    <>
+      <RetirementBalance holding={holding} worth={worth} />
+      {differs !== null ? <NoteDiffers wallet={wallet} check={differs} onLog={(sats) => log(sats)} /> : null}
+      <BalanceNote wallet={wallet} holding={holding} />
+    </>
+  );
+  const right = (
+    <>
+      <RetirementPurchases wallet={wallet} purchases={purchases} onLog={() => log()} />
+      <History wallet={wallet} />
+    </>
+  );
   return (
     <div className="flex flex-col gap-5">
       <Header wallet={wallet} onMenu={onMenu} wide={wide} />
-      <section aria-label="Balance" className="flex flex-col gap-1.5">
-        <span className="text-xs tracking-[0.06em] text-muted">RETIREMENT · BALANCE NOTE</span>
-        <span className="font-display text-[34px] font-semibold leading-none tracking-[-0.02em]">{last === undefined ? '—' : <Amount sats={last.sats} showUnit />}</span>
-        <span className="text-[13px] text-muted">{last === undefined ? 'No balance noted yet.' : `As of ${longDate(last.date)}.`} Retirement wallets are shown separately and never enter tax math.</span>
-      </section>
-      <Card className="flex max-w-xl flex-col gap-3">
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void note.run();
-          }}
-        >
-          <TextField label={`What ${wallet.name} shows today (BTC)`} inputMode="decimal" autoComplete="off" value={amount.text} onChange={(e) => amount.setText(e.target.value)} frameClassName="flex-1" error={error} />
-          <Button type="submit" variant="secondary" disabled={note.busy} className="h-[52px]">
-            {note.busy ? 'Saving…' : 'Save'}
-          </Button>
-        </form>
-        <span className="text-xs text-muted">Today is {longDate(today)}.</span>
-      </Card>
+      {wallet.archived ? <Callout>This wallet is archived. Bring it back from its options (the three dots) to log purchases again.</Callout> : null}
+      {wide ? (
+        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-6">
+          <div className="flex flex-col gap-5">{left}</div>
+          <div className="flex flex-col gap-5">{right}</div>
+        </div>
+      ) : (
+        <>
+          {left}
+          {right}
+        </>
+      )}
     </div>
   );
 }

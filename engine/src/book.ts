@@ -33,11 +33,13 @@ export interface Book {
   rootOf: ReadonlyMap<EntryId, EntryId>;
   /** Running totals of sats acquired and cents entered, kept under MAX_LEDGER_TOTAL. */
   volume: { sats: Sats; cents: Cents };
+  /** The same running totals for retirement purchases, kept apart so they can never refuse a taxable entry. */
+  retirementVolume: { sats: Sats; cents: Cents };
   state: LedgerState;
 }
 
 export function newBook(state: LedgerState, rootOf: ReadonlyMap<EntryId, EntryId>): Book {
-  return { wallets: new Map(), lots: new Map(), closeOuts: new Map(), payouts: [], touched: new Map(), rootOf, volume: { sats: 0, cents: 0 }, state };
+  return { wallets: new Map(), lots: new Map(), closeOuts: new Map(), payouts: [], touched: new Map(), rootOf, volume: { sats: 0, cents: 0 }, retirementVolume: { sats: 0, cents: 0 }, state };
 }
 
 export function problem(code: LedgerErrorCode, message: string): Problem {
@@ -53,7 +55,7 @@ export function lotIdOf(book: Book, e: Entry): LotId {
 export function activeWallet(book: Book, id: WalletId): Wallet | Problem {
   const w = book.wallets.get(id);
   if (w === undefined) return problem('unknown-wallet', `wallet ${id} does not exist`);
-  if (w.type === 'retirement') return problem('retirement-wallet', `${w.name} is a retirement wallet (balance snapshots only)`);
+  if (w.type === 'retirement') return problem('retirement-wallet', `${w.name} is a retirement wallet (kept apart from tax math; log its purchases there)`);
   if (w.frozen) return problem('wallet-frozen', `${w.name} is frozen`);
   return w;
 }
@@ -85,11 +87,10 @@ export function lotIdsTaken(book: Book, ids: readonly LotId[]): Problem | null {
 }
 
 /**
- * Count an entry's new sats and cents toward the ledger totals, or refuse it as out of range. Call it
- * last, after every other check, because it records the amounts.
+ * Count an entry's new sats and cents toward the ledger totals (`v`, default the coin ledger's), or refuse it as out
+ * of range. Call it last, after every other check, because it records the amounts.
  */
-export function addVolume(book: Book, sats: Sats, cents: Cents): Problem | null {
-  const v = book.volume;
+export function addVolume(book: Book, sats: Sats, cents: Cents, v: { sats: Sats; cents: Cents } = book.volume): Problem | null {
   if (v.sats + sats > MAX_LEDGER_TOTAL || v.cents + cents > MAX_LEDGER_TOTAL) return problem('out-of-range', 'this entry would push the ledger past the amounts it can add up exactly');
   v.sats += sats;
   v.cents += cents;

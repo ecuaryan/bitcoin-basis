@@ -160,3 +160,21 @@ describe('funded_by_id and split purchases', () => {
     expect(linkedRows(p.links)).toBe(3);
   });
 });
+
+describe('retirement rows', () => {
+  it('a row for a retirement wallet you have becomes a retirement purchase, counted on its own', () => {
+    const row = good.replace('Strike', 'Retirement account').replace(',Documented,', ',,');
+    const p = previewImport(`${HEAD}\n${good}\n${row}\n`, state.wallets, 'America/Boise', newId, []);
+    expect(p.problems).toEqual([]);
+    expect(p.newWallets).toEqual([]);
+    expect(p.entries).toHaveLength(1);
+    expect(p.retirementBuys).toHaveLength(1);
+    expect(p.goodRows).toBe(2);
+    expect([p.sats, p.costCents, p.retirementSats, p.retirementCostCents]).toEqual([1_000_000, 30_000, 1_000_000, 30_000]);
+  });
+  it('the coins spreadsheet carries the retirement purchases back', () => {
+    const p = previewImport(exportOpeningLotsCsv(state).csv, state.wallets, 'America/Boise', newId, state.closedYears, state.loans);
+    expect(p.problems).toEqual([]);
+    expect(p.retirementBuys.map((b) => b.sats)).toEqual(state.retirementBuys.map((b) => b.sats));
+  });
+});

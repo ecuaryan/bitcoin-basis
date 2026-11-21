@@ -1,7 +1,8 @@
 import type { Entry, Lot, LotPick } from '@bitcoin-basis/engine';
 import type { ReactNode } from 'react';
 
-export type LogKind = 'buy' | 'receive' | 'move' | 'sell' | 'give';
+/** `retirement-buy` has no tab: a retirement wallet's page opens it (and its edits). */
+export type LogKind = 'buy' | 'receive' | 'move' | 'sell' | 'give' | 'retirement-buy';
 
 /** Where a Log sheet opens and what it starts with. */
 export interface LogPreset {

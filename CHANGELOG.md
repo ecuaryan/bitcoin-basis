@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Retirement purchases**: a retirement wallet can now record purchases (date, BTC, cost with fees), edited and removed like any entry. Its page lists each purchase with its cost, worth now, gain or loss and time held, and the wallet shows its total cost, gain and average cost. A new entry kind, `retirement-buy`, kept apart from lots: it never reaches gains, Form 8949, tax estimates, the planners or loans (a property test checks this).
+- **Balance notes check the purchases**: with purchases logged, a retirement wallet's balance is their total; its latest balance note is checked against the purchases up to that date and any difference is shown. Wallets with notes only look as before.
+- **All your Bitcoin** on Holdings: Taxable, Retirement and All Bitcoin side by side (BTC, worth, gain where the cost is known), reached from a quiet "with retirement" line under the hero. The taxable figures are unchanged.
+- Hide amounts now also hides gain percentages and the cost-per-BTC hint while logging a purchase.
+- **Import and export**: rows in the coins spreadsheet whose wallet is one of your retirement wallets become retirement purchases (add the wallet first; leave tier and the loan columns empty on those rows). The spreadsheet export includes them, and the backup file carries them with their history.
+- The demo's retirement account has three made-up purchases.
+
 ## v1.0.0
 
 First release. A self-hosted, end-to-end encrypted Bitcoin cost-basis app on a free Cloudflare account.

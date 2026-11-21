@@ -35,6 +35,7 @@ import type {
   MoveEntry,
   OpeningLotEntry,
   ReceiveEntry,
+  RetirementBuyEntry,
   Recovery,
   SellEntry,
   Settings,
@@ -254,6 +255,21 @@ export function applyBalanceConfirm(book: Book, e: BalanceConfirmEntry, date: Lo
 }
 
 /**
+ * A purchase inside a retirement wallet: recorded apart from lots (no lot, no cost basis, no tax figure). Refused for a
+ * wallet that is not a retirement wallet, or one archived before the purchase's time.
+ */
+export function applyRetirementBuy(book: Book, e: RetirementBuyEntry, date: LocalDate): Problem | null {
+  const w = book.wallets.get(e.wallet);
+  if (w === undefined) return problem('unknown-wallet', `wallet ${e.wallet} does not exist`);
+  if (w.type !== 'retirement') return problem('not-retirement-wallet', `${w.name} is not a retirement wallet`);
+  if (w.archived) return problem('wallet-archived', `${w.name} is archived; bring it back first`);
+  const bad = addVolume(book, e.sats, e.costCents, book.retirementVolume);
+  if (bad !== null) return bad;
+  book.state.retirementBuys.push({ entryId: e.id, id: lotIdOf(book, e), wallet: w.id, at: e.at, date, tz: e.tz, sats: e.sats, costCents: e.costCents, proof: e.proof ?? '' });
+  return null;
+}
+
+/**
  * Merge a settings patch. `carryforwardByYear` merges year by year. The single-year fields (`carryforwardStCents`,
  * `carryforwardLtCents`, `carryforwardYear`) write their year too: the patch's year, else the year already saved, else
  * the entry's own year (`entryYear`), so a figure saved for one year never changes another year's.
@@ -314,9 +330,12 @@ export function applyEntry(book: Book, e: CoinEntry, date: LocalDate): Problem |
       const w = book.wallets.get(e.wallet);
       if (w === undefined) return problem('unknown-wallet', `wallet ${e.wallet} does not exist`);
       if (w.type !== 'retirement') return problem('not-retirement-wallet', `${w.name} is not a retirement wallet`);
+      if (w.archived) return problem('wallet-archived', `${w.name} is archived; bring it back first`);
       book.state.retirementSnapshots.push({ entryId: e.id, wallet: w.id, at: e.at, date, sats: e.sats });
       return null;
     }
+    case 'retirement-buy':
+      return applyRetirementBuy(book, e, date);
     case 'settings':
       book.state.settings = applySettingsPatch(book.state.settings, e.patch, yearOf(date));
       return null;

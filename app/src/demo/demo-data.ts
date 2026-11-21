@@ -366,6 +366,30 @@ function demoLoan(coins: readonly Entry[]): Entry[] {
   return out;
 }
 
+/**
+ * Three made-up purchases inside the demo's retirement account, so its page shows cost and gain. They add up to the
+ * account's latest balance note (0.35 BTC on Oct 31, 2026), so the note matches.
+ */
+function demoRetirement(): Entry[] {
+  const rand = mulberry32(20_220_210);
+  let clock = 0;
+  const nextId = createUuidV7({
+    now: () => clock,
+    random: (bytes) => {
+      for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(rand() * 256);
+    },
+  });
+  const buys: readonly (readonly [string, number, number])[] = [
+    ['2022-02-10', 15_000_000, 618_000],
+    ['2024-01-18', 16_500_000, 693_000],
+    ['2026-03-05', 3_500_000, 280_000],
+  ];
+  return buys.map(([date, sats, costCents]) => {
+    clock = at(date, 15);
+    return { id: nextId(), kind: 'retirement-buy', at: iso(clock), tz: 'America/Boise', wallet: W.retirement, sats, costCents, proof: 'Quarterly statement' };
+  });
+}
+
 export interface DemoBook {
   entries: Entry[];
   /** `YYYY-MM-DD` the book was built to. */
@@ -415,7 +439,7 @@ export function buildDemoBook(): DemoBook {
     if (clean) break;
     entries = build(tuning);
   }
-  entries = [...entries, ...demoLoan(entries)];
+  entries = [...entries, ...demoLoan(entries), ...demoRetirement()];
   cached = { entries, today: DEMO_TODAY, priceCents: DEMO_PRICE_CENTS, prevDayPriceCents: DEMO_PREV_DAY_CENTS };
   return cached;
 }

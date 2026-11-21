@@ -60,7 +60,7 @@ export function buildItems(entries: readonly Entry[]): EntryItem[] {
   return items.sort((a, b) => (a.current.at === b.current.at ? (a.id < b.id ? 1 : -1) : a.current.at < b.current.at ? 1 : -1));
 }
 
-export type KindGroup = 'bought' | 'received' | 'moved' | 'sold' | 'gave' | 'lost' | 'imported' | 'wallets' | 'checks' | 'settings' | 'years' | 'giving' | 'loans';
+export type KindGroup = 'bought' | 'received' | 'moved' | 'sold' | 'gave' | 'lost' | 'imported' | 'retirement' | 'wallets' | 'checks' | 'settings' | 'years' | 'giving' | 'loans';
 export const KIND_GROUPS: readonly { value: KindGroup; label: string }[] = [
   { value: 'bought', label: 'Bought' },
   { value: 'received', label: 'Received' },
@@ -69,6 +69,7 @@ export const KIND_GROUPS: readonly { value: KindGroup; label: string }[] = [
   { value: 'gave', label: 'Gave' },
   { value: 'lost', label: 'Lost' },
   { value: 'imported', label: 'Imported' },
+  { value: 'retirement', label: 'Retirement purchases' },
   { value: 'wallets', label: 'Wallet changes' },
   { value: 'checks', label: 'Retirement balances' },
   { value: 'settings', label: 'Settings' },
@@ -93,6 +94,8 @@ export function kindGroup(kind: EntryKind): KindGroup {
       return 'lost';
     case 'opening-lot':
       return 'imported';
+    case 'retirement-buy':
+      return 'retirement';
     case 'balance-confirm':
     case 'retirement-snapshot':
       return 'checks';

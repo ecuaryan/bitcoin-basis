@@ -16,12 +16,13 @@ import { describeEntry, entryNoun } from '../../lib/describe-entry.ts';
 import { lockedYear, trialReplay } from './model.ts';
 import { MoveForm } from './MoveForm.tsx';
 import { ReceiveForm } from './ReceiveForm.tsx';
+import { RetirementBuyForm } from './RetirementBuyForm.tsx';
 import { Review } from './Review.tsx';
 import { SellForm } from './SellForm.tsx';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 
-const TABS: { kind: LogKind; label: string; name: string }[] = [
+const TABS: { kind: Exclude<LogKind, 'retirement-buy'>; label: string; name: string }[] = [
   { kind: 'buy', label: 'Bought', name: 'Bought' },
   { kind: 'receive', label: 'Received', name: 'Received' },
   { kind: 'move', label: 'Moved', name: 'Moved' },
@@ -29,7 +30,7 @@ const TABS: { kind: LogKind; label: string; name: string }[] = [
   { kind: 'give', label: 'Gave', name: 'Gave' },
 ];
 
-const FORMS: Record<LogKind, (p: FormProps) => React.JSX.Element> = { buy: BuyForm, receive: ReceiveForm, move: MoveForm, sell: SellForm, give: GiveForm };
+const FORMS: Record<LogKind, (p: FormProps) => React.JSX.Element> = { buy: BuyForm, receive: ReceiveForm, move: MoveForm, sell: SellForm, give: GiveForm, 'retirement-buy': RetirementBuyForm };
 
 function KindTabs({ kind, onPick, panelId }: { kind: LogKind; onPick(k: LogKind): void; panelId: string }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -85,6 +86,8 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
   const [removeId] = useState(() => uuidv7());
   const editing = startPreset.edit !== undefined;
   const removing = startPreset.remove !== undefined;
+  // A retirement purchase has no tab: it opens from its wallet's page, on its own.
+  const alone = editing || kind === 'retirement-buy';
   const walletsById = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
 
   function switchTo(k: LogKind, p?: LogPreset) {
@@ -228,8 +231,8 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
   return (
     <div className="flex flex-col gap-4">
       <div ref={formAreaRef} hidden={reviewing} className="flex flex-col gap-4">
-        {editing ? (
-          <h3 className="m-0 font-display text-lg font-semibold tracking-tight">{head === null ? 'Edit this entry' : `Edit this ${entryNoun(head)}`}</h3>
+        {alone ? (
+          <h3 className="m-0 font-display text-lg font-semibold tracking-tight">{!editing ? 'Log a retirement purchase' : head === null ? 'Edit this entry' : `Edit this ${entryNoun(head)}`}</h3>
         ) : (
           <SheetSlotsPaused paused={reviewing}>
             <SheetSlot name="header">
@@ -239,7 +242,7 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
             </SheetSlot>
           </SheetSlotsPaused>
         )}
-        <div role={editing ? undefined : 'tabpanel'} id={panelId} aria-labelledby={editing ? undefined : `${panelId}-tab-${kind}`} className="flex flex-col gap-4">
+        <div role={alone ? undefined : 'tabpanel'} id={panelId} aria-labelledby={alone ? undefined : `${panelId}-tab-${kind}`} className="flex flex-col gap-4">
           <SheetSlotsPaused paused={reviewing}>
             <SavingContext.Provider value={direct.busy}>
               <Form key={`${kind}-${formKey}`} initial={editing ? head : null} preset={preset} onReview={(d) => void onReview(d)} onSwitch={switchTo} />

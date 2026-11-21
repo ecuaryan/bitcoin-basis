@@ -25,10 +25,10 @@ describe('WorthLine', () => {
     app = await renderApp(<WorthLine worth={worthNow(1_000_000, 104_000, null)} />);
     expect(text()).toBe('Now —');
   });
-  it('masks the dollars but keeps the word and percent', async () => {
+  it('masks the dollars and the percent but keeps the word', async () => {
     app = await renderApp(<WorthLine worth={worthNow(1_000_000, 72_000, 10_000_000)} />, { hidden: true });
     expect(text()).not.toMatch(/\d{2,}\.\d\d/);
     expect(text()).toContain('up');
-    expect(text()).toContain('(+38%)');
+    expect(text()).not.toContain('%');
   });
 });

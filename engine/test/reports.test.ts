@@ -32,8 +32,8 @@ describe('holdings', () => {
     expect(h.documentationMix).toEqual({ documented: sats('0.3'), reconstructed: 0, estimated: sats('0.1'), unknown: sats('0.1') });
     expect(h.moneyPutInCents).toBe(cents('50500'));
     expect(h.retirement).toEqual([
-      { wallet: 'ira', name: 'ira', sats: 7 },
-      { wallet: 'ira2', name: 'ira2', sats: 0 },
+      { wallet: 'ira', name: 'ira', archived: false, sats: 7, balanceFrom: 'snapshot', purchaseCount: 0, purchaseSats: 0, costCents: 0, averageCostCentsPerBtc: null, snapshot: { entryId: 'S2', date: '2024-07-01', sats: 7, purchasedSats: 0, differenceSats: 7, matches: false } },
+      { wallet: 'ira2', name: 'ira2', archived: false, sats: 0, balanceFrom: 'none', purchaseCount: 0, purchaseSats: 0, costCents: 0, averageCostCentsPerBtc: null, snapshot: null },
     ]);
   });
   test('average cost is null when nothing is held', () => {

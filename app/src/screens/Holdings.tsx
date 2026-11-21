@@ -23,7 +23,9 @@ import {
   GainText,
   MoneyCard,
   PriceLine,
+  AllBitcoinCard,
   RetirementCard,
+  WithRetirementLine,
   StackColumns,
   StackRows,
   TIER_COLORS_HELP,
@@ -75,12 +77,12 @@ function WorthPlaceholder({ loading }: { loading: boolean }) {
   return <span aria-label="No price right now">$—</span>;
 }
 
-function useHoldingsView(): { view: HoldingsView; priceCents: number | null } {
+function useHoldingsView(): { view: HoldingsView } {
   const { state, holdings, today } = useLedger();
   const { quote } = usePrice();
   const priceCents = quote?.usdCents ?? null;
   const view = useMemo(() => buildHoldingsView(state, holdings, priceCents, today), [state, holdings, priceCents, today]);
-  return { view, priceCents };
+  return { view };
 }
 
 /** The unused losses from earlier returns, with a "?" that says what they are. */
@@ -143,14 +145,16 @@ function FirstRun() {
 function WalletReady({ view }: { view: HoldingsView }) {
   const log = useLogSheet();
   const first = view.wallets[0];
-  const title = view.wallets.length === 1 && first ? `${first.name} is ready.` : 'Your wallet is ready.';
+  // Only a retirement wallet so far: its purchases go in through the retirement form.
+  const ira = first === undefined ? view.retirement[0] : undefined;
+  const title = view.wallets.length === 1 && first ? `${first.name} is ready.` : view.wallets.length === 0 && view.retirement.length === 1 && ira ? `${ira.name} is ready.` : 'Your wallet is ready.';
   return (
     <DesktopCenter>
       <Card className="flex flex-col items-start gap-4">
         <p className="m-0 font-display text-2xl font-semibold tracking-tight">{title}</p>
         <p className="m-0 text-[15px] leading-relaxed text-muted">Log what you bought, or bring in your history.</p>
         <div className="flex w-full flex-col gap-2.5 sm:flex-row">
-          <Button variant="primary" onClick={() => log.open({ kind: 'buy', ...(first ? { wallet: first.id } : {}) })}>
+          <Button variant="primary" onClick={() => log.open(ira ? { kind: 'retirement-buy', wallet: ira.id } : { kind: 'buy', ...(first ? { wallet: first.id } : {}) })}>
             Log a purchase
           </Button>
           <Link to="/records?v=io" className={buttonClasses('secondary', 'text-text no-underline hover:text-text')}>
@@ -165,6 +169,9 @@ function WalletReady({ view }: { view: HoldingsView }) {
         </div>
         {view.wallets.map((w) => (
           <WalletLinkCard key={w.id} w={w} />
+        ))}
+        {view.retirement.map((r) => (
+          <WalletLinkCard key={r.id} w={{ id: r.id, name: r.name, type: 'retirement', typeLabel: 'Retirement', sats: r.sats, costCents: r.worth.costCents, averageCostCentsPerBtc: null, confirmedLabel: 'Kept apart from tax', needsAttention: false, frozen: false }} />
         ))}
       </section>
     </DesktopCenter>
@@ -191,7 +198,7 @@ function ChartFooter({ points, className }: { points: PricePoint[]; className?: 
 
 // ---- Phone -----------------------------------------------------------------------------
 
-function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: number | null }) {
+function PhoneHoldings({ view }: { view: HoldingsView }) {
   const { quote, status, error } = usePrice();
   const { today } = useLedger();
   const { points: series, loading: seriesLoading } = usePriceSeries();
@@ -214,6 +221,7 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
           <span className="flex flex-wrap items-baseline gap-x-2.5">
             <PriceLine quote={quote} status={status} error={error} className="text-[13px]" />
           </span>
+          <WithRetirementLine view={view} className="text-[13px]" />
         </div>
       </section>
 
@@ -259,7 +267,8 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
       <LoansSection />
 
       <MoneyCard view={view} />
-      <RetirementCard view={view} priceCents={priceCents} />
+      <RetirementCard view={view} />
+      <AllBitcoinCard view={view} wide={false} />
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>
   );
@@ -267,7 +276,7 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
 
 // ---- Desktop ---------------------------------------------------------------------------
 
-function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents: number | null }) {
+function DesktopHoldings({ view }: { view: HoldingsView }) {
   const { quote, status, error } = usePrice();
   const { today } = useLedger();
   const { points: series, loading: seriesLoading } = usePriceSeries();
@@ -290,6 +299,7 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
             </span>
             <PriceLine quote={quote} status={status} error={error} className="text-sm" />
           </div>
+          <WithRetirementLine view={view} className="self-start text-sm" />
         </section>
         <div className="flex items-center gap-2.5">
           <SyncIndicator />
@@ -359,8 +369,9 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
       <div className="grid grid-cols-3 items-start gap-4">
         <MoneyCard view={view} />
         <DocumentationCard view={view} />
-        <RetirementCard view={view} priceCents={priceCents} />
+        <RetirementCard view={view} />
       </div>
+      <AllBitcoinCard view={view} wide />
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>
   );
@@ -371,7 +382,7 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
 export function Holdings() {
   const wide = useIsWide();
   const { ready, entries } = useLedger();
-  const { view, priceCents } = useHoldingsView();
+  const { view } = useHoldingsView();
   useTitle('Holdings');
   if (!ready) return <div aria-busy="true" className="min-h-[60dvh]" />;
   if (view.isEmpty || entries.every((e) => e.kind === 'wallet')) {
@@ -385,7 +396,7 @@ export function Holdings() {
   return (
     <>
       <h1 className="sr-only">Holdings</h1>
-      {wide ? <DesktopHoldings view={view} priceCents={priceCents} /> : <PhoneHoldings view={view} priceCents={priceCents} />}
+      {wide ? <DesktopHoldings view={view} /> : <PhoneHoldings view={view} />}
     </>
   );
 }

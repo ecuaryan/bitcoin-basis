@@ -12,7 +12,7 @@ import { splitByWeights } from './loans.ts';
 import { averageCostPerBtc } from './reports.ts';
 import { originLotId } from './trace.ts';
 import { err, ok } from './result.ts';
-import { TIERS, type Entry, type EntryId, type LedgerState, type LocalDate, type Loan, type LoanDraw, type LoanId, type LoanLinkEntry, type Lot, type LotId, type OpeningLotEntry, type Result, type Tier, type Wallet, type WalletId } from './types.ts';
+import { TIERS, type Entry, type EntryId, type LedgerState, type LocalDate, type Loan, type LoanDraw, type LoanId, type LoanLinkEntry, type Lot, type LotId, type OpeningLotEntry, type Result, type RetirementBuyEntry, type Tier, type Wallet, type WalletId } from './types.ts';
 import { parseEntry } from './validate.ts';
 
 // ---------------------------------------------------------------------------------------------
@@ -31,6 +31,9 @@ export const OPENING_LOT_LOAN_COLUMNS = ['funded_by', 'funded_by_id', 'funded_dr
 /** The loan-name column (the first of `OPENING_LOT_LOAN_COLUMNS`). */
 export const OPENING_LOT_FUNDED_BY_COLUMN = 'funded_by';
 type OpeningLotColumn = (typeof OPENING_LOT_COLUMNS)[number] | typeof OPENING_LOT_TZ_COLUMN | (typeof OPENING_LOT_LOAN_COLUMNS)[number];
+
+/** Loan columns that a row for a retirement wallet must leave empty. */
+const RETIREMENT_FORBIDDEN = ['funded_by', 'funded_by_id', 'funded_draw_usd', 'funded_draw_date'] as const;
 
 /** Rows to CSV with every text column made safe for spreadsheets (numeric columns untouched). */
 function exportCsv(columns: readonly string[], numeric: readonly string[], rows: readonly string[][]): string {
@@ -61,6 +64,11 @@ export interface OpeningLotsImportOptions {
 
 export interface OpeningLotsImport {
   entries: OpeningLotEntry[];
+  /**
+   * Rows naming a retirement wallet: recorded as retirement purchases (`origin` becomes the purchase's `proof`), never
+   * as lots. Their tier must be empty and loan columns are not allowed on them.
+   */
+  retirementBuys: RetirementBuyEntry[];
   /** One `loan-link` per loan-funded purchase (rows sharing `origin_id` and loan form one); save them with the lots. */
   links: LoanLinkEntry[];
   /** Non-fatal notes, e.g. a `btc` value that disagrees with `sats` (sats win). */
@@ -93,7 +101,9 @@ function walletsNamed(wallets: readonly Wallet[], name: string): Wallet[] {
 /**
  * Parse an opening-lots CSV (`wallet,acquired_utc,btc,sats,cost_usd,cost_per_btc,tier,origin`, optional `tz`)
  * into `opening-lot` entries. `sats` is authoritative; `btc` and `cost_per_btc` are checks only.
- * `cost_usd` is parsed to cents with string math. All row problems are returned together.
+ * `cost_usd` is parsed to cents with string math. All row problems are returned together. A row whose wallet is a
+ * retirement wallet becomes a `retirement-buy` instead (its tier must be empty; a tier or loan columns are a row problem). Wallets are
+ * never created here.
  */
 export function importOpeningLotsCsv(text: string, options: OpeningLotsImportOptions): Result<OpeningLotsImport, CsvProblem[]> {
   const parsed = parseCsv(text);
@@ -107,6 +117,7 @@ export function importOpeningLotsCsv(text: string, options: OpeningLotsImportOpt
   const problems: CsvProblem[] = [];
   const warnings: CsvProblem[] = [];
   const entries: OpeningLotEntry[] = [];
+  const retirementBuys: RetirementBuyEntry[] = [];
   const funded: Funded[] = [];
   rows.forEach((cells, index) => {
     const row = index + 2;
@@ -122,16 +133,20 @@ export function importOpeningLotsCsv(text: string, options: OpeningLotsImportOpt
     if (costCents === null || costCents > MAX_ENTRY_CENTS) rowProblems.push(`cost_usd "${cell('cost_usd')}" is not a dollar amount up to $1 trillion`);
     const tz = cell('tz') === '' ? options.tz : cell('tz');
     if (!isValidTimeZone(tz)) rowProblems.push(`tz "${tz}" is not a time zone like America/Boise`);
-    const tier = TIERS.find((t) => t === cell('tier').toLowerCase());
+    const retirement = matches.length === 1 && (matches[0] as Wallet).type === 'retirement';
+    // A retirement row must leave the tier empty, so a taxable lot can never slip out of the tax book by its wallet's name.
+    if (retirement && cell('tier') !== '') rowProblems.push(`${cell('wallet')} is a retirement wallet; leave tier empty for retirement purchases`);
+    const tier = retirement ? 'documented' : TIERS.find((t) => t === cell('tier').toLowerCase());
     if (tier === undefined) rowProblems.push(`tier "${cell('tier')}" is not Documented, Reconstructed, Estimated or Unknown`);
-    const fundedBy = cell('funded_by');
+    if (retirement && RETIREMENT_FORBIDDEN.some((c) => cell(c) !== '')) rowProblems.push(`${cell('wallet')} is a retirement wallet; leave the funded_by columns empty`);
+    const fundedBy = retirement ? '' : cell('funded_by');
     const byId = (options.loans ?? []).filter((l) => l.id === cell('funded_by_id'));
     const loans = fundedBy === '' ? [] : byId.length > 0 ? byId : loansNamed(options.loans ?? [], fundedBy);
     if (fundedBy !== '' && loans.length !== 1) rowProblems.push(loans.length === 0 ? `no loan named "${fundedBy}" (add the loan first)` : `more than one loan is named "${fundedBy}"`);
-    const drawText = cell('funded_draw_usd');
+    const drawText = retirement ? '' : cell('funded_draw_usd');
     const drawCents = drawText === '' ? null : parseDollars(drawText);
     if (drawCents === null && drawText !== '') rowProblems.push(`funded_draw_usd "${drawText}" is not a dollar amount`);
-    const drawDate = cell('funded_draw_date') === '' ? null : cell('funded_draw_date');
+    const drawDate = retirement || cell('funded_draw_date') === '' ? null : cell('funded_draw_date');
     if (drawDate !== null && !isValidLocalDate(drawDate)) rowProblems.push(`funded_draw_date "${drawDate}" is not a date like 2025-01-31`);
     if (rowProblems.length > 0 || acquiredAt === null || costCents === null || tier === undefined) {
       problems.push(...rowProblems.map((message) => ({ row, message })));
@@ -139,12 +154,16 @@ export function importOpeningLotsCsv(text: string, options: OpeningLotsImportOpt
     }
     const btc = cell('btc');
     if (btc !== '' && parseBtc(btc) !== sats) warnings.push({ row, message: `btc ${btc} disagrees with sats ${sats}; using sats` });
+    if (retirement) {
+      retirementBuys.push({ id: options.newId(), kind: 'retirement-buy', at: acquiredAt, tz, wallet: (matches[0] as Wallet).id, sats, costCents, ...(cell('origin') === '' ? {} : { proof: cell('origin') }) });
+      return;
+    }
     const lot: OpeningLotEntry = { id: options.newId(), kind: 'opening-lot', at: acquiredAt, tz, wallet: (matches[0] as Wallet).id, acquiredAt, sats, costCents, tier, origin: cell('origin') };
     entries.push(lot);
     const loan = loans[0];
     if (loan !== undefined) funded.push({ key: JSON.stringify([loan.id, cell('origin_id') === '' ? lot.id : cell('origin_id')]), loan: loan.id, lot, drawCents, drawDate });
   });
-  return problems.length > 0 ? err(problems) : ok({ entries, links: linksFor(funded, options.newId), warnings });
+  return problems.length > 0 ? err(problems) : ok({ entries, retirementBuys, links: linksFor(funded, options.newId), warnings });
 }
 
 /** A loan-funded row of an opening-lots import. */
@@ -185,7 +204,10 @@ export interface OpeningLotsExport {
   warnings: string[];
 }
 
-/** Export open lots (all wallets) as an opening-lots CSV, by wallet then oldest first. */
+/**
+ * Export open lots (all wallets) as an opening-lots CSV, by wallet then oldest first, then the retirement purchases by
+ * wallet (empty tier; re-importing them needs the retirement wallet added first, or the empty tier is a row problem).
+ */
 export function exportOpeningLotsCsv(state: LedgerState): OpeningLotsExport {
   const walletOrder = new Map(state.wallets.map((w, i) => [w.id, i]));
   const names = walletNames(state);
@@ -211,6 +233,14 @@ export function exportOpeningLotsCsv(state: LedgerState): OpeningLotsExport {
     const f = drawFor.get(originLotId(l.id));
     return f === undefined ? [...row, '', '', '', '', ''] : [...row, f.loan.name, f.loan.id, formatCents(drawShare.get(l.id) as Cents), f.draw.date, f.draw.lotId as LotId];
   });
+  // Retirement purchases after the lots, under their wallet's name: no tier (import does not use one), no loan columns.
+  const retirementRows = [...state.retirementBuys]
+    .sort((a, b) => (walletOrder.get(a.wallet) as number) - (walletOrder.get(b.wallet) as number))
+    .map((b) => {
+      const perBtc = averageCostPerBtc(b.costCents, b.sats);
+      const row = [names(b.wallet), b.at.replace('T', ' ').replace('Z', ''), formatBtc(b.sats), String(b.sats), formatCents(b.costCents), perBtc === null ? '' : formatCents(perBtc), '', b.proof, b.tz];
+      return funded ? [...row, '', '', '', '', ''] : row;
+    });
   const goneDraws = state.loans.flatMap((loan) => loan.draws.filter((d) => d.lotId !== null && !pieces.has(d)).map((d) => ({ loan, d })));
   const warnings = [
     ...goneDraws.map(({ loan, d }) => `Purchase ${d.lotId as LotId} was paid with ${loan.name}, but none of its coins are left, so the CSV cannot carry its $${formatCents(d.cents)} draw. Use the entries JSON.`),
@@ -218,7 +248,7 @@ export function exportOpeningLotsCsv(state: LedgerState): OpeningLotsExport {
     ...lots.filter((l) => l.lossBasis !== null).map((l) => `Lot ${l.id} is a gift worth less than the giver's cost (dual basis); the CSV cannot record that.`),
   ];
   const columns = [...OPENING_LOT_COLUMNS, OPENING_LOT_TZ_COLUMN, ...(funded ? OPENING_LOT_LOAN_COLUMNS : [])];
-  return { csv: exportCsv(columns, ['btc', 'sats', 'cost_usd', 'cost_per_btc'], rows), warnings };
+  return { csv: exportCsv(columns, ['btc', 'sats', 'cost_usd', 'cost_per_btc'], [...rows, ...retirementRows]), warnings };
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -167,3 +167,13 @@ export function prettyBtc(clean: string): string {
   const f = frac.padEnd(8, '0');
   return `${withCommas(whole === '' ? '0' : whole)}.${f.slice(0, 4)} ${f.slice(4)}`;
 }
+
+/** How long coins have been held, in whole units toward zero: `Bought today`, `Held 12 days`, `Held 8 months`, `Held 2 yr 3 mo`. */
+export function heldLabel(days: number): string {
+  if (days < 1) return 'Bought today';
+  if (days < 60) return `Held ${countOf(days, 'day')}`;
+  const months = Math.floor((days * 12) / 365);
+  if (months < 12) return `Held ${countOf(months, 'month')}`;
+  const years = Math.floor(months / 12);
+  return months % 12 === 0 ? `Held ${countOf(years, 'year')}` : `Held ${years} yr ${months % 12} mo`;
+}

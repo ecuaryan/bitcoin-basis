@@ -1,4 +1,4 @@
-import { formatAprPercent, localDate, type Entry, type LedgerState, type Wallet } from '@bitcoin-basis/engine';
+import { formatAprPercent, localDate, retirementPurchases, type Entry, type LedgerState, type Wallet } from '@bitcoin-basis/engine';
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useLedger } from '../data/ledger-provider.tsx';
@@ -8,7 +8,7 @@ import { LoanBadge } from './loans/loan-parts.tsx';
 import { cx } from '../lib/cx.ts';
 import { describeEntry, entryNoun } from '../lib/describe-entry.ts';
 import { isRecheck, userEdited, type EntryItem, type EntryRun } from '../lib/entry-list.ts';
-import { countOf, longDate, shortDate } from '../lib/format.ts';
+import { countOf, heldLabel, longDate, shortDate } from '../lib/format.ts';
 import { TIER_LABEL } from '../lib/origin.ts';
 import { entryWorth, type PartKind } from '../lib/worth-now.ts';
 import { Amount, Money } from '../ui/Amount.tsx';
@@ -110,6 +110,8 @@ function facts(e: Entry, name: (id: string) => string, loan: (id: string) => str
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['To', `${e.recipient} (${e.to})`], ['Coins used', countOf(e.picks.length, 'batch', 'batches')]];
     case 'lost':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), ['Cause', e.cause.replace('-', ' ')]];
+    case 'retirement-buy':
+      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Paid', e.costCents), ['Counts for tax', 'No, retirement']];
     case 'opening-lot':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Cost', e.costCents), ['Documentation', TIER_LABEL[e.tier]], ['Where the record is', e.origin]];
     case 'balance-confirm':
@@ -176,6 +178,26 @@ function WorthBlock({ item, state, today }: { item: EntryItem; state: LedgerStat
           <Amount sats={g.sats} showUnit interactive={false} /> of it {GONE_WORD[g.kind]} on {shortDate(g.date, today)}
         </p>
       ))}
+    </section>
+  );
+}
+
+/** A retirement purchase: what it cost, what it is worth now and how long it has been held. */
+function RetirementWorthBlock({ item, state, today }: { item: EntryItem; state: LedgerState; today: string }) {
+  const { quote } = usePrice();
+  const priceCents = quote?.usdCents ?? null;
+  const p = useMemo(() => retirementPurchases(state, null, priceCents, today).find((x) => x.id === item.id), [state, priceCents, today, item.id]);
+  if (p === undefined) return null;
+  const rows: [string, ReactNode][] = [
+    ['Cost', <Money key="c" cents={p.costCents} />],
+    ['Worth now', p.valueCents === null ? '—' : <Money key="v" cents={p.valueCents} />],
+    ['Change', <GainWords key="g" worth={p} />],
+    ['Held', heldLabel(p.heldDays).replace(/^Held /, '')],
+  ];
+  return (
+    <section aria-label="What these coins are worth now" className="flex flex-col gap-2">
+      <h2 className="m-0 text-[15px] font-semibold">What these coins are worth now</h2>
+      <FactList rows={rows} />
     </section>
   );
 }
@@ -279,6 +301,7 @@ export function EntrySheet({ run, state, today, onClose }: { run: EntryRun; stat
         ) : null}
         <EntryActions run={run} state={state} onClose={onClose} />
         {!item.deleted && BOUGHT_KINDS.has(e.kind) && <WorthBlock item={item} state={state} today={today} />}
+        {!item.deleted && e.kind === 'retirement-buy' && <RetirementWorthBlock item={item} state={state} today={today} />}
         <section aria-label="History" className="flex flex-col gap-2">
           <h2 className="m-0 text-[15px] font-semibold">History</h2>
           <ol className="m-0 flex list-none flex-col gap-2 p-0">

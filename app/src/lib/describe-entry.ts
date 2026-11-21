@@ -98,6 +98,8 @@ export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>, lo
       return line('✓', 'Balance confirmed', w(e.wallet), { summary: 'Checked the balance', sats: e.sats });
     case 'retirement-snapshot':
       return line('✓', 'Retirement balance', w(e.wallet), { summary: 'Retirement balance noted', sats: e.sats });
+    case 'retirement-buy':
+      return line('+', 'Bought (retirement)', w(e.wallet), { summary: 'Bought in a retirement wallet', sats: e.sats, sign: '+', cents: e.costCents, centsLabel: 'paid' });
     case 'wallet':
       return line('◇', 'Wallet added', `${e.name} · ${e.type === 'self-custody' ? 'self-custody' : e.type}`, { summary: `Added ${e.name}` });
     case 'wallet-update': {
@@ -141,6 +143,7 @@ export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>, lo
 export function entryNoun(e: Entry): string {
   switch (e.kind) {
     case 'buy':
+    case 'retirement-buy':
       return 'purchase';
     case 'receive':
       return e.source.type === 'income' ? 'income' : e.source.type === 'gift' ? 'gift received' : e.source.type === 'inherited' ? 'inheritance' : 'payout';

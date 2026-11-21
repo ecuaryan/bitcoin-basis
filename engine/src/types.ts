@@ -154,6 +154,17 @@ export interface RetirementSnapshotEntry extends EntryBase<'retirement-snapshot'
   readonly wallet: WalletId;
   readonly sats: Sats;
 }
+/**
+ * Coins bought inside a retirement wallet (an IRA). Recorded for cost and gain only: never a lot, never in any tax
+ * figure, average cost of the taxable book, the planner or loans. `at` is when it was bought; `proof` says where the
+ * record is (an imported row's `origin`).
+ */
+export interface RetirementBuyEntry extends EntryBase<'retirement-buy'> {
+  readonly wallet: WalletId;
+  readonly sats: Sats;
+  /** Total paid including fees. */
+  readonly costCents: Cents;
+}
 export interface SettingsEntry extends EntryBase<'settings'> {
   readonly patch: SettingsPatch;
 }
@@ -258,6 +269,7 @@ export type Entry =
   | LostEntry
   | BalanceConfirmEntry
   | RetirementSnapshotEntry
+  | RetirementBuyEntry
   | SettingsEntry
   | CloseYearEntry
   | UnlockYearEntry
@@ -519,6 +531,23 @@ export interface RetirementSnapshot {
   sats: Sats;
 }
 
+/** An applied retirement purchase. Kept apart from lots: nothing in tax math reads it. */
+export interface RetirementBuy {
+  /** The version applied. */
+  entryId: EntryId;
+  /** Root of the entry's version chain: stays the same through edits. */
+  id: EntryId;
+  wallet: WalletId;
+  at: IsoInstant;
+  /** Local date of `at` in the entry's time zone. */
+  date: LocalDate;
+  tz: string;
+  sats: Sats;
+  costCents: Cents;
+  /** Where the record is ('' if not given). */
+  proof: string;
+}
+
 /** Two or more entries replace the same entry: none of them is applied until resolved. */
 export interface Conflict {
   targetId: EntryId;
@@ -558,6 +587,7 @@ export type LedgerErrorCode =
   | 'wallet-frozen'
   | 'retirement-wallet'
   | 'not-retirement-wallet'
+  | 'wallet-archived'
   | 'not-frozen'
   | 'already-closed-out'
   | 'nothing-to-close-out'
@@ -592,6 +622,8 @@ export interface LedgerState {
   recoveries: Recovery[];
   balanceChecks: BalanceCheck[];
   retirementSnapshots: RetirementSnapshot[];
+  /** Retirement purchases in replay order. Never part of lots, cost basis, gains or any tax figure. */
+  retirementBuys: RetirementBuy[];
   givingPaid: GivingPaid[];
   conflicts: Conflict[];
   closedYears: number[];

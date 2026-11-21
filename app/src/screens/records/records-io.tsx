@@ -80,7 +80,7 @@ function ImportLots() {
     const loans = loanEntries(p.newLoans, rates, nowInstant(Date.now()), tz);
     if (loans === null) return;
     // New loans and wallets first, then the coins, then the links from loans to the coins they paid for.
-    const batches = [...chunk([...loans, ...walletEntries(p.newWallets, types, nowInstant(Date.now()), tz)], BATCH), ...chunk(p.entries, BATCH), ...chunk(p.links, BATCH)];
+    const batches = [...chunk([...loans, ...walletEntries(p.newWallets, types, nowInstant(Date.now()), tz)], BATCH), ...chunk(p.entries, BATCH), ...chunk(p.retirementBuys, BATCH), ...chunk(p.links, BATCH)];
     const total = batches.reduce((s, b) => s + b.length, 0);
     let done = 0;
     setFailed(false);
@@ -98,7 +98,7 @@ function ImportLots() {
     }
     const n = p.entries.length;
     const made = [...(p.newWallets.length > 0 ? [countOf(p.newWallets.length, 'wallet')] : []), ...(p.newLoans.length > 0 ? [countOf(p.newLoans.length, 'loan')] : [])];
-    const parts = [countOf(n, 'coin'), ...made];
+    const parts = [...(n > 0 || p.retirementBuys.length === 0 ? [countOf(n, 'coin')] : []), ...(p.retirementBuys.length > 0 ? [countOf(p.retirementBuys.length, 'retirement purchase')] : []), ...made];
     toast.show(`Added ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`}.`, { success: true });
     setFile(null);
     setProgress(null);
@@ -118,11 +118,11 @@ function ImportLots() {
           <DownloadIcon size={16} /> Download a blank template
         </button>
       </div>
-      <p className="m-0 text-[13px] leading-[1.45] text-muted">One row per purchase. A wallet name that is new gets created for you. You&apos;ll see a preview before anything is added.</p>
+      <p className="m-0 text-[13px] leading-[1.45] text-muted">One row per purchase. A wallet name that is new gets created for you. Rows for a retirement wallet become retirement purchases; add that wallet first. You&apos;ll see a preview before anything is added.</p>
       <details className="text-[13px] text-muted">
         <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-soft">What columns?</summary>
         <p className="m-0 pb-1 leading-[1.5]">
-          wallet (a name you have, or a new one), acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked. An optional funded_by column names the loan that paid for a row, like HELOC.
+          wallet (a name you have, or a new one), acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked. An optional funded_by column names the loan that paid for a row, like HELOC. A row whose wallet is one of your retirement wallets is saved as a retirement purchase, kept apart from tax math: leave its tier and funded_by empty. Retirement wallets are never created from a file.
         </p>
       </details>
       {file && preview && (
@@ -142,7 +142,7 @@ function ImportLots() {
                   </li>
                 ))}
               </ul>
-              {goodOnly && goodOnly.problems.length === 0 && goodOnly.entries.length > 0 ? (
+              {goodOnly && goodOnly.problems.length === 0 && goodOnly.entries.length + goodOnly.retirementBuys.length > 0 ? (
                 <ReadyBlock p={goodOnly} types={types} setTypes={setTypes} rates={rates} setRates={setRates} progress={progress} failed={failed} onAdd={() => void add(goodOnly)} goodOnly />
               ) : (
                 <span className="text-xs text-muted">Fix the file and choose it again.</span>
@@ -157,7 +157,9 @@ function ImportLots() {
 
 function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onAdd, goodOnly = false }: { p: ImportPreview; types: Record<string, WalletType>; setTypes(t: Record<string, WalletType>): void; rates: Record<string, string>; setRates(r: Record<string, string>): void; progress: { done: number; total: number } | null; failed: boolean; onAdd(): void; goodOnly?: boolean }) {
   const n = p.entries.length;
+  const r = p.retirementBuys.length;
   const coins = (k: number) => countOf(k, 'coin');
+  const what = [...(n > 0 || r === 0 ? [coins(n)] : []), ...(r > 0 ? [countOf(r, 'retirement purchase')] : [])].join(' and ');
   const mix = TIERS.filter((t) => (p.tiers[t] ?? 0) > 0).map((t) => `${TIER_LABEL[t]} ${Math.max(1, Math.round(((p.tiers[t] ?? 0) * 100) / p.sats))}%`);
   const busy = progress !== null;
   const make = p.newWallets.length > 0;
@@ -202,10 +204,20 @@ function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onA
         </span>
       ))}
       <div className="flex flex-col gap-0.5">
-        <span className="font-semibold">
-          {coins(n)} · <Amount sats={p.sats} showUnit short interactive={false} /> · <Money cents={p.costCents} precision="dollars" /> cost
-        </span>
-        <span className="text-xs text-muted">{mix.join(' · ')}</span>
+        {n > 0 || r === 0 ? (
+          <>
+            <span className="font-semibold">
+              {coins(n)} · <Amount sats={p.sats} showUnit short interactive={false} /> · <Money cents={p.costCents} precision="dollars" /> cost
+            </span>
+            <span className="text-xs text-muted">{mix.join(' · ')}</span>
+          </>
+        ) : null}
+        {r > 0 ? (
+          <span className="font-semibold">
+            {countOf(r, 'retirement purchase')} will be added · <Amount sats={p.retirementSats} showUnit short interactive={false} /> · <Money cents={p.retirementCostCents} precision="dollars" /> cost
+          </span>
+        ) : null}
+        {r > 0 ? <span className="text-xs text-muted">Kept apart from tax math.</span> : null}
         {linked > 0 ? <span className="text-xs text-muted">{countOf(linked, 'coin')} paid with a loan</span> : null}
       </div>
       {p.closedYears.length > 0 && (
@@ -221,7 +233,7 @@ function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onA
       {failed && <span className="text-xs text-loss">Something went wrong. Nothing more was added. Try again; coins already added are skipped.</span>}
       {!ratesReady ? <span className="text-xs text-amber">Enter each new loan&apos;s rate, like 6.5.</span> : null}
       <Button variant="primary" className="self-start" disabled={busy || !ratesReady} onClick={onAdd}>
-        {busy ? `Adding ${progress.done.toLocaleString('en-US')} of ${progress.total.toLocaleString('en-US')}…` : make ? `Create ${p.newWallets.length === 1 ? 'wallet' : 'wallets'} and add ${goodOnly ? 'the ' : ''}${coins(n)}` : `Add ${goodOnly ? 'the ' : ''}${coins(n)}`}
+        {busy ? `Adding ${progress.done.toLocaleString('en-US')} of ${progress.total.toLocaleString('en-US')}…` : make ? `Create ${p.newWallets.length === 1 ? 'wallet' : 'wallets'} and add ${goodOnly ? 'the ' : ''}${what}` : `Add ${goodOnly ? 'the ' : ''}${what}`}
       </Button>
     </>
   );

@@ -1,10 +1,12 @@
-import { importEntriesJson, importOpeningLotsCsv, localDate, OPENING_LOT_COLUMNS, OPENING_LOT_FUNDED_BY_COLUMN, parseAprPercent, parseCsv, taxYear, toCsv, type CsvProblem, type Entry, type Loan, type LoanEntry, type LoanLinkEntry, type OpeningLotEntry, type Tier, type Wallet, type WalletEntry, type WalletType } from '@bitcoin-basis/engine';
+import { importEntriesJson, importOpeningLotsCsv, localDate, OPENING_LOT_COLUMNS, OPENING_LOT_FUNDED_BY_COLUMN, parseAprPercent, parseCsv, taxYear, toCsv, type CsvProblem, type Entry, type Loan, type LoanEntry, type LoanLinkEntry, type OpeningLotEntry, type RetirementBuyEntry, type Tier, type Wallet, type WalletEntry, type WalletType } from '@bitcoin-basis/engine';
 
 /** The loans a `funded_by` cell may name: the book's, plus any the preview will create. */
 export type LoanRef = Pick<Loan, 'id' | 'name' | 'closed'>;
 
 export interface LotsPreview {
   entries: OpeningLotEntry[];
+  /** Rows for a retirement wallet you already have: retirement purchases, kept apart from tax math. */
+  retirementBuys: RetirementBuyEntry[];
   /** One link per row with a `funded_by` loan (saved after the coins). */
   links: LoanLinkEntry[];
   warnings: CsvProblem[];
@@ -19,11 +21,11 @@ export interface LotsPreview {
  */
 export function previewLots(text: string, wallets: readonly Wallet[], tz: string, newId: () => string, loans: readonly LoanRef[] = []): LotsPreview {
   const r = importOpeningLotsCsv(text, { wallets, tz, newId, loans });
-  if (r.ok) return { entries: r.value.entries, links: r.value.links, warnings: r.value.warnings, problems: [], goodRows: r.value.entries.length };
+  if (r.ok) return { entries: r.value.entries, retirementBuys: r.value.retirementBuys, links: r.value.links, warnings: r.value.warnings, problems: [], goodRows: r.value.entries.length + r.value.retirementBuys.length };
   const parsed = parseCsv(text);
   const rows = parsed.ok ? parsed.value.length - 1 : 0;
   const bad = new Set(r.error.map((p) => p.row));
-  return { entries: [], links: [], warnings: [], problems: r.error, goodRows: bad.has(0) || bad.has(1) ? 0 : Math.max(0, rows - bad.size) };
+  return { entries: [], retirementBuys: [], links: [], warnings: [], problems: r.error, goodRows: bad.has(0) || bad.has(1) ? 0 : Math.max(0, rows - bad.size) };
 }
 
 /** The same file without the rows that had problems, so the good rows can be imported on their own. */
@@ -190,6 +192,9 @@ export interface ImportPreview extends LotsPreview {
   matched: WalletMatch[];
   sats: number;
   costCents: number;
+  /** The retirement purchases' sats and cost (never in the coins' figures above). */
+  retirementSats: number;
+  retirementCostCents: number;
   /** Sats by documentation tier (only tiers that appear). */
   tiers: Partial<Record<Tier, number>>;
   /** Years of the coins' dates that are already closed (imported coins are allowed there). */
@@ -231,6 +236,8 @@ export function previewImport(text: string, wallets: readonly Wallet[], tz: stri
     matched: plan.matched,
     sats: p.entries.reduce((s, e) => s + e.sats, 0),
     costCents: p.entries.reduce((s, e) => s + e.costCents, 0),
+    retirementSats: p.retirementBuys.reduce((s, e) => s + e.sats, 0),
+    retirementCostCents: p.retirementBuys.reduce((s, e) => s + e.costCents, 0),
     tiers,
     closedYears: [...years].sort((a, b) => a - b),
     text: plan.text,

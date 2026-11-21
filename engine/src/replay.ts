@@ -59,6 +59,7 @@ export function replay(entries: readonly Entry[]): LedgerState {
     recoveries: [],
     balanceChecks: [],
     retirementSnapshots: [],
+    retirementBuys: [],
     givingPaid: [],
     conflicts: resolution.conflicts,
     closedYears: resolution.closedYears,

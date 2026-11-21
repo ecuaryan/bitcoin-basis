@@ -34,3 +34,14 @@ describe('demo book', () => {
     expect(buildDemoBook().entries).toBe(book.entries);
   });
 });
+
+describe('demo retirement account', () => {
+  it('has purchases that add up to its latest balance note', () => {
+    const state = replay(buildDemoBook().entries);
+    const r = holdings(state).retirement.find((x) => x.wallet === W.retirement);
+    expect(r?.purchaseCount).toBe(3);
+    expect(r?.balanceFrom).toBe('purchases');
+    expect(r?.snapshot?.matches).toBe(true);
+    expect(r?.sats).toBe(35_000_000);
+  });
+});

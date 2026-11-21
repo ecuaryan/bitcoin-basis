@@ -20,7 +20,7 @@ test('Holdings loads with demo data and has no accessibility violations', async 
   });
   await openHoldingsWithDemo(page);
 
-  await expect(page.getByText('$319,206')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'What your Bitcoin is worth' }).getByText('$319,206')).toBeVisible();
   await expect(page.getByText('3.3667 2105 BTC')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your stack, by year bought' })).toBeVisible();
 

@@ -1,4 +1,4 @@
-import { carryforwardFor, TIERS, yearOf, type Holdings, type LedgerState, type Lot, type Tier, type WalletType } from '@bitcoin-basis/engine';
+import { allBitcoin, carryforwardFor, TIERS, worthOf, yearOf, type AllBitcoin, type Holdings, type LedgerState, type Lot, type RetirementHolding, type Tier, type WalletType, type Worth } from '@bitcoin-basis/engine';
 import { confirmedLabel, satsToCents } from './format.ts';
 import { WALLET_TYPE_LABEL } from './wallet-label.ts';
 
@@ -25,6 +25,20 @@ export interface WalletCard {
   frozen: boolean;
 }
 
+/** A retirement wallet on Holdings. Never part of the taxable figures. */
+export interface RetirementCard {
+  id: string;
+  name: string;
+  sats: number;
+  balanceFrom: RetirementHolding['balanceFrom'];
+  /** Worth and, when purchases are recorded, cost and gain. */
+  worth: Worth;
+  /** Cost and gain are known (purchases recorded). */
+  costKnown: boolean;
+  /** The latest balance note does not match the purchases up to its date. */
+  noteDiffers: boolean;
+}
+
 export interface HoldingsView {
   totalSats: number;
   totalCostCents: number;
@@ -38,7 +52,9 @@ export interface HoldingsView {
   stack: StackYear[];
   wallets: WalletCard[];
   frozen: WalletCard[];
-  retirement: { id: string; name: string; sats: number }[];
+  retirement: RetirementCard[];
+  /** Taxable, retirement and all together; null when no retirement wallet holds anything (it would just repeat the total). */
+  all: AllBitcoin | null;
   moneyInCents: number;
   /** Proceeds from sales, spending and network fees paid in BTC. */
   moneyOutCents: number;
@@ -103,7 +119,12 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
       .map(card)
       .sort((a, b) => b.sats - a.sats),
     frozen: h.wallets.filter((w) => w.frozen).map(card),
-    retirement: h.retirement.map((r) => ({ id: r.wallet, name: r.name, sats: r.sats })),
+    retirement: h.retirement.map((r) => {
+      const costKnown = r.balanceFrom === 'purchases';
+      const worth = worthOf(r.sats, r.costCents, priceCents);
+      return { id: r.wallet, name: r.name, sats: r.sats, balanceFrom: r.balanceFrom, worth: costKnown ? worth : { ...worth, gainCents: null, percent: null }, costKnown, noteDiffers: costKnown && r.snapshot !== null && !r.snapshot.matches };
+    }),
+    all: h.retirement.some((r) => r.sats > 0) ? allBitcoin(h, priceCents) : null,
     moneyInCents: h.moneyPutInCents,
     moneyOutCents: state.disposals.reduce((s, d) => s + d.proceedsCents, 0),
     carryforwardCents: (({ st, lt }) => st + lt)(carryforwardFor(state.settings, yearOf(today), yearOf(today))),

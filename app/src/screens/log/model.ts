@@ -195,7 +195,11 @@ export function friendlyProblem(code: string, message: string): string {
     case 'wallet-frozen':
       return 'That wallet is frozen. Coins cannot go in or out until it is closed out.';
     case 'retirement-wallet':
-      return 'Retirement wallets only keep balance notes.';
+      return 'Retirement wallets are kept apart from tax math. Log their purchases on the wallet’s own page.';
+    case 'not-retirement-wallet':
+      return 'That wallet is not a retirement wallet.';
+    case 'wallet-archived':
+      return 'That wallet is archived. Bring it back from its options first.';
     default:
       return message;
   }
@@ -336,6 +340,8 @@ export function computeEffect(entry: Entry, before: LedgerState, after: LedgerSt
       if (c?.appraisalFlag === true) cpa.push('Charity gifts this year are over $5,000: a qualified appraisal is needed.');
       return { tone: 'none', headline: 'No gain or loss', lines: c === undefined ? [] : [{ label: 'Counts as a deduction, if you itemize', cents: c.deductionCents }], taxCents: null, notes: ['A gift to a charity is not a sale, so there is no gain to report.'], cpa: [...cpa, 'Confirm all of this with your CPA.'] };
     }
+    case 'retirement-buy':
+      return NONE('No tax', ['Retirement coins are kept apart. This purchase never changes a gain, a cost or a tax estimate.']);
     case 'lost':
       return NONE('No deduction recorded', ['The coins leave your holdings. No loss is counted.'], ['Ask your CPA whether any loss can be claimed, and keep notes on what happened.']);
     case 'wallet-close-out': {
@@ -357,9 +363,9 @@ export function computeEffect(entry: Entry, before: LedgerState, after: LedgerSt
 }
 
 /** Kinds that can be edited from a wallet's history. */
-export const EDITABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give']);
+export const EDITABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'retirement-buy']);
 /** Kinds that can be removed (balance confirmations are not listed, so they have no Remove; a loan itself is closed, not removed). */
-export const DELETABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'lost', 'loan-update', 'loan-draw', 'loan-link', 'loan-payment', 'loan-statement']);
+export const DELETABLE_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'lost', 'retirement-buy', 'loan-update', 'loan-draw', 'loan-link', 'loan-payment', 'loan-statement']);
 const TAX_KINDS: ReadonlySet<Entry['kind']> = new Set<Entry['kind']>(['buy', 'receive', 'move', 'sell', 'give', 'lost', 'wallet-close-out']);
 
 /** The closed year an entry sits in, or null if it can still be changed. */

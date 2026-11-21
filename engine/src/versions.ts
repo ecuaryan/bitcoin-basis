@@ -88,6 +88,17 @@ function loanEditProblem(e: Entry, target: Entry, root: Entry, used: ReadonlySet
   return null;
 }
 
+/**
+ * Why `e` may not replace `target` on retirement grounds, or null. A retirement purchase only continues a chain of
+ * retirement purchases (judged against `root`, the chain's first version), so an edit can never turn a taxable
+ * purchase into a retirement one or the other way round. Deletes are always fine.
+ */
+function retirementEditProblem(e: Entry, root: Entry): string | null {
+  if (e.kind === 'delete') return null;
+  if ((e.kind === 'retirement-buy' || root.kind === 'retirement-buy') && e.kind !== root.kind) return 'a retirement purchase only replaces a retirement purchase';
+  return null;
+}
+
 /** Stable JSON with sorted keys, to compare two copies of an entry. */
 export function canonicalJson(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(canonicalJson).join(',')}]`;
@@ -106,7 +117,8 @@ function idOf(raw: unknown): string {
 
 /**
  * Validate and de-duplicate. Identical copies of one id are fine; different contents reject the id, except that a loan
- * record never displaces a coin record: if one coin record shares its id only with loan records, the coin record stays.
+ * record never displaces a coin record and a retirement purchase never displaces a taxable entry: if one taxable entry
+ * shares its id only with retirement purchases and loan records, or one coin record only with loan records, it stays.
  */
 function validEntries(raw: readonly unknown[], errors: LedgerError[]): Map<EntryId, Entry> {
   const versions = new Map<EntryId, Map<string, Entry>>();
@@ -125,8 +137,13 @@ function validEntries(raw: readonly unknown[], errors: LedgerError[]): Map<Entry
   for (const [id, copies] of versions) {
     const all = [...copies.values()];
     const coins = all.filter((e) => !LOAN_KIND_SET.has(e.kind));
+    const taxable = coins.filter((e) => e.kind !== 'retirement-buy');
     if (all.length === 1) entries.set(id, all[0] as Entry);
-    else if (coins.length === 1) {
+    else if (taxable.length === 1 && coins.length > 1) {
+      // A retirement purchase never displaces a taxable entry (nor do loan records).
+      entries.set(id, taxable[0] as Entry);
+      errors.push({ entryId: id, code: 'duplicate-id', message: 'a retirement purchase reused the id of a taxable entry; the retirement purchase is ignored' });
+    } else if (coins.length === 1) {
       entries.set(id, coins[0] as Entry);
       errors.push({ entryId: id, code: 'duplicate-id', message: 'a loan record reused the id of a coin record; the loan record is ignored' });
     } else errors.push({ entryId: id, code: 'duplicate-id', message: 'two different entries share this id' });
@@ -190,7 +207,7 @@ function rejectLockedChanges(entries: Map<EntryId, Entry>, closedAt: (year: numb
   const chain = (root: EntryId): Entry[] => [...entries.values()].filter((v) => roots.get(v.id) === root);
   for (const e of [...entries.values()].sort(byId)) {
     const target = e.replaces === undefined ? undefined : entries.get(e.replaces);
-    const cannot = target === undefined ? null : target.kind === 'close-year' || target.kind === 'unlock-year' ? 'closing or unlocking a year cannot be edited' : (walletEditProblem(e, target, used) ?? loanEditProblem(e, target, all.get(roots.get(e.id) as EntryId) as Entry, usedLoans));
+    const cannot = target === undefined ? null : target.kind === 'close-year' || target.kind === 'unlock-year' ? 'closing or unlocking a year cannot be edited' : (walletEditProblem(e, target, used) ?? loanEditProblem(e, target, all.get(roots.get(e.id) as EntryId) as Entry, usedLoans) ?? retirementEditProblem(e, all.get(roots.get(e.id) as EntryId) as Entry));
     if (cannot !== null) {
       entries.delete(e.id);
       errors.push({ entryId: e.id, code: 'cannot-replace', message: cannot });

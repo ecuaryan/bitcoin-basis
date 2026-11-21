@@ -1,7 +1,8 @@
-import { localDate, mulDivRoundHalfUp, parseDollars, SATS_PER_BTC, uuidv7, type BuyEntry, type Entry, type Tier } from '@bitcoin-basis/engine';
+import { averageCostPerBtc, localDate, parseDollars, uuidv7, type BuyEntry, type Entry, type Tier } from '@bitcoin-basis/engine';
 import { useSaving } from './saving.ts';
 import { useState } from 'react';
-import { formatMoney } from '../../lib/format.ts';
+import { formatMoney, maskDigits } from '../../lib/format.ts';
+import { usePrefs } from '../../ui/prefs.tsx';
 import { TIER_HELP, TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
@@ -51,7 +52,9 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
   const usd = amount.unit === 'usd';
   const sats = amount.sats !== null && amount.sats > 0 ? amount.sats : null;
   const costCents = usd ? parseDollars(cleanNumber(amount.text)) : parseDollars(cleanNumber(paid));
-  const perBtc = sats !== null && costCents !== null ? mulDivRoundHalfUp(costCents, SATS_PER_BTC, sats) : null;
+  // Null (never a throw) when the figure is too large to represent.
+  const perBtc = sats !== null && costCents !== null ? averageCostPerBtc(costCents, sats) : null;
+  const { masked } = usePrefs();
   const proofText = proof ?? w?.defaultProof ?? '';
 
   const errors = {
@@ -129,7 +132,7 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
           )}
         </p>
       ) : (
-        <MoneyInput label="Total paid, including fees" value={paid} onChange={setPaid} error={tried ? errors.paid : null} trailing={perBtc === null ? null : `${formatMoney(perBtc)} per BTC`} />
+        <MoneyInput label="Total paid, including fees" value={paid} onChange={setPaid} error={tried ? errors.paid : null} trailing={perBtc === null ? null : `${masked ? maskDigits(formatMoney(perBtc)) : formatMoney(perBtc)} per BTC`} />
       )}
       <SelectField
         label="Paid with"

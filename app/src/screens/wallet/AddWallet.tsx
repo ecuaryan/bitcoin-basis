@@ -85,7 +85,7 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
       <div className="flex flex-col gap-1.5">
         <span className="text-xs text-muted">What kind</span>
         <Segmented<WalletType> label="What kind of wallet" value={type} onChange={setType} options={TYPE_OPTIONS} />
-        {type === 'retirement' ? <span className="text-xs text-muted">Retirement wallets only keep a balance note. They are never part of tax math.</span> : null}
+        {type === 'retirement' ? <span className="text-xs text-muted">Log its purchases to see cost and gain. Retirement coins are never part of tax math.</span> : null}
       </div>
       <div role="group" aria-labelledby="proof-q" className="flex flex-col gap-1.5">
         <span id="proof-q" className="text-xs text-muted">
