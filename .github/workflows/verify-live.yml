@@ -1,0 +1,106 @@
+name: Verify live app
+
+# Once a day (and on demand): rebuilds the commit that is live from source and checks that the deployed
+# files match it byte for byte (tools/verify-deployment.mjs --all). If they do not, it opens an issue
+# "Live app doesn't match its source" (or adds a comment to the one that is already open).
+#
+# "The commit that is live" is the head commit of the latest Deploy run whose "Deploy and verify" job
+# succeeded. Skips with a notice when APP_ORIGIN is not set, so forks stay green.
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+# actions: read is only for listing Deploy runs; issues: write only for the alert.
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: verify-live
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Rebuild and compare with the live app
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Skip when the deployment is not configured
+        if: env.APP_ORIGIN == ''
+        run: echo "::notice::APP_ORIGIN is not configured; nothing to verify. See docs/deploy.md."
+
+      - name: Find the commit that is live
+        id: live
+        if: env.APP_ORIGIN != ''
+        run: |
+          set -euo pipefail
+          sha=""
+          for id in $(gh run list --repo "$REPO" --workflow deploy.yml --status success --limit 20 --json databaseId --jq '.[].databaseId'); do
+            ok="$(gh api "repos/$REPO/actions/runs/$id/jobs" --jq '[.jobs[] | select(.name == "Deploy and verify" and .conclusion == "success")] | length')"
+            if [ "$ok" = "1" ]; then
+              sha="$(gh api "repos/$REPO/actions/runs/$id" --jq .head_sha)"
+              echo "Latest deployed run: $id, commit $sha"
+              break
+            fi
+          done
+          if [ -z "$sha" ]; then
+            echo "::notice::No successful deploy found yet; nothing to verify."
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.live.outputs.sha != ''
+        with:
+          ref: ${{ steps.live.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.live.outputs.sha != ''
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install
+        if: steps.live.outputs.sha != ''
+        run: npm ci --ignore-scripts
+      - name: Build the app (with subresource integrity)
+        if: steps.live.outputs.sha != ''
+        run: npm run build
+      - name: Hash the build
+        if: steps.live.outputs.sha != ''
+        run: node tools/hash-build.mjs
+
+      - name: Compare every live file with this build
+        id: verify
+        if: steps.live.outputs.sha != ''
+        continue-on-error: true
+        run: node tools/verify-deployment.mjs "$APP_ORIGIN" --hashes dist-hashes.txt --all --retries 3
+
+      - name: Open or update the issue
+        if: steps.verify.outcome == 'failure'
+        env:
+          SHA: ${{ steps.live.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Live app doesn't match its source"
+          body="The daily check rebuilt commit \`$SHA\` and compared it with the live app at $APP_ORIGIN, and the files differ.
+
+          Details are in the run log: $RUN_URL
+
+          Check whether a deploy is in progress or failed halfway; otherwise treat the live app as untrusted until you know why (see docs/deploy.md, Verifying a deployment)."
+          n="$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number,title --jq "[.[] | select(.title == \"$title\")][0].number // empty")"
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$REPO" --body "Still failing. $body"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body"
+          fi
+
+      - name: Fail the run when the app does not match
+        if: steps.verify.outcome == 'failure'
+        run: exit 1

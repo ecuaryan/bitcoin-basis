@@ -101,6 +101,8 @@ node tools/verify-deployment.mjs https://bitcoin-basis.<subdomain>.workers.dev -
 
 `verify-deployment` fetches the live `index.html` and every file it references (`--all`: every file in the hashes file) and compares sha256s. It also fails if the live page references a file that is not in the hashes file. `dist-hashes.txt` is `sha256sum` compatible, and its first comment line holds one combined hash of the whole build.
 
+`.github/workflows/verify-live.yml` does this for you every day: it rebuilds the commit of the latest successful deploy, runs `verify-deployment --all` against `APP_ORIGIN`, and opens (or comments on) an issue "Live app doesn't match its source" if anything differs. It skips when `APP_ORIGIN` is not set.
+
 Settings › App › Version shows the version, the commit the build came from (`build 047e565`, a link to it on GitHub) and that commit's date. They come from `git` at build time (the commit date, never the current time), so the same commit always builds the same bytes; build from a git clone, because a source archive without `.git` says `build dev` and hashes differently.
 
 Builds are reproducible on the same Node version (`.nvmrc`) with the lockfile (`npm ci`). If a hash differs on another machine, build in Node 24 and check the lockfile is the tag's.

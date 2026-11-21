@@ -23,12 +23,13 @@ const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.
 const WALLET_1 = 'Zebra Vault QX7';
 const WALLET_2 = 'Okapi Cold QX7';
 const NOTE = 'ZZ-private-note-7731';
+const LOAN_NAME = 'Quokka Credit QX7';
 const BUY_BTC = '0.03456789';
 const BUY_PAID = '1234.56';
 const MOVE_BTC = '0.01000000';
 const SELL_BTC = '0.00500000';
 const SELL_USD = '321.09';
-const MARKERS = [WALLET_1, WALLET_2, NOTE, 'QX7', '7731', '3456789', '0.03456789', '1234.56', '123456', '321.09', '32109', '1000000', '500000'];
+const MARKERS = [WALLET_1, WALLET_2, NOTE, LOAN_NAME, 'QX7', '7731', '3456789', '0.03456789', '1234.56', '123456', '321.09', '32109', '1000000', '500000'];
 
 interface Device {
   readonly name: string;
@@ -75,7 +76,7 @@ async function settleSync(page: Page): Promise<void> {
 }
 
 async function goTab(page: Page, name: 'Holdings' | 'Records'): Promise<void> {
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name, exact: true }).click();
 }
 
 async function goRecords(page: Page, tile: 'Wallets'): Promise<void> {
@@ -155,6 +156,46 @@ async function logSale(page: Page): Promise<void> {
   await d.getByLabel('Dollars you received').fill(SELL_USD);
   await d.getByLabel('When', { exact: true }).fill('2021-06-07T10:00');
   await saveEntry(page, 'Review sale', 'Save sale');
+}
+
+
+/** Track a loan funding the one purchase, then log a payment (all on `page`). */
+async function trackLoanAndPay(page: Page): Promise<void> {
+  await goTab(page, 'Records');
+  await page.goto('/records?v=loans');
+  await page.getByRole('button', { name: 'Track a loan' }).click();
+  const setup = page.getByRole('dialog', { name: 'Track a loan' });
+  await setup.getByRole('button', { name: 'Next: its purchases' }).click();
+  await setup.getByLabel('Name').fill(LOAN_NAME);
+  await setup.getByLabel('Interest rate (APR)').fill('9.5');
+  await setup.getByLabel('Credit limit (optional)').fill('20000');
+  await setup.getByRole('button', { name: 'Next: its purchases' }).click();
+  await setup.getByRole('checkbox', { disabled: false }).first().check();
+  await expect(setup.getByRole('status')).toContainText('1 purchase chosen');
+  await setup.getByRole('button', { name: 'Save loan' }).click();
+  await expect(page.getByRole('heading', { name: LOAN_NAME, level: 1 })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Purchases' })).toContainText('1 purchase');
+  await page.getByRole('button', { name: 'Log a payment' }).click();
+  const pay = page.getByRole('dialog', { name: 'Log a payment' });
+  await pay.getByLabel('Amount paid').fill('100');
+  await pay.getByLabel('Interest part').fill('20');
+  await pay.getByRole('button', { name: 'Save payment' }).click();
+  await expect(page.getByText('Payment saved.')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Payments' })).toContainText('1 payment');
+}
+
+/** The loan's figures that do not depend on the live price: its page and the Owed / Interest lines on Holdings. */
+async function loanFigures(page: Page): Promise<{ detail: Record<string, string>; card: string[] }> {
+  await goTab(page, 'Holdings');
+  const card = page.getByRole('region', { name: 'Loans' });
+  await expect(card).toContainText(LOAN_NAME);
+  const lines = (await card.innerText()).split('\n').map((l) => l.trim()).filter((l) => /^Owed |Interest paid|purchase/.test(l) || l.includes(LOAN_NAME));
+  await card.getByRole('link', { name: new RegExp(LOAN_NAME) }).click();
+  await expect(page.getByRole('heading', { name: LOAN_NAME, level: 1 })).toBeVisible();
+  const detail: Record<string, string> = {};
+  for (const name of ['Where it stands', 'Rate', 'Purchases', 'Payments']) detail[name] = (await page.getByRole('region', { name }).innerText()).replace(/\s+/g, ' ');
+  await goTab(page, 'Holdings');
+  return { detail, card: lines };
 }
 
 /** What Holdings shows that does not depend on the live price: every BTC amount, plus the wallet names. */
@@ -285,6 +326,19 @@ test('two devices: setup, sync, restore, lock, fresh device, rotate, and an opaq
   const holdingsA2 = await holdings(a);
   expect(holdingsA2).toEqual(holdingsB2);
   await shot(A, '08-holdings-synced-from-B');
+
+  // ---- d2. A tracks a loan for the purchase and logs a payment; B syncs and shows the same loan figures ----
+  await trackLoanAndPay(a);
+  await settleSync(a);
+  const loanA = await loanFigures(a);
+  expect(loanA.card.length).toBeGreaterThan(1);
+  expect(loanA.detail['Where it stands']).toContain('$');
+  await shot(A, '08b-loan-on-A');
+  await syncNow(b);
+  const loanB = await loanFigures(b);
+  expect(loanB).toEqual(loanA);
+  await shot(B, '08c-loan-synced-to-B');
+  expect(await holdings(a)).toEqual(holdingsA2);
 
   // ---- e. Lock A and unlock with its passkey; reload B and unlock with its own passkey ---------
   await a.getByRole('button', { name: 'Lock', exact: true }).click();
