@@ -3,11 +3,15 @@ export const CLOSE_FRACTION = 0.25;
 /** A flick faster than this (pixels per millisecond) closes it, as long as it moved a little. */
 export const FLICK_VELOCITY = 0.5;
 const FLICK_MIN_DISTANCE = 16;
+/** Any upward motion faster than this (px/ms) at release keeps the sheet open. */
+export const UPWARD_KEEP_VELOCITY = 0.05;
 const RUBBER_MAX = 20;
 
 /** Should letting go here close the sheet? `dy` is how far down it was dragged, `velocity` is px/ms (down is positive). */
 export function shouldCloseOnRelease(dy: number, height: number, velocity: number): boolean {
   if (height <= 0) return false;
+  // Moving back up when letting go means "keep it open", however far it was pulled (platform convention).
+  if (velocity < -UPWARD_KEEP_VELOCITY) return false;
   if (dy > height * CLOSE_FRACTION) return true;
   return velocity > FLICK_VELOCITY && dy > FLICK_MIN_DISTANCE;
 }

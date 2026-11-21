@@ -13,6 +13,12 @@ describe('sheet drag', () => {
     expect(shouldCloseOnRelease(40, 600, 0.9)).toBe(true);
     expect(shouldCloseOnRelease(5, 600, 2)).toBe(false);
   });
+  it('stays open when the finger is moving back up at release, even far down', () => {
+    expect(shouldCloseOnRelease(400, 600, -0.2)).toBe(false);
+    expect(shouldCloseOnRelease(400, 600, -0.06)).toBe(false);
+    // Holding still far down still closes.
+    expect(shouldCloseOnRelease(400, 600, 0)).toBe(true);
+  });
   it('does not close on an upward fling', () => {
     expect(shouldCloseOnRelease(-80, 600, -1)).toBe(false);
   });
