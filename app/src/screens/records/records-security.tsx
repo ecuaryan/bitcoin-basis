@@ -35,7 +35,7 @@ export function SecurityView() {
   const { isDemo } = useLedger();
   if (isDemo) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className="flex max-w-[640px] flex-col gap-3">
         <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Security</h2>
         <Card className="flex flex-col items-start gap-3">
           <p className={P}>You are looking at the demo, so there is nothing to protect yet. Exit the demo and set up your own records to get a passkey, a recovery code and syncing.</p>
@@ -83,7 +83,7 @@ function RealSecurity() {
     });
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex max-w-[640px] flex-col gap-3">
       <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Security</h2>
       {error !== null && (
         <p role="alert" className="m-0 rounded-xl border border-loss/40 bg-loss/10 px-3.5 py-2.5 text-[13px] leading-[1.45] text-loss">
@@ -117,7 +117,7 @@ function RealSecurity() {
                 })
               }
             >
-              {busy === 'connect' ? 'Waiting for your passkey...' : 'Connect'}
+              {busy === 'connect' ? 'Waiting for your passkey…' : 'Connect'}
             </Button>
           )}
           <Button
@@ -150,7 +150,7 @@ function RealSecurity() {
                   })
                 }
               >
-                {busy === 'passkey' ? 'Waiting for your passkey...' : 'Add a passkey on this device'}
+                {busy === 'passkey' ? 'Waiting for your passkey…' : 'Add a passkey on this device'}
               </Button>
             </div>
           </>
@@ -208,7 +208,7 @@ function RealSecurity() {
                 })
               }
             >
-              {busy === 'rotate' ? 'Working...' : 'Make a new code'}
+              {busy === 'rotate' ? 'Working…' : 'Make a new code'}
             </Button>
             <Button onClick={() => setRotateOpen(false)}>Cancel</Button>
           </div>

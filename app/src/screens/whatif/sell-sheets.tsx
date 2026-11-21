@@ -38,7 +38,7 @@ export function WalletSheet({ open, onClose, wallets, selected, onPick }: { open
             >
               <span className="flex flex-col">
                 <span className="text-[15px] font-semibold">{w.name}</span>
-                <span className="text-xs text-muted">{w.type === 'self-custody' ? 'Self-custody: move to an exchange to sell' : 'Exchange'}</span>
+                <span className="text-xs normal-nums text-muted">{w.type === 'self-custody' ? 'Self-custody: move to an exchange to sell' : 'Exchange'}</span>
               </span>
               <span className="text-sm font-semibold">
                 <Amount sats={w.sats} showUnit short interactive={false} />

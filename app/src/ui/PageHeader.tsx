@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { SyncIndicator } from './SyncIndicator.tsx';
 import { HideButton, LockButton, useIsWide } from './AppShell.tsx';
+import { useTitle } from './use-title.ts';
 
 /**
  * The top of a screen. On a phone the shell already has the hide and lock buttons, so the title can be
@@ -8,6 +9,7 @@ import { HideButton, LockButton, useIsWide } from './AppShell.tsx';
  */
 export function PageHeader({ title, children, visibleOnPhone = false }: { title: string; children?: ReactNode; visibleOnPhone?: boolean }) {
   const wide = useIsWide();
+  useTitle(title);
   if (!wide) {
     return visibleOnPhone ? (
       <div className="flex items-center justify-between gap-3">

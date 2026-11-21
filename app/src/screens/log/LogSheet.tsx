@@ -40,7 +40,7 @@ function KindTabs({ kind, onPick, panelId }: { kind: LogKind; onPick(k: LogKind)
     refs.current[next]?.focus();
   }
   return (
-    <div role="tablist" aria-label="What happened" className="grid grid-cols-5 gap-1 rounded-[14px] bg-bg p-1">
+    <div role="tablist" aria-label="What happened" className="flex gap-0.5 rounded-[14px] bg-bg p-1">
       {TABS.map((t, i) => {
         const on = t.kind === kind;
         return (
@@ -58,7 +58,7 @@ function KindTabs({ kind, onPick, panelId }: { kind: LogKind; onPick(k: LogKind)
             tabIndex={on ? 0 : -1}
             onClick={() => onPick(t.kind)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={cx('min-h-11 rounded-[10px] px-0.5 text-[13px] font-semibold transition-colors', on ? 'bg-accent text-bg' : 'bg-transparent text-muted hover:text-soft')}
+            className={cx('min-h-11 flex-auto whitespace-nowrap rounded-[10px] px-1.5 text-[13px] font-semibold transition-colors', on ? 'bg-accent text-bg' : 'bg-transparent text-muted hover:text-soft')}
           >
             {t.label}
           </button>

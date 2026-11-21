@@ -9,10 +9,10 @@ export function PlainMoney({ cents, ...format }: { cents: number } & MoneyFormat
   const { masked } = usePrefs();
   const text = formatMoney(cents, format);
   return masked ? (
-    <span role="img" aria-label="Amount hidden">
+    <span role="img" aria-label="Amount hidden" className="tabular-nums">
       {maskDigits(text)}
     </span>
   ) : (
-    <span>{text}</span>
+    <span className="tabular-nums">{text}</span>
   );
 }

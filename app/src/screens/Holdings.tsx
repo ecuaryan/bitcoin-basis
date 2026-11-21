@@ -29,6 +29,7 @@ import {
   WalletRow,
   YearSheet,
 } from './holdings-parts.tsx';
+import { useTitle } from '../ui/use-title.ts';
 
 const YEARS_BACK = 3;
 
@@ -283,7 +284,8 @@ function DesktopHoldings({ view, priceCents }: { view: HoldingsView; priceCents:
         </span>
       </Card>
 
-      <div className="grid grid-cols-3 gap-4">
+      {/* Cards keep their own height: a long Held apart list should not stretch the short ones. */}
+      <div className="grid grid-cols-3 items-start gap-4">
         <MoneyCard view={view} />
         <DocumentationCard view={view} />
         <RetirementCard view={view} priceCents={priceCents} />
@@ -299,6 +301,7 @@ export function Holdings() {
   const wide = useIsWide();
   const { ready, entries } = useLedger();
   const { view, priceCents } = useHoldingsView();
+  useTitle('Holdings');
   if (!ready) return <div aria-busy="true" className="min-h-[60dvh]" />;
   if (view.isEmpty || entries.every((e) => e.kind === 'wallet')) {
     return (

@@ -197,7 +197,7 @@ export function Borrow() {
             {rows.map(([k, v], i) => (
               <div key={k} className={cx('flex min-h-[52px] items-center justify-between gap-4', i < rows.length - 1 && 'border-b border-line')}>
                 <dt className="text-sm text-soft">{k}</dt>
-                <dd className="m-0 text-right text-sm font-semibold">{v}</dd>
+                <dd className="m-0 text-right text-sm font-semibold text-balance">{v}</dd>
               </div>
             ))}
           </dl>

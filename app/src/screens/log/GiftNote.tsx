@@ -10,6 +10,7 @@ import { Callout } from '../../ui/form-fields.tsx';
 import { usePrefs } from '../../ui/prefs.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { longDate } from './model.ts';
+import { useTitle } from '../../ui/use-title.ts';
 
 const CARRYOVER = "When the person sells, they generally use the giver's cost and the dates above, not the value on the day of the gift. If the coins were worth less than the cost when given, a different rule can apply to losses.";
 
@@ -97,6 +98,7 @@ export function GiftNotePage() {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const gift = state.gifts.find((g) => g.entryId === id);
+  useTitle('Gift note');
   if (gift === undefined) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-4 px-5 py-10">

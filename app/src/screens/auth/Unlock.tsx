@@ -8,6 +8,7 @@ import { FaceIdIcon, FingerprintIcon, KeyIcon } from '../../ui/auth-icons.tsx';
 import { ShieldIcon } from '../../ui/more-icons.tsx';
 import { BigButton, ErrorLine, Frame, Glow, LogoMark, NotSeedPhrase, TextButton } from './parts.tsx';
 import { RecoveryInput } from './RecoveryInput.tsx';
+import { useTitle } from '../../ui/use-title.ts';
 
 /** A gentle line about why the app locked itself (nothing when the person pressed Lock). */
 export function lockReasonText(reason: LockReason | null, minutes: number): string | null {
@@ -48,6 +49,7 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reason = lockReasonText(status.lockReason, status.autoLockMinutes);
+  useTitle('Unlock');
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -63,7 +65,7 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
 
   return (
     <Frame glowTop={null} className="items-center pb-9">
-      <div className="relative flex flex-1 flex-col items-center justify-center gap-[22px] pt-10">
+      <div className="relative flex flex-1 flex-col items-center justify-center gap-[22px] pt-10 lg:flex-none lg:pb-10 lg:pt-0">
         <div className="relative">
           {/* The glow follows the logo, which is centered vertically at every screen height. */}
           <Glow className="top-1/2 -translate-y-1/2" />
@@ -88,7 +90,7 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
             <NotSeedPhrase />
             <ErrorLine>{error}</ErrorLine>
             <BigButton type="submit" disabled={!valid || busy}>
-              {busy ? 'Unlocking...' : 'Unlock'}
+              {busy ? 'Unlocking…' : 'Unlock'}
             </BigButton>
             {passkeyOk && (
               <TextButton
@@ -106,7 +108,7 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
             <ErrorLine>{error}</ErrorLine>
             <BigButton onClick={() => void run(() => vault.unlockWithPasskey())} disabled={busy}>
               <UnlockIcon platform={detected} />
-              {busy ? 'Waiting for you...' : 'Unlock'}
+              {busy ? 'Waiting for you…' : 'Unlock'}
             </BigButton>
             <p className="m-0 text-center text-xs text-muted">{unlockCaption(detected)}</p>
             <TextButton
@@ -119,7 +121,7 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
             </TextButton>
           </>
         )}
-        <div className="flex items-center justify-center gap-2 text-xs text-muted">
+        <div className="flex items-center justify-center gap-2 text-xs normal-nums text-muted">
           <ShieldIcon size={14} />
           Self-hosted · end-to-end encrypted · no tracking
         </div>

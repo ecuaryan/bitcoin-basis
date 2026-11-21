@@ -140,7 +140,7 @@ function ImportJson() {
           <span className="text-xs text-muted">{name}</span>
           {preview.problems.length > 0 ? (
             <>
-              <span className="font-semibold text-loss">This file can’t be used. Nothing was added.</span>
+              <span className="font-semibold text-loss">This file can't be used. Nothing was added.</span>
               <ul className="m-0 flex list-none flex-col gap-1 p-0" aria-label="Problems">
                 {preview.problems.slice(0, 20).map((p, i) => (
                   <li key={i} className="text-[13px] text-soft">
@@ -207,8 +207,9 @@ function Export() {
             ))}
           </SelectBox>
         )}
-        <Button onClick={() => downloadText(`form-8949-${year}.csv`, form8949Csv(state, year))}>
-          <DownloadIcon size={16} /> Form 8949 for {year}
+        {/* The year picker sits right beside it, so the label only names the year when there is no picker. */}
+        <Button aria-label={`Form 8949 for ${year}`} onClick={() => downloadText(`form-8949-${year}.csv`, form8949Csv(state, year))}>
+          <DownloadIcon size={16} /> {years.length > 1 ? 'Form 8949' : `Form 8949 for ${year}`}
         </Button>
       </div>
       {warn.length > 0 && (

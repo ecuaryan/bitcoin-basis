@@ -22,7 +22,7 @@ export function AmountInput({ amount, label = 'Amount', error, needsPrice }: { a
   const pretty = (t: string): string => (amount.unit === 'btc' ? prettyBtc(t) : amount.unit === 'usd' ? prettyDollars(t) : t.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
   return (
     <div className="flex flex-col items-center gap-1 py-1">
-      <label htmlFor={id} className="text-xs text-muted">
+      <label htmlFor={id} className="mb-1 text-xs text-muted">
         {label}
       </label>
       <input
@@ -94,7 +94,7 @@ export function MoreDetails({ open, onOpenChange, children }: { open: boolean; o
 
 /** The pinned button row at the bottom of a form. */
 export function FormFooter({ children }: { children: ReactNode }) {
-  return <div className="sticky bottom-0 -mx-5 mt-2 flex gap-2.5 bg-[linear-gradient(180deg,rgb(22_21_20/0),var(--color-surface)_28%)] px-5 pb-1 pt-4">{children}</div>;
+  return <div className="sticky -bottom-2 -mx-5 mt-2 flex gap-2.5 bg-[linear-gradient(180deg,rgb(22_21_20/0),var(--color-surface)_28%)] px-5 pb-3 pt-4">{children}</div>;
 }
 
 export const ADD_WALLET = '__new__';

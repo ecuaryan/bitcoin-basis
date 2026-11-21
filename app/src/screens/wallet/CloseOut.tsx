@@ -43,7 +43,7 @@ function CloseOutBody({ wallet, onClose }: { wallet: Wallet; onClose(): void }) 
     return { closeOut: t.after.closeOuts.find((c) => c.entryId === id), problems: t.problems };
   }, [entries, state, entry, id]);
   const c = preview.closeOut;
-  const termText = c === undefined ? '' : c.ltGainCents !== 0 && c.stGainCents !== 0 ? 'part long-term, part short-term' : c.ltGainCents !== 0 ? 'long-term' : 'short-term';
+  const termText = c === undefined ? '' : c.ltGainCents !== 0 && c.stGainCents !== 0 ? 'part long\u2011term, part short\u2011term' : c.ltGainCents !== 0 ? 'long-term' : 'short-term'; // no-break hyphens
   
   function review() {
     if (lossDate === '' || c === undefined) return;

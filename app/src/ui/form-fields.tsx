@@ -128,7 +128,7 @@ const TONE: Record<Tone, string> = {
 /** A short boxed note. `cpa` is for "confirm with your CPA" items. */
 export function Callout({ tone = 'info', title, children, className, role }: { tone?: Tone; title?: string; children: ReactNode; className?: string; role?: 'alert' | 'status' }) {
   return (
-    <div role={role} className={cx('flex flex-col gap-1 rounded-2xl border px-3.5 py-3 text-[13px] leading-snug', TONE[tone], className)}>
+    <div role={role} className={cx('flex flex-col gap-1 rounded-2xl border px-3.5 py-3 text-[13px] leading-snug normal-nums', TONE[tone], className)}>
       {title ? <strong className={cx('text-[13px] font-semibold', tone === 'error' ? 'text-loss' : tone === 'info' ? 'text-text' : 'text-amber')}>{title}</strong> : null}
       <div>{children}</div>
     </div>

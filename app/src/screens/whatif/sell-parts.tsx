@@ -38,7 +38,7 @@ export function Sentence({ parts }: { parts: readonly Segment[] }) {
 function Row({ label, tone, children, big }: { label: string; tone: 'plain' | 'hot'; children: ReactNode; big?: boolean }) {
   return (
     <span className="flex flex-col gap-0.5 text-left">
-      <span className={cx('text-[11px] font-normal', tone === 'hot' ? 'text-soft' : 'text-muted')}>{label}</span>
+      <span className={cx('text-[11px] font-normal normal-nums', tone === 'hot' ? 'text-soft' : 'text-muted')}>{label}</span>
       <span className={cx(big ? 'text-xl font-bold' : 'text-sm font-semibold')}>{children}</span>
     </span>
   );

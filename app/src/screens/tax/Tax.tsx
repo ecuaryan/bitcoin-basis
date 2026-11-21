@@ -17,6 +17,7 @@ import { useToast } from '../../ui/Toast.tsx';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import { LockIcon } from '../../ui/icons.tsx';
 import { answerReason, defaultTaxYear, flagsForYear, form1099Rows, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
+import { useTitle } from '../../ui/use-title.ts';
 
 const CHECKED_KEY = 'bb.1099.checked';
 function loadChecked(): string[] {
@@ -118,6 +119,7 @@ export function Tax() {
   const year = years.includes(asked) ? asked : defaultTaxYear(years, today);
   const [sheet, setSheet] = useState<'close' | 'unlock' | null>(null);
   const [checked, setChecked] = useState<string[]>(() => loadChecked());
+  useTitle('Tax season');
 
   const summary = useMemo(() => yearSummary(state, year), [state, year]);
   const view = useMemo(() => yearTaxView(state, state.settings, year, today), [state, year, today]);
@@ -292,11 +294,11 @@ export function Tax() {
 
   const downloads = (
     <div className="grid grid-cols-2 gap-2.5">
-      <Link to={`/tax/summary/${year}`} target="_blank" className={buttonClasses('secondary', 'min-h-[52px] !rounded-2xl text-sm no-underline text-text')}>
+      <Link to={`/tax/summary/${year}`} target="_blank" className={buttonClasses('secondary', 'min-h-[52px] !rounded-2xl !px-3 text-sm no-underline text-text')}>
         <DownloadIcon size={18} />
         For my CPA
       </Link>
-      <Button className="min-h-[52px] !rounded-2xl text-sm" onClick={() => downloadText(`form-8949-${year}.csv`, form8949Csv(state, year))}>
+      <Button className="min-h-[52px] !rounded-2xl !px-3 text-sm" onClick={() => downloadText(`form-8949-${year}.csv`, form8949Csv(state, year))}>
         <DownloadIcon size={18} />
         8949 sales list
       </Button>

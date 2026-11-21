@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { explainError, wasCancelled } from '../../data/explain-error.ts';
@@ -10,8 +10,10 @@ import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
 import { BigButton, BigLink, CodeGroups, ErrorLine, Frame, LogoMark, NotSeedPhrase, TextButton } from './parts.tsx';
 import { RecoveryInput } from './RecoveryInput.tsx';
 import { matchesGroup, normalizeSetupCode } from './setup-logic.ts';
+import { useTitle } from '../../ui/use-title.ts';
 
 type Mode = 'home' | 'restore' | 'code' | 'confirm' | 'done' | 'restored';
+const WELCOME_TITLES: Record<Mode, string | null> = { home: null, restore: 'Open your records', code: 'Save your recovery code', confirm: 'Check your recovery code', done: 'All set', restored: 'Records restored' };
 
 const STEPS = ['Claim this app with your setup code', 'Create a passkey on this device', 'Save your recovery code', 'Check your recovery code'];
 
@@ -38,6 +40,7 @@ export function Welcome() {
   const [mode, setMode] = useState<Mode>(() => (kitHandoff.get()?.reason === 'setup' ? 'code' : incomingRecovery.peek() !== null ? 'restore' : 'home'));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useTitle(WELCOME_TITLES[mode]);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -130,7 +133,7 @@ export function Welcome() {
         ))}
       </ol>
 
-      <div className="min-h-6 flex-1" />
+      <div className="min-h-6 flex-1 lg:min-h-10 lg:flex-none" />
 
       <SetupForm
         busy={busy}
@@ -198,7 +201,7 @@ function SetupForm({ busy, error, onClaim }: { busy: boolean; error: string | nu
       </div>
       <ErrorLine>{problem ?? error}</ErrorLine>
       <BigButton type="submit" disabled={busy || code.trim() === ''}>
-        {busy ? 'Waiting for your passkey...' : 'Claim and create my passkey'}
+        {busy ? 'Waiting for your passkey…' : 'Claim and create my passkey'}
       </BigButton>
       <span className="text-center text-xs text-muted">The code works once, so a stranger who finds your URL can&apos;t claim it.</span>
     </form>
@@ -216,7 +219,7 @@ function CodeStep({ code, onNext }: { code: string; onNext(): void }) {
         <CodeGroups code={code} />
         <NotSeedPhrase className="border-t border-line pt-3" />
       </section>
-      <div className="min-h-6 flex-1" />
+      <div className="min-h-6 flex-1 lg:min-h-10 lg:flex-none" />
       <div className="flex flex-col gap-2.5">
         <BigLink to="/kit">
           <PrinterIcon size={20} />
@@ -239,9 +242,6 @@ function ConfirmStep({ code, onDone }: { code: string; onDone(): void }) {
   const [shown, setShown] = useState(false);
   const ok = matchesGroup(code, 4, typed);
   const wrong = typed.trim() !== '' && !matchesGroup(code, 4, typed) && typed.replace(/[\s-]/g, '').length >= 5;
-  useEffect(() => {
-    document.title = 'Check your recovery code';
-  }, []);
   return (
     <Frame glowTop={0} className="pt-5">
       <Progress step={4} />
@@ -317,7 +317,7 @@ function ConfirmStep({ code, onDone }: { code: string; onDone(): void }) {
 function DoneStep({ onFinish }: { onFinish(): void }) {
   return (
     <Frame glowTop={60}>
-      <section className="relative flex flex-1 flex-col items-center justify-center gap-4 text-center">
+      <section className="relative flex flex-1 flex-col items-center justify-center gap-4 text-center lg:flex-none lg:pb-10">
         <LogoMark size={72} />
         <h1 className="m-0 font-display text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">You&apos;re all set</h1>
         <p className="m-0 max-w-[300px] text-[15px] leading-normal text-soft">Your records are encrypted and synced. Start with the wallet or exchange you use most.</p>
@@ -337,7 +337,7 @@ function DoneStep({ onFinish }: { onFinish(): void }) {
 function RestoredStep({ onAdd, onSkip, busy, error }: { onAdd(): void; onSkip(): void; busy: boolean; error: string | null }) {
   return (
     <Frame glowTop={60}>
-      <section className="relative flex flex-1 flex-col items-center justify-center gap-4 text-center">
+      <section className="relative flex flex-1 flex-col items-center justify-center gap-4 text-center lg:flex-none lg:pb-10">
         <LogoMark size={72} />
         <h1 className="m-0 font-display text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">Records restored</h1>
         <p className="m-0 max-w-[320px] text-[15px] leading-normal text-soft">Add a passkey on this device so you won&apos;t need the recovery code next time. It takes one tap.</p>
@@ -345,7 +345,7 @@ function RestoredStep({ onAdd, onSkip, busy, error }: { onAdd(): void; onSkip():
       <div className="relative flex flex-col gap-2.5">
         <ErrorLine>{error}</ErrorLine>
         <BigButton onClick={onAdd} disabled={busy}>
-          {busy ? 'Waiting for your passkey...' : 'Add a passkey on this device'}
+          {busy ? 'Waiting for your passkey…' : 'Add a passkey on this device'}
         </BigButton>
         <TextButton onClick={onSkip}>Not now</TextButton>
       </div>
@@ -387,10 +387,10 @@ function RestoreStep({
         <NotSeedPhrase />
         <ErrorLine>{error}</ErrorLine>
         <BigButton type="submit" disabled={!valid || busy}>
-          {busy ? 'Restoring...' : 'Restore my records'}
+          {busy ? 'Restoring…' : 'Restore my records'}
         </BigButton>
       </form>
-      <div className="min-h-6 flex-1" />
+      <div className="min-h-6 flex-1 lg:min-h-10 lg:flex-none" />
       <div className="flex flex-col items-center gap-1">
         <span className="text-xs text-muted">Have a passkey that syncs to this device?</span>
         <TextButton onClick={onPasskey} disabled={busy}>

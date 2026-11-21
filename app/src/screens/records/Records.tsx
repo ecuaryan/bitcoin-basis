@@ -17,6 +17,7 @@ import { SettingsView } from './records-settings.tsx';
 import { useVaultStatusOptional } from '../../data/vault-provider.tsx';
 import { buildItems } from './records-logic.ts';
 import { useState } from 'react';
+import { useTitle } from '../../ui/use-title.ts';
 
 type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'io' | 'settings' | 'security';
 const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'io', 'settings', 'security'];
@@ -37,7 +38,7 @@ function Tile({ to, title, sub, hot, active, className }: { to: string; title: s
         className,
       )}
     >
-      <span className="text-[13px] font-semibold leading-tight">{title}</span>
+      <span className="text-[13px] font-semibold leading-tight text-balance">{title}</span>
       <span className={cx('text-xs', hot ? 'font-semibold text-amber' : 'text-muted')}>{sub}</span>
     </Link>
   );
@@ -50,6 +51,7 @@ export function Records() {
   const [params] = useSearchParams();
   const asked = params.get('v');
   const view: View | null = VIEWS.find((v) => v === asked) ?? null;
+  useTitle(view === null ? 'Records' : viewTitle(view, state.settings.givingName));
   const year = yearOf(today);
   const items = useMemo(() => buildItems(entries), [entries]);
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
@@ -61,12 +63,12 @@ export function Records() {
   const vaultStatus = useVaultStatusOptional();
 
   const tiles: ReactNode = (
-    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-7' : 'grid-cols-6') : 'grid-cols-3')}>
+    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-7' : 'grid-cols-6') : 'grid-cols-2 min-[480px]:grid-cols-3')}>
       <Tile to="/tax" title="Tax season" sub={`${year} · Answer: ${answer === 'yes' ? 'Yes' : 'No'}`} hot className="lg:hidden" />
       {due !== null && <Tile to="/records?v=giving" title={state.settings.givingName} sub={`${formatMoney(Math.max(0, due.owedCents))} due`} hot={due.owedCents > 0} active={view === 'giving'} />}
       <Tile to="/records?v=closed" title="Closed years" sub={state.closedYears.length === 0 ? 'None yet' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
       <Tile to="/records?v=wallets" title="Wallets" sub={`${active} active`} active={view === 'wallets'} />
-      <Tile to="/records?v=io" title="Import and export" sub="CSV · backup" active={view === 'io'} />
+      <Tile to="/records?v=io" title={'Import and\u00a0export'} sub="CSV · backup" active={view === 'io'} />
       <Tile to="/records?v=settings" title="Settings" sub="Taxes · time zone" active={view === 'settings'} />
       <Tile to="/records?v=security" title="Security" sub={isDemo || vaultStatus === null ? 'Demo' : vaultStatus.autoLockMinutes === 0 ? 'Never locks' : `Locks after ${vaultStatus.autoLockMinutes} min`} active={view === 'security'} />
       <Tile to="/records?v=entries" title="All entries" sub={`${items.length} in total`} active={view === 'entries'} className="hidden lg:order-first lg:flex" />

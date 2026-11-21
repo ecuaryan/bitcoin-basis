@@ -37,7 +37,7 @@ export function Amount({ sats, showUnit = false, interactive = true, countUp = f
   const label = effective === 'usd' ? 'US dollars' : effective === 'sats' ? 'sats' : 'BTC';
 
   if (masked) {
-    const common = { className: cx('whitespace-nowrap', className), ...peek };
+    const common = { className: cx('whitespace-nowrap tabular-nums', className), ...peek };
     return interactive ? (
       <button type="button" aria-label={HIDDEN_LABEL} {...common} className={cx('cursor-default touch-none select-none bg-transparent p-0 text-inherit', common.className)}>
         <span aria-hidden="true">{maskDigits(text)}</span>
@@ -48,9 +48,9 @@ export function Amount({ sats, showUnit = false, interactive = true, countUp = f
       </span>
     );
   }
-  if (!interactive) return <span className={cx('whitespace-nowrap', className)}>{text}</span>;
+  if (!interactive) return <span className={cx('whitespace-nowrap tabular-nums', className)}>{text}</span>;
   return (
-    <button type="button" onClick={cycleUnit} aria-label={`${text}. Showing ${label}. Tap to change.`} className={cx('whitespace-nowrap bg-transparent p-0 text-inherit', className)}>
+    <button type="button" onClick={cycleUnit} aria-label={`${text}. Showing ${label}. Tap to change.`} className={cx('whitespace-nowrap bg-transparent p-0 tabular-nums text-inherit', className)}>
       <span aria-hidden="true">{text}</span>
     </button>
   );
@@ -70,10 +70,10 @@ export function Money({ cents, precision = 'cents', signed = false, countUp = fa
   const text = formatMoney(shown, { precision, signed });
   if (masked) {
     return (
-      <span role="button" tabIndex={0} aria-label={HIDDEN_LABEL} {...peek} className={cx('cursor-default touch-none select-none whitespace-nowrap', className)}>
+      <span role="button" tabIndex={0} aria-label={HIDDEN_LABEL} {...peek} className={cx('cursor-default touch-none select-none whitespace-nowrap tabular-nums', className)}>
         <span aria-hidden="true">{maskDigits(text)}</span>
       </span>
     );
   }
-  return <span className={cx('whitespace-nowrap', className)}>{text}</span>;
+  return <span className={cx('whitespace-nowrap tabular-nums', className)}>{text}</span>;
 }

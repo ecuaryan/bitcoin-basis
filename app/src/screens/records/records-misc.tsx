@@ -64,7 +64,7 @@ export function WalletsView() {
       <Link key={w.id} to={`/wallet/${w.id}`} className="flex min-h-14 items-center justify-between gap-3 rounded-xl px-3 text-text no-underline hover:bg-surface-2">
         <span className="flex flex-col">
           <span className="text-[15px] font-semibold">{w.name}</span>
-          <span className="text-xs text-muted">
+          <span className="text-xs normal-nums text-muted">
             {w.type === 'self-custody' ? 'Self-custody' : w.type === 'retirement' ? 'Retirement' : 'Exchange'}
             {w.frozen ? ' · frozen' : w.archived ? ' · archived' : ''}
           </span>

@@ -9,7 +9,7 @@ export function Frame({ children, glowTop = 60, className }: { children: ReactNo
   return (
     <div className="relative min-h-dvh overflow-x-clip bg-bg text-text">
       {glowTop !== null && <Glow style={{ top: glowTop }} />}
-      <main className={cx('relative mx-auto flex min-h-dvh w-full max-w-[440px] flex-col px-6 pb-8', className)}>{children}</main>
+      <main className={cx('relative mx-auto flex min-h-dvh w-full max-w-[440px] flex-col px-6 pb-8 lg:justify-center', className)}>{children}</main>
     </div>
   );
 }

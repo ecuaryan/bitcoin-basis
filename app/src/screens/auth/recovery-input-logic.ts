@@ -28,7 +28,7 @@ export function describeRecoveryInput(input: string): RecoveryInputView {
     case 'too-long':
       return { state: 'bad', message: `That is ${count} characters. A recovery code has ${CODE_LENGTH}.`, grouped, count };
     default:
-      return { state: 'checking', message: 'Checking the code...', grouped, count };
+      return { state: 'checking', message: 'Checking the code…', grouped, count };
   }
 }
 

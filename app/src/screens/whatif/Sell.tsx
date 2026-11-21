@@ -96,7 +96,9 @@ export function Sell() {
           aria-haspopup="dialog"
           className="flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold text-text hover:bg-surface-2"
         >
-          {wallet.name} · <Amount sats={wallet.sats} short interactive={false} /> BTC
+          <span>
+            {wallet.name} · <Amount sats={wallet.sats} short interactive={false} /> BTC
+          </span>
           <ChevronDownIcon size={14} className="text-muted" />
         </button>
       </div>
@@ -168,8 +170,9 @@ export function Sell() {
           {active.headsUp && <Note tone="warn">This sale adds more than $1,000 of estimated tax. You may need to make an estimated payment before filing.</Note>}
           {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
           <details className="group">
-            <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-soft">Why?</summary>
-            <div className="flex flex-col gap-3 pb-1">
+            {/* The 44px tap target overlaps the card's gap, so "Why?" sits as close as the lines above it. */}
+            <summary className="-my-2.5 flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-soft">Why?</summary>
+            <div className="flex flex-col gap-3 pb-1 pt-3.5">
               <Note>{documentationNote(plans.oldestFirst, plans.lowestTax)}</Note>
               {plans.lowestTax.deferredNote !== null && needsBrokerInstruction(plans.lowestTax) && <Note>{plans.lowestTax.deferredNote}</Note>}
               {plans.lowestTax.note !== null && <Note>{plans.lowestTax.note}</Note>}

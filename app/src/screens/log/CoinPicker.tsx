@@ -117,7 +117,7 @@ export function CoinPicker({
                   <span className="text-xs text-muted">
                     {shortDate(lot.acquiredDate, today)} · {TIER_LABEL[lot.tier]}
                   </span>
-                  <span className={cx('text-xs', long ? 'text-muted' : 'font-semibold text-amber')}>{term}</span>
+                  <span className={cx('text-xs normal-nums', long ? 'text-muted' : 'font-semibold text-amber')}>{term}</span>
                 </span>
                 <span className="flex-none text-[13px] font-semibold">
                   <Money cents={lot.costCents} />

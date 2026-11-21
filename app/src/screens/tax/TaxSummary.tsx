@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { formatMoney } from '../../lib/format.ts';
 import { answerReason, flagsForYear, overExclusion, totalsByKind, yearTaxView } from './tax-logic.ts';
+import { useTitle } from '../../ui/use-title.ts';
 
 const FILING: Record<string, string> = {
   single: 'Single',
@@ -23,6 +24,7 @@ export function TaxSummary() {
   const t = totalsByKind(s);
   const gifts = overExclusion(state, year);
   const flags = flagsForYear(state, year);
+  useTitle(`${year} tax summary`);
   const m = (c: number) => formatMoney(c);
   const th = 'border-b border-neutral-400 px-2 py-1 text-left text-xs font-semibold';
   const td = 'border-b border-neutral-200 px-2 py-1 text-xs';

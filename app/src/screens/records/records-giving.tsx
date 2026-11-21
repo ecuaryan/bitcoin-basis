@@ -82,7 +82,7 @@ export function GivingView() {
           </div>
         </div>
         <p className="m-0 text-xs text-soft">
-          {s.givingPercentBp / 100}% of the gain on logged sales and spending, {s.givingMode === 'after-tax' ? 'after each sale’s estimated tax' : 'before tax'}. Losses count as zero.
+          {s.givingPercentBp / 100}% of the gain on logged sales and spending, {s.givingMode === 'after-tax' ? "after each sale's estimated tax" : 'before tax'}. Losses count as zero.
         </p>
       </section>
 

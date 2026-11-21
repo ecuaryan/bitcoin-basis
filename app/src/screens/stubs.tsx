@@ -6,6 +6,7 @@ import { buttonClasses } from '../ui/Button.tsx';
 import { Card } from '../ui/Card.tsx';
 import { ComingSoon } from '../ui/ComingSoon.tsx';
 import { Segmented } from '../ui/Segmented.tsx';
+import { useTitle } from '../ui/use-title.ts';
 
 function Page({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -71,6 +72,7 @@ export function WalletDetail() {
 
 /** Full-screen pages outside the tabs (first run, unlock, emergency kit). */
 function Bare({ title, children }: { title: string; children: ReactNode }) {
+  useTitle(title);
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-5 py-10">
       <Brand />

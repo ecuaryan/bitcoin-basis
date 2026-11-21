@@ -43,3 +43,20 @@ test('hidden amounts and the year sheet are accessible too', async ({ page }) =>
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+
+test('every screen names itself in the browser tab', async ({ page }) => {
+  await openHoldingsWithDemo(page);
+  await expect(page).toHaveTitle('Holdings · Bitcoin Basis');
+  for (const [path, title] of [
+    ['/what-if', 'What if'],
+    ['/tax', 'Tax season'],
+    ['/records', 'Records'],
+    ['/records?v=security', 'Security'],
+    ['/wallet/wallet-strike', 'Strike'],
+    ['/kit', 'Emergency kit'],
+    ['/nowhere', 'Not found'],
+  ] as const) {
+    await page.goto(path);
+    await expect(page).toHaveTitle(`${title} · Bitcoin Basis`);
+  }
+});

@@ -208,10 +208,10 @@ export function YearSheet({ row, onClose }: { row: StackYear | null; onClose(): 
 
 export function WalletLinkCard({ w }: { w: WalletCard }) {
   return (
-    <Link to={`/wallet/${w.id}`} className="flex min-h-11 items-center justify-between rounded-2xl border border-line bg-surface px-3.5 py-3 text-text no-underline transition-colors hover:bg-surface-2 hover:text-text">
+    <Link to={`/wallet/${w.id}`} className="flex min-h-11 items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 text-text no-underline transition-colors hover:bg-surface-2 hover:text-text">
       <span className="flex flex-col gap-0.5">
         <span className="text-sm font-semibold">{w.name}</span>
-        <span className={cx('text-xs', w.needsAttention ? 'text-amber' : 'text-muted')}>
+        <span className={cx('text-xs normal-nums', w.needsAttention ? 'text-amber' : 'text-muted')}>
           {w.typeLabel} · {w.needsAttention ? 'needs a check' : w.confirmedLabel}
         </span>
       </span>
@@ -222,20 +222,26 @@ export function WalletLinkCard({ w }: { w: WalletCard }) {
   );
 }
 
+/** The desktop card is narrow, so the check status sits under the amount instead of after the type. */
 export function WalletRow({ w }: { w: WalletCard }) {
   return (
-    <Link to={`/wallet/${w.id}`} className="flex min-h-14 items-center justify-between border-b border-line text-text no-underline last:border-b-0 hover:text-text">
-      <span className="flex flex-col gap-0.5">
+    <Link to={`/wallet/${w.id}`} className="flex min-h-14 items-center justify-between gap-3 border-b border-line text-text no-underline last:border-b-0 hover:text-text">
+      <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-sm font-semibold">{w.name}</span>
-        <span className={cx('text-xs', w.needsAttention ? 'text-amber' : 'text-muted')}>
-          {w.typeLabel} · {w.needsAttention ? 'needs a check' : w.confirmedLabel}
-        </span>
+        <span className="text-xs normal-nums text-muted">{w.typeLabel}</span>
       </span>
-      <span className="text-sm font-semibold">
-        <Amount sats={w.sats} interactive={false} />
+      <span className="flex flex-col items-end gap-0.5 text-right">
+        <span className="text-sm font-semibold">
+          <Amount sats={w.sats} interactive={false} />
+        </span>
+        <span className={cx('text-xs', w.needsAttention ? 'text-amber' : 'text-muted')}>{w.needsAttention ? 'Needs a check' : capitalize(w.confirmedLabel)}</span>
       </span>
     </Link>
   );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 // ---- Extra cards (below the design's first screen) -------------------------------------
@@ -245,9 +251,9 @@ export function DocumentationCard({ view }: { view: HoldingsView }) {
   const tiers = TIER_ORDER.filter((t) => view.mix[t] > 0);
   return (
     <Card as="section" aria-label="How well your coins are documented" className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-3">
         <h2 className="m-0 text-[15px] font-semibold">How well it is documented</h2>
-        <span className="text-xs text-muted">{view.documentedPercent}% documented</span>
+        <span className="text-xs text-muted">{view.documentedPercent}%</span>
       </div>
       <div className="flex h-3.5 overflow-hidden rounded-[7px] bg-surface-2" role="img" aria-label={tiers.map((t) => `${TIER_LABEL[t]} ${Math.round((view.mix[t] * 100) / total)} percent`).join(', ')}>
         {tiers.map((t) => (
@@ -282,7 +288,7 @@ export function MoneyCard({ view }: { view: HoldingsView }) {
           aria-expanded={help}
           aria-label="What do these mean?"
           onClick={() => setHelp((h) => !h)}
-          className="-my-2 -mr-2 flex size-11 items-center justify-center rounded-full bg-transparent text-sm font-semibold text-muted hover:text-text"
+          className="-my-3 -mr-2 flex size-11 items-center justify-center rounded-full bg-transparent text-sm font-semibold text-muted hover:text-text"
         >
           <span aria-hidden="true">?</span>
         </button>
@@ -315,10 +321,15 @@ export function RetirementCard({ view, priceCents }: { view: HoldingsView; price
       <ul className="m-0 flex list-none flex-col p-0">
         {view.retirement.map((r) => (
           <li key={r.id}>
-            <Link to={`/wallet/${r.id}`} className="flex items-center justify-between border-b border-line py-2.5 text-text no-underline last:border-b-0 hover:text-text">
+            <Link to={`/wallet/${r.id}`} className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-text no-underline last:border-b-0 hover:text-text">
               <span className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold">{r.name}</span>
-                <span className="text-xs text-muted">Retirement · view only{priceCents !== null && <> · worth <PlainMoney cents={satsToCents(r.sats, priceCents)} precision="dollars" /></>}</span>
+                <span className="text-xs text-muted">Retirement · view only</span>
+                {priceCents !== null && (
+                  <span className="text-xs text-muted">
+                    Worth <PlainMoney cents={satsToCents(r.sats, priceCents)} precision="dollars" />
+                  </span>
+                )}
               </span>
               <span className="text-sm font-semibold">
                 <Amount sats={r.sats} interactive={false} />
@@ -328,10 +339,13 @@ export function RetirementCard({ view, priceCents }: { view: HoldingsView; price
         ))}
         {view.frozen.map((w) => (
           <li key={w.id}>
-            <Link to={`/wallet/${w.id}`} className="flex items-center justify-between border-b border-line py-2.5 text-text no-underline last:border-b-0 hover:text-text">
+            <Link to={`/wallet/${w.id}`} className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-text no-underline last:border-b-0 hover:text-text">
               <span className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold">{w.name}</span>
-                <span className="text-xs text-muted">Frozen platform · cost <PlainMoney cents={w.costCents} precision="dollars" /></span>
+                <span className="text-xs text-muted">Frozen platform</span>
+                <span className="text-xs text-muted">
+                  Cost <PlainMoney cents={w.costCents} precision="dollars" />
+                </span>
               </span>
               <span className="text-sm font-semibold">
                 <Amount sats={w.sats} interactive={false} />

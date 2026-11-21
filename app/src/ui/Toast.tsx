@@ -56,7 +56,7 @@ export function ToastProvider({ children, durationMs = 2500 }: { children: React
       {inRouter ? <RouteWatcher onChange={dismissOnMove} /> : null}
       <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 top-[max(12px,env(safe-area-inset-top))] z-[60] flex justify-center px-4">
         {message && (
-          <div key={message.id} className={`animate-toast-in flex items-center gap-3 rounded-2xl border border-line bg-surface-2 py-3 pl-4 text-sm font-medium text-text shadow-2xl ${message.action ? 'pointer-events-auto pr-2' : 'pr-4'}`}>
+          <div key={message.id} className={`animate-toast-in flex items-center gap-3 rounded-2xl border border-line bg-surface-2 py-3 pl-4 text-sm font-medium text-text shadow-2xl ${message.action ? 'pointer-events-auto pr-1.5' : 'pr-4'}`}>
             <span>{message.text}</span>
             {message.action && (
               <button
@@ -66,7 +66,7 @@ export function ToastProvider({ children, durationMs = 2500 }: { children: React
                   dismiss();
                   act?.onClick();
                 }}
-                className="min-h-11 rounded-xl bg-transparent px-3 text-sm font-bold text-amber hover:text-text"
+                className="-my-3 min-h-11 rounded-xl bg-transparent px-3 text-sm font-bold text-amber hover:text-text"
               >
                 {message.action.label}
               </button>

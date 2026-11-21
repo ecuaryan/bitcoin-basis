@@ -27,6 +27,7 @@ test('setup: claim, passkey, recovery code once, confirm, done', async ({ page }
 
   await page.getByRole('button', { name: "I've saved it" }).click();
   await expect(page.getByRole('heading', { name: 'Check your recovery code' })).toBeVisible();
+  await expect(page).toHaveTitle('Check your recovery code · Bitcoin Basis');
   await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
   await page.getByLabel('Group 4 of your recovery code').fill('AAAAA');
   await expect(page.getByText('That is not group 4')).toBeVisible();
@@ -57,6 +58,7 @@ test('lock, unlock with the passkey, and a calm reason when it locked itself', a
   await lock(page);
   await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Use my recovery code instead' })).toBeVisible();
+  await expect(page).toHaveTitle('Unlock · Bitcoin Basis');
   await expectNoViolations(page);
   await page.getByRole('button', { name: 'Unlock', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();

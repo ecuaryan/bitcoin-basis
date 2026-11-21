@@ -132,9 +132,9 @@ export function DemoBanner({ className }: { className?: string }) {
   const { isDemo } = useLedger();
   if (!isDemo) return null;
   return (
-    <section aria-label="Demo mode" className={cx('flex flex-wrap items-center justify-between gap-x-2 rounded-xl border border-accent/50 bg-surface py-0.5 pl-3.5 pr-1 text-xs text-soft', className)}>
-      <span className="py-2">Demo — nothing is saved to your server</span>
-      <ExitDemoButton />
+    <section aria-label="Demo mode" className={cx('flex items-center justify-between gap-x-2 rounded-xl border border-accent/50 bg-surface py-0.5 pl-3.5 pr-1 text-xs text-soft', className)}>
+      <span className="min-w-0 py-2 text-balance">Demo — nothing is saved to your server</span>
+      <ExitDemoButton className="flex-none whitespace-nowrap" />
     </section>
   );
 }

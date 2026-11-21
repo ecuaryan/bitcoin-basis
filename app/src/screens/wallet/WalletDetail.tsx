@@ -21,6 +21,7 @@ import { DELETABLE_KINDS, EDITABLE_KINDS, localInputFor, lockedYear, longDate, n
 import { CloseOutSheet } from './CloseOut.tsx';
 import { lastConfirmed, walletEntries, walletLots } from './model.ts';
 import { WalletMenu } from './WalletMenu.tsx';
+import { useTitle } from '../../ui/use-title.ts';
 
 const TYPE_LABEL = { exchange: 'Exchange', 'self-custody': 'Self-custody', retirement: 'Retirement' } as const;
 
@@ -61,7 +62,7 @@ function Balance({ wallet, sats, costCents, avg, lotCount, priceCents }: { walle
   const counted = !wallet.frozen && !wallet.archived;
   return (
     <section aria-label="Balance" className="flex flex-col gap-1.5">
-      <span className="text-xs tracking-[0.06em] text-muted">
+      <span className="text-xs normal-nums tracking-[0.06em] text-muted">
         {TYPE_LABEL[wallet.type].toUpperCase()} · {countOf(lotCount, 'lot').toUpperCase()}
         {wallet.archived ? ' · ARCHIVED' : ''}
       </span>
@@ -213,7 +214,7 @@ function ConfirmBalance({ wallet, inputRef }: { wallet: Wallet; inputRef: React.
                 });
               }}
             >
-              Save this check anyway
+              Save anyway
             </Button>
           </div>
         </div>
@@ -254,9 +255,9 @@ function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; toda
                     {shortDate(l.acquiredDate, today)} · {TIER_LABEL[l.tier]}
                   </span>
                 </span>
-                <span className="flex flex-col items-end">
+                <span className="flex flex-col items-end text-right">
                   <span className="text-sm font-semibold">{perBtc === null ? '—' : <Money cents={perBtc} />}</span>
-                  <span className={cx('text-xs', long ? 'text-muted' : 'font-semibold text-amber')}>{long ? 'Long-term' : `Long-term on ${shortDate(nextDay(oneYearAnniversary(l.acquiredDate)), today)}`}</span>
+                  <span className={cx('text-xs normal-nums', long ? 'text-muted' : 'max-w-[7.5rem] font-semibold text-balance text-amber sm:max-w-none')}>{long ? 'Long-term' : `Long-term on ${shortDate(nextDay(oneYearAnniversary(l.acquiredDate)), today)}`}</span>
                 </span>
               </button>
               {open ? (
@@ -276,7 +277,7 @@ function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; toda
         })}
       </ul>
       {sorted.length > shown.length ? (
-        <Button variant="ghost" onClick={() => setAll(true)} className="self-start">
+        <Button variant="ghost" onClick={() => setAll(true)} className="-ml-4 self-start">
           Show all {sorted.length} coins
         </Button>
       ) : null}
@@ -308,7 +309,7 @@ function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
             <li key={e.id} className="border-b border-line last:border-b-0">
               <button type="button" aria-expanded={isOpen} onClick={() => setOpenId(isOpen ? null : e.id)} className="flex min-h-14 w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-semibold">{line.summary}</span>
+                  <span className="text-sm font-semibold">{line.summary}</span>
                   <span className="text-xs text-muted">
                     {shortDate(date, today)}
                     {locked !== null ? ` · locked, ${locked} is closed` : ''}
@@ -360,7 +361,7 @@ function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
       </ul>
       {rows.length === 0 ? <p className="m-0 py-2 text-sm text-muted">Nothing logged for {wallet.name} yet.</p> : null}
       {rows.length > count ? (
-        <Button variant="ghost" onClick={() => setCount(rows.length)} className="self-start">
+        <Button variant="ghost" onClick={() => setCount(rows.length)} className="-ml-4 self-start">
           Show all {rows.length} entries
         </Button>
       ) : null}
@@ -512,6 +513,7 @@ export function WalletDetail() {
   const holding = holdings.wallets.find((w) => w.wallet === id);
   const lots = useMemo(() => (id === undefined ? [] : walletLots(state, id)), [state, id]);
   const rows = useMemo(() => (id === undefined ? [] : walletEntries(entries, state, id)), [entries, state, id]);
+  useTitle(ready ? (wallet?.name ?? 'Wallet') : null);
 
   if (!ready) return <div aria-busy="true" className="min-h-[60dvh]" />;
   if (wallet === undefined) {

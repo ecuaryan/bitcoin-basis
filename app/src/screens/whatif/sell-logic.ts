@@ -40,9 +40,10 @@ export function rangeLabel(from: string, to: string): string {
   const [ty = '', tm = '1'] = to.split('-');
   const a = MONTHS[Number(fm) - 1] ?? '';
   const b = MONTHS[Number(tm) - 1] ?? '';
-  if (fy === ty && fm === tm) return `${a} ${fy}`;
-  if (fy === ty) return `${a}–${b} ${fy}`;
-  return `${a} ${fy}–${b} ${ty}`;
+  // No-break spaces: a line may break after the dash, never between a month and its year.
+  if (fy === ty && fm === tm) return `${a}\u00a0${fy}`;
+  if (fy === ty) return `${a}–${b}\u00a0${fy}`;
+  return `${a}\u00a0${fy}–${b}\u00a0${ty}`;
 }
 
 /** Half-up percent with one decimal from 1/10000ths: 1234 becomes `12.3%`. */

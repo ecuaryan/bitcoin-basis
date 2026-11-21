@@ -10,6 +10,7 @@ import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
 import { QrCode } from '../../ui/QrCode.tsx';
 import { cx } from '../../lib/cx.ts';
 import { KIT_STEPS, kitWalletRows, longDate, oneYearLater } from './kit-logic.ts';
+import { useTitle } from '../../ui/use-title.ts';
 
 /**
  * The printed emergency kit. Always light, letter paper. The recovery code is on it only right after
@@ -21,6 +22,7 @@ export function Kit() {
   const nameId = useId();
   const [name, setName] = useState('');
   const [leaving, setLeaving] = useState(false);
+  useTitle('Emergency kit');
   const navigate = useNavigate();
   const address = appAddress();
   const code = pending?.code ?? null;
@@ -157,7 +159,7 @@ export function Kit() {
           </div>
           <div className="flex w-[150px] flex-none flex-col items-center gap-1.5 self-center sm:self-auto">
             <QrCode text={link} size={150} label={code === null ? 'QR code that opens the app address' : 'QR code that opens the app and fills in the recovery code'} className="rounded-[10px] border border-[#d9d5cf]" />
-            <span className="text-center text-xs text-[#595550]">{code === null ? 'Opens the app' : 'Scan with the phone’s camera'}</span>
+            <span className="text-center text-xs text-[#595550]">{code === null ? 'Opens the app' : "Scan with the phone's camera"}</span>
           </div>
         </section>
 
@@ -171,7 +173,7 @@ export function Kit() {
               wallets.map((w, i) => (
                 <li key={i} className={cx('flex min-h-9 items-center justify-between gap-3 px-3.5', i < wallets.length - 1 && 'border-b border-[#d9d5cf]')}>
                   <span className="text-sm font-semibold">{w.name}</span>
-                  <span className="text-[13px] text-[#595550]">{w.type}</span>
+                  <span className="text-[13px] normal-nums text-[#595550]">{w.type}</span>
                 </li>
               ))
             )}
@@ -196,7 +198,7 @@ export function Kit() {
 
         <section className="flex flex-col gap-1 rounded-xl bg-[#fff4e5] px-[18px] py-3.5">
           <span className="text-sm font-bold">For the tax preparer</span>
-          <span className="text-[13px] leading-normal">
+          <span className="text-[13px] leading-normal normal-nums">
             Inherited Bitcoin generally gets a new cost basis: its value on the date of death. In community-property states this can apply to a surviving spouse&apos;s half too. The records show everything bought, given and sold before then.
           </span>
         </section>
