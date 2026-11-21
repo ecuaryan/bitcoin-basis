@@ -100,7 +100,7 @@ export function Borrow() {
     const next = [...saved, { id, wallet: wallet.wallet, loan, pledge, rate, marginCall, liquidation }];
     setSaved(next);
     saveScenarios(next);
-    toast.show('Scenario saved on this device.');
+    toast.show('Scenario saved until you lock.');
   }
   function load(s: SavedScenario) {
     setWalletId(s.wallet);
@@ -220,6 +220,7 @@ export function Borrow() {
         {saved.length > 0 && (
           <section aria-label="Saved scenarios" className="flex flex-col gap-2">
             <h2 className="m-0 text-[15px] font-semibold">Saved scenarios</h2>
+            <p className="m-0 text-xs text-muted">Kept until you lock.</p>
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {saved.map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2">

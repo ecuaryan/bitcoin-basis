@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 import { LedgerProvider } from '../data/ledger-provider.tsx';
-import { createMemoryStore } from '../data/local-storage-store.ts';
+import { createMemoryStore } from '../data/memory-store.ts';
 import { VaultProvider } from '../data/vault-provider.tsx';
 import { FakeAuthenticator } from '../vault/test/fake-authenticator.ts';
 import { FakeServer } from '../vault/test/fake-server.ts';
@@ -30,12 +30,10 @@ export async function restoredLockedDevice(server: FakeServer, code: string): Pr
 }
 
 export function renderWithVault(ui: ReactNode, device: Device, { route = '/', demo = false }: { route?: string; demo?: boolean } = {}): Promise<Rendered> {
-  window.localStorage.removeItem('bb.demo');
-  if (demo) window.localStorage.setItem('bb.demo', '1');
   return renderApp(
     <MemoryRouter initialEntries={[route]}>
       <VaultProvider vault={device.vault}>
-        <LedgerProvider store={device.vault.store} demoStore={createMemoryStore()} demoAllowed={device.vault.status.state === 'empty'}>
+        <LedgerProvider store={device.vault.store} demoStore={createMemoryStore()} demoAllowed={device.vault.status.state === 'empty'} initialDemo={demo}>
           {ui}
         </LedgerProvider>
       </VaultProvider>

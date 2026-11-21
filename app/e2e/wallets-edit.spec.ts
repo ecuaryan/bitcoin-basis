@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectNoViolations, openDemo } from './helpers.ts';
+import { expectNoViolations, go, openDemo } from './helpers.ts';
 
 test('Add a wallet from Records, and from the Holdings card on desktop', async ({ page, isMobile }) => {
   await openDemo(page);
@@ -12,7 +12,7 @@ test('Add a wallet from Records, and from the Holdings card on desktop', async (
     await expect(page.getByRole('region', { name: 'Wallets' }).getByText('Ledger')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add a wallet' })).toBeFocused();
   }
-  await page.goto('/records?v=wallets');
+  await go(page, '/records?v=wallets');
   await page.getByRole('button', { name: 'Add a wallet' }).click();
   const sheet = page.getByRole('dialog', { name: 'Add a wallet' });
   await sheet.getByLabel('Name').fill('Old IRA');
@@ -24,7 +24,7 @@ test('Add a wallet from Records, and from the Holdings card on desktop', async (
 
 test('The oldest Strike buy can be edited even though sales picked its coins', async ({ page }) => {
   await openDemo(page);
-  await page.goto('/wallet/wallet-strike');
+  await go(page, '/wallet/wallet-strike');
   await expect(page.getByRole('region', { name: 'Entries' })).toBeVisible();
   const more = page.getByRole('button', { name: /^Show all \d+ entries/ });
   while ((await more.count()) > 0) await more.click();

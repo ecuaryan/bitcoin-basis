@@ -22,24 +22,6 @@ export interface Ledger {
 
 const LedgerContext = createContext<Ledger | null>(null);
 
-const DEMO_KEY = 'bb.demo';
-
-function readDemoFlag(): boolean {
-  try {
-    return window.localStorage.getItem(DEMO_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-function writeDemoFlag(on: boolean): void {
-  try {
-    if (on) window.localStorage.setItem(DEMO_KEY, '1');
-    else window.localStorage.removeItem(DEMO_KEY);
-  } catch {
-    // ignore
-  }
-}
-
 const EMPTY: readonly Entry[] = [];
 
 /** Replays entries with the engine and shares the result. Screens never touch the store directly. */
@@ -47,6 +29,7 @@ export function LedgerProvider({
   store: realStore,
   demoStore: demoStoreProp,
   demoAllowed = true,
+  initialDemo = false,
   children,
   clock = Date.now,
 }: {
@@ -56,13 +39,15 @@ export function LedgerProvider({
   demoStore?: LedgerStore;
   /** False while a real vault exists on this device: a leftover demo flag is then ignored. */
   demoAllowed?: boolean;
+  /** Start in the demo (tests). The demo is never remembered between page loads. */
+  initialDemo?: boolean;
   children: ReactNode;
   clock?: () => number;
 }) {
   const demoStore = demoStoreProp ?? realStore;
   // Entries are remembered with the store they came from, so switching stores never shows the old book.
   const [loaded, setLoaded] = useState<{ from: LedgerStore; list: readonly Entry[] } | null>(null);
-  const [demoFlag, setDemoFlag] = useState<boolean>(() => readDemoFlag());
+  const [demoFlag, setDemoFlag] = useState<boolean>(initialDemo);
   const isDemo = demoFlag && demoAllowed;
   const store = isDemo ? demoStore : realStore;
 
@@ -92,12 +77,10 @@ export function LedgerProvider({
   const loadDemo = useCallback(async () => {
     await demoStore.clear();
     await demoStore.append(buildDemoBook().entries);
-    writeDemoFlag(true);
     setDemoFlag(true);
   }, [demoStore]);
   const clearAll = useCallback(async () => {
     await demoStore.clear();
-    writeDemoFlag(false);
     setDemoFlag(false);
   }, [demoStore]);
 

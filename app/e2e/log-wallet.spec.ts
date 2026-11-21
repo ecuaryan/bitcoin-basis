@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { go } from './helpers.ts';
 
 async function demo(page: Page): Promise<void> {
   await page.addInitScript(() => window.localStorage.setItem('bb.hide', '0'));
@@ -109,7 +110,7 @@ test('gift to a person shows the gift note; charity gift shows the CPA note', as
 
 test('confirm a balance: match, then mismatch', async ({ page }) => {
   await demo(page);
-  await page.goto('/wallet/wallet-strike');
+  await go(page, '/wallet/wallet-strike');
   await expect(page.getByRole('heading', { name: 'Strike', level: 1 })).toBeVisible();
   await expect(page.getByText('0.6188 2140 BTC')).toBeVisible();
   const box = page.getByLabel('What the app or device shows');
@@ -126,7 +127,7 @@ test('confirm a balance: match, then mismatch', async ({ page }) => {
 
 test('freeze a wallet, log a payout, close it out', async ({ page }) => {
   await demo(page);
-  await page.goto('/wallet/wallet-river');
+  await go(page, '/wallet/wallet-river');
   await page.getByRole('button', { name: 'Wallet options' }).click();
   await page.getByRole('button', { name: /Platform frozen or failed/ }).click();
   await page.getByRole('button', { name: 'Review', exact: true }).click();
@@ -157,7 +158,7 @@ test('freeze a wallet, log a payout, close it out', async ({ page }) => {
 
 test('lost or stolen coins are flagged for the CPA', async ({ page }) => {
   await demo(page);
-  await page.goto('/wallet/wallet-strike');
+  await go(page, '/wallet/wallet-strike');
   await page.getByRole('button', { name: 'Wallet options' }).click();
   await page.getByRole('button', { name: /Coins lost or stolen/ }).click();
   const d = dialog(page);
@@ -177,7 +178,7 @@ test('edit an entry needs a reason; closed years are locked', async ({ page }) =
   await d.getByRole('button', { name: 'Save purchase' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  await page.goto('/wallet/wallet-strike');
+  await go(page, '/wallet/wallet-strike');
   const first = page.getByRole('region', { name: 'Entries' }).getByRole('button', { expanded: false }).first();
   await first.click();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -192,13 +193,11 @@ test('edit an entry needs a reason; closed years are locked', async ({ page }) =
   await expect(page.getByRole('region', { name: 'Entries' }).getByText('edited').first()).toBeVisible();
 
   // Close 2025, then a 2025 entry shows as locked.
-  await page.evaluate(() => {
-    const key = 'bb.ledger.v1';
-    const list = JSON.parse(window.localStorage.getItem(key) ?? '[]') as unknown[];
-    list.push({ id: 'ffffffff-ffff-7fff-bfff-ffffffffffff', kind: 'close-year', year: 2025, at: '2026-11-20T19:00:00Z', tz: 'America/Boise' });
-    window.localStorage.setItem(key, JSON.stringify(list));
-  });
-  await page.reload();
+  await go(page, '/tax?year=2025');
+  await page.getByRole('button', { name: /Close 2025 once/ }).click();
+  await page.getByRole('dialog', { name: 'Close 2025?' }).getByRole('button', { name: 'Close 2025' }).click();
+  await expect(page.getByText('2025 is closed', { exact: true })).toBeVisible();
+  await go(page, '/wallet/wallet-strike');
   await page.getByRole('button', { name: /^Show all \d+ entries/ }).click({ clickCount: 1 }).catch(() => undefined);
   await expect(page.getByRole('region', { name: 'Entries' }).getByText(/locked, 2025 is closed/).first()).toBeVisible();
 });

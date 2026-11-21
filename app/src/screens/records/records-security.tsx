@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { cx } from '../../lib/cx.ts';
 import { appAddress, shortAddress } from '../../data/app-url.ts';
 import { explainError, wasCancelled } from '../../data/explain-error.ts';
@@ -57,13 +57,21 @@ function RealSecurity() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rotateOpen, setRotateOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const [rotateOpen, setRotateOpen] = useState(() => params.get('rotate') === '1');
   const [forgetOpen, setForgetOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
+  useEffect(() => {
+    // The one-time prompt after a QR-link restore arrives with ?rotate=1: the sheet is open, so drop it from the address.
+    if (params.get('rotate') !== '1') return;
+    const next = new URLSearchParams(params);
+    next.delete('rotate');
+    setParams(next, { replace: true });
+  }, [params, setParams]);
   const sync = describeSync(status.sync, now);
   const s = status.sync;
   const row = syncRowText(s, now);

@@ -21,7 +21,7 @@ This is a personal open-source project. Reports are read and answered on a best-
 
 - The app is locked until a passkey is used (fingerprint, face or screen lock; user verification is required). Keys exist only in memory while unlocked and are dropped on lock.
 - Auto-lock after a number of idle minutes (setting, default 5) and when the page has been hidden that long. Locking also ends the server session.
-- Data at rest on the device (IndexedDB) is ciphertext.
+- Records at rest on the device (IndexedDB) are ciphertext. `localStorage` holds only the non-sensitive settings listed under "What the browser keeps". Saved What-if scenarios and 1099 ticks are kept in memory until you lock, and the demo lives only in memory.
 - If a phone is lost: make a new recovery code from another device, and remove the passkey from the lost phone's OS or password manager. The app cannot remove passkeys yet (see limits below).
 - Limit: someone who gets past the phone's own lock while the app is unlocked sees the records. That is inherent.
 
@@ -47,17 +47,19 @@ The Worker has no code path to delete or overwrite (a test scans the source). Th
 ### Hostile network
 
 - HTTPS only. HSTS (one year), `upgrade-insecure-requests`, `nosniff`, `Referrer-Policy: no-referrer`, a restrictive Permissions-Policy, COOP and CORP `same-origin`.
-- Strict Content-Security-Policy: scripts, styles, fonts and images from your own origin only; the only outside connection allowed is `https://mempool.space` (price). No inline scripts or styles, `frame-ancestors 'none'`.
-- Trusted Types are required (`require-trusted-types-for 'script'`, one policy, for the service worker).
+- Strict Content-Security-Policy: scripts, styles, fonts, images and connections from your own origin only (`connect-src 'self'`). The browser never contacts a third party: the public BTC price is fetched by the Worker (`/api/price`, from mempool.space or your own `MEMPOOL_URL`), which forwards no cookie, IP, Origin or Referer, rounds history lookups to the hour and caches answers. No inline scripts or styles, `frame-ancestors 'none'`.
+- Trusted Types are enforced (`require-trusted-types-for 'script'`, one policy, for the service worker) in browsers that support them; others rely on the rest of the CSP.
+- The service worker caches only genuine responses (200, correct content type), never API answers or error pages, and offers a reload when a new version takes over.
 - Sessions are an HMAC-signed cookie (`HttpOnly`, `Secure`, `SameSite=Strict`), 2 hours, revocable, ended on lock. Challenges are single-use and expire in 5 minutes. State-changing requests must carry the exact `Origin` header. Sign-in and registration are rate limited.
-- The recovery code in a QR link lives in the URL fragment, which browsers never send, and the app removes it from the address bar on load.
+- The recovery code in a QR link lives in the URL fragment, which browsers never send, and the app removes it from the address bar on load. Browsers can still keep the link in history, so after you open your records from a QR code the app offers, once, to make a new recovery code.
+- A recovery code you save to a password manager, the clipboard or a share target is only as safe as that account or app.
 
 ### Malicious dependency
 
 - Few dependencies: the engine has none; the app ships React, React Router, a QR generator and font files; the Worker uses one library (`@simplewebauthn/server`).
 - Exact versions only (`save-exact`), a committed lockfile, and `tools/check-lockfile.mjs` in CI (registry URLs, integrity hashes). CI installs with `--ignore-scripts`.
 - GitHub Actions are pinned by commit SHA. Dependabot skips major versions, which are adopted deliberately.
-- `npm audit` (high for production dependencies, critical for all), CodeQL on every push and weekly, gitleaks on every push.
+- `npm audit` (high for production dependencies, critical for all), CodeQL on pushes and pull requests to `main`, and weekly, gitleaks on every push.
 - Subresource Integrity (sha384) on every script and stylesheet in `index.html`. Lazy-loaded chunks cannot carry SRI; the CSP and `verify-deployment` cover them.
 
 ### The web-app trust problem
@@ -66,11 +68,26 @@ Stated plainly: **whoever controls the code your browser is served can read your
 
 Mitigations, not a cure:
 
-- Deploys happen only from GitHub Actions, only after CI passes for that exact commit, only for commits on `main`. A protected `production` environment holds the Cloudflare token.
+- Deploys happen only from GitHub Actions, only after CI passes for that exact commit, only for commits on `main`. The `production` environment holds the Cloudflare token and is limited by a branch and tag policy, plus repository rulesets. It has no required reviewer, by design: with a single owner, an approval click would be the owner approving themselves, so it adds friction and no protection.
+- The deploy job that holds the Cloudflare token runs no code from npm packages except the lockfile-pinned wrangler; the build runs in a separate job with no secrets. Release deploys require a real tag on the deployed commit.
 - Every release publishes `dist-hashes.txt` (a hash of every file). Anyone can rebuild a tag and compare, and check a live site with `node tools/verify-deployment.mjs <url> --all`. The deploy job runs the same check on itself. See [docs/deploy.md](docs/deploy.md).
 - The Cloudflare token is minimal (Workers Scripts, R2, account read; one account) with an expiry.
 - Protect your GitHub and Cloudflare accounts with passkeys or hardware keys. That is where this risk lives.
-- Verification is something you do (or schedule); the app cannot check itself.
+- Verification is something you do (or schedule); the app cannot check itself. `verify-deployment` compares the files and headers it is served; it cannot see the Worker's code or what a different client is served.
+
+### What the browser keeps
+
+Records are only in IndexedDB, sealed. Everything else on the device is in `localStorage` and is non-sensitive:
+
+| Key | Holds |
+|---|---|
+| `bb.hide` | `0` or `1`: whether amounts are hidden |
+| `bb.unit` | the unit shown (BTC, sats or dollars) |
+| `bb.kit-tested`, `bb.kit-first-seen` | dates for the emergency-kit test reminder |
+| `bb.last-price` | the last public BTC price seen |
+| `bb.price-history.v1` | public BTC prices by hour, for the chart |
+
+Anything that describes your holdings (saved What-if scenarios, 1099 ticks, the demo book) is kept in memory only and is gone on lock or reload. Older versions stored some of these in `localStorage`; the app removes those keys on load (`bb.ledger.v1`, `bb.demo`, `bb.borrow.scenarios`, `bb.1099.checked`).
 
 ### Shoulder surfing
 
@@ -122,4 +139,4 @@ No slow password KDF is used: the recovery code has 128 bits of entropy. The cod
 
 ## Review status
 
-The security design has had two adversarial review rounds with fixes and regression tests ([how this was built with AI](docs/how-this-was-built-with-ai.md)). It has not had a paid outside audit.
+The security design has had three adversarial review rounds with fixes and regression tests ([how this was built with AI](docs/how-this-was-built-with-ai.md)). It has not had a paid outside audit.

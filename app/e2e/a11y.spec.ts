@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectNoViolations, openDemo } from './helpers.ts';
+import { expectNoViolations, go, openDemo } from './helpers.ts';
 
 /** Axe on every route and on the sheets, at both sizes (the two Playwright projects). */
 
@@ -24,7 +24,7 @@ const ROUTES: { path: string }[] = [
 for (const r of ROUTES) {
   test(`axe: ${r.path}`, async ({ page }) => {
     await openDemo(page);
-    await page.goto(r.path);
+    await go(page, r.path);
     await expect(page.locator('h1, h2').first()).toBeVisible();
     await expectNoViolations(page);
   });
@@ -38,7 +38,7 @@ test('axe: first run (Welcome)', async ({ page }) => {
 
 test('axe: the gift note page', async ({ page }) => {
   await openDemo(page);
-  await page.goto('/wallet/wallet-strike');
+  await go(page, '/wallet/wallet-strike');
   await expect(page.getByRole('region', { name: 'Entries' })).toBeVisible();
   const showMore = page.getByRole('button', { name: /^Show all \d+ entries/ });
   const gave = page.getByRole('button', { name: /Gave to Sam/ });
@@ -72,13 +72,13 @@ test('axe: the other sheets (year, add wallet, wallet menu, edit)', async ({ pag
   await expectNoViolations(page);
   await page.keyboard.press('Escape');
 
-  await page.goto('/records?v=wallets');
+  await go(page, '/records?v=wallets');
   await page.getByRole('button', { name: 'Add a wallet' }).click();
   await expect(page.getByRole('dialog', { name: 'Add a wallet' })).toBeVisible();
   await expectNoViolations(page);
   await page.keyboard.press('Escape');
 
-  await page.goto('/wallet/wallet-strike');
+  await go(page, '/wallet/wallet-strike');
   await expect(page.locator('h1').first()).toBeVisible();
   await page.getByRole('button', { name: /Bought/ }).first().click();
   await page.getByRole('button', { name: 'Edit' }).click();
@@ -88,7 +88,7 @@ test('axe: the other sheets (year, add wallet, wallet menu, edit)', async ({ pag
 
 test('axe: Sell sheets (pick coins, review)', async ({ page }) => {
   await openDemo(page);
-  await page.goto('/what-if');
+  await go(page, '/what-if');
   await page.getByRole('button', { name: 'Pick coins' }).click();
   await expect(page.getByRole('dialog', { name: 'Pick coins' })).toBeVisible();
   await expectNoViolations(page);
@@ -142,8 +142,6 @@ async function tabTo(page: Page, name: RegExp | string, limit = 60): Promise<voi
 test('keyboard only: log a purchase, Esc closes, focus returns', async ({ page, isMobile }) => {
   test.skip(isMobile === true, 'Keyboard walk-through runs on desktop');
   await openDemo(page);
-  await page.reload();
-  await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
   await tabTo(page, /^Log$/);
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Log' });

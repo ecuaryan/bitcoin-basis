@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { go } from './helpers.ts';
 
 /** Open the app with the demo book, amounts shown. Network calls to mempool.space are never made (demo uses a fixed price). */
 export async function openHoldingsWithDemo(page: Page): Promise<void> {
@@ -56,7 +57,7 @@ test('every screen names itself in the browser tab', async ({ page }) => {
     ['/kit', 'Emergency kit'],
     ['/nowhere', 'Not found'],
   ] as const) {
-    await page.goto(path);
+    await go(page, path);
     await expect(page).toHaveTitle(`${title} · Bitcoin Basis`);
   }
 });

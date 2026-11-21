@@ -1,13 +1,19 @@
 import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import type { Vault, VaultStatus } from '../vault/index.ts';
+import { sessionMemory } from './session-memory.ts';
 import { kitHandoff } from './recovery-handoff.ts';
 
 const VaultContext = createContext<Vault | null>(null);
 
 /** Shares the one `Vault` for this page. The vault is the only owner of keys; screens call its public API. */
 export function VaultProvider({ vault, children }: { vault: Vault; children: ReactNode }) {
-  // A recovery code waiting to be printed must not outlive the unlocked session.
-  useEffect(() => vault.subscribe((s) => s.state !== 'unlocked' && kitHandoff.clear()), [vault]);
+  // A recovery code waiting to be printed, saved scenarios and 1099 ticks must not outlive the unlocked session.
+  useEffect(() => vault.subscribe((s) => {
+        if (s.state !== 'unlocked') {
+          kitHandoff.clear();
+          sessionMemory.clear();
+        }
+      }), [vault]);
   return <VaultContext.Provider value={vault}>{children}</VaultContext.Provider>;
 }
 

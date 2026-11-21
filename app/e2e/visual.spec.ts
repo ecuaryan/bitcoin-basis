@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openDemo } from './helpers.ts';
+import { go, openDemo } from './helpers.ts';
 
 /**
  * Visual snapshots of the key screens at both sizes. The demo book has a fixed price and a fixed
@@ -35,31 +35,31 @@ test.describe('@visual snapshots', () => {
   });
 
   test('@visual Sell', async ({ page }) => {
-    await page.goto('/what-if');
+    await go(page, '/what-if');
     await expect(page.getByRole('radio', { name: 'Oldest first' })).toContainText('Tax this adds');
     await shot(page, 'sell');
   });
 
   test('@visual Borrow', async ({ page }) => {
-    await page.goto('/what-if?mode=borrow');
+    await go(page, '/what-if?mode=borrow');
     await expect(page.getByRole('region', { name: 'Loan vs. coin value' })).toContainText('26.4%');
     await shot(page, 'borrow');
   });
 
   test('@visual Tax season', async ({ page }) => {
-    await page.goto('/tax');
+    await go(page, '/tax');
     await expect(page.getByRole('region', { name: 'Digital asset question' })).toBeVisible();
     await shot(page, 'tax-season');
   });
 
   test('@visual Records', async ({ page }) => {
-    await page.goto('/records?v=entries');
+    await go(page, '/records?v=entries');
     await expect(page.locator('h1, h2').first()).toBeVisible();
     await shot(page, 'records');
   });
 
   test('@visual Wallet detail', async ({ page }) => {
-    await page.goto('/wallet/wallet-strike');
+    await go(page, '/wallet/wallet-strike');
     await expect(page.getByRole('region', { name: 'Entries' })).toBeVisible();
     await shot(page, 'wallet-detail');
   });

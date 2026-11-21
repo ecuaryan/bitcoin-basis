@@ -197,7 +197,7 @@ test('demo mode is labelled, never touches the vault, and has an exit', async ({
   await page.addInitScript(() => window.localStorage.setItem('bb.hide', '0'));
   await page.goto(`${FAKE_URL}/`);
   await page.getByRole('button', { name: 'Try the demo' }).click();
-  await expect(page.getByText('Demo — nothing is saved to your server')).toBeVisible();
+  await expect(page.getByText('Demo — made-up data, gone when you close it')).toBeVisible();
   await expectNoViolations(page);
   await page.getByRole('button', { name: 'Exit demo' }).click();
   await expect(page.getByRole('heading', { name: /on the record/ })).toBeVisible();

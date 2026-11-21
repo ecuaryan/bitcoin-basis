@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { useVaultOptional } from '../data/vault-provider.tsx';
 import { cx } from '../lib/cx.ts';
+import { LinkHistoryPrompt } from './LinkHistoryPrompt.tsx';
 import { SyncIndicator } from './SyncIndicator.tsx';
 import type { LogPreset } from '../screens/log/draft.ts';
 import { EyeIcon, EyeOffIcon, HoldingsIcon, LockIcon, PlusIcon, RecordsIcon, WhatIfIcon } from './icons.tsx';
@@ -133,7 +134,7 @@ export function DemoBanner({ className }: { className?: string }) {
   if (!isDemo) return null;
   return (
     <section aria-label="Demo mode" className={cx('flex items-center justify-between gap-x-2 rounded-xl border border-accent/50 bg-surface py-0.5 pl-3.5 pr-1 text-xs text-soft', className)}>
-      <span className="min-w-0 py-2 text-balance">Demo — nothing is saved to your server</span>
+      <span className="min-w-0 py-2 text-balance">Demo — made-up data, gone when you close it</span>
       <ExitDemoButton className="flex-none whitespace-nowrap" />
     </section>
   );
@@ -259,6 +260,7 @@ export function AppShell() {
   return (
     <LogContext.Provider value={api}>
       {wide ? <DesktopShell onLog={openPlain} /> : <PhoneShell onLog={openPlain} />}
+      <LinkHistoryPrompt />
       {logLoaded ? (
         <Suspense fallback={null}>
           <LogSheet open={logOpen} onClose={() => setLogOpen(false)} preset={preset} />

@@ -35,6 +35,15 @@ function FilePicker({ label, accept, onText }: { label: string; accept: string; 
   );
 }
 
+function NotInDemo({ title, label }: { title: string; label: string }) {
+  return (
+    <Card as="section" aria-label={label} className="flex flex-col gap-1 !rounded-[18px] !p-4">
+      <h2 className="m-0 text-[15px] font-semibold">{title}</h2>
+      <p className="m-0 text-[13px] text-muted">Not in the demo.</p>
+    </Card>
+  );
+}
+
 function ImportLots() {
   const { entries, state, append } = useLedger();
   const toast = useToast();
@@ -227,11 +236,21 @@ function Export() {
 }
 
 export function ImportExportView() {
+  const { isDemo } = useLedger();
   return (
     <div className="flex flex-col gap-3">
       <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Import and export</h2>
-      <ImportLots />
-      <ImportJson />
+      {isDemo ? (
+        <>
+          <NotInDemo title="Bring in your coins from a spreadsheet" label="Bring in your coins" />
+          <NotInDemo title="Restore from a backup file" label="Restore from a backup" />
+        </>
+      ) : (
+        <>
+          <ImportLots />
+          <ImportJson />
+        </>
+      )}
       <Export />
     </div>
   );

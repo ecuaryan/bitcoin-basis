@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { expectNoViolations, openDemo } from './helpers.ts';
+import { expectNoViolations, go, openDemo } from './helpers.ts';
 
 test('Sell: compare, slide, pick coins and log a sale', async ({ page }) => {
   await openDemo(page);
-  await page.goto('/what-if');
+  await go(page, '/what-if');
   const oldest = page.getByRole('radio', { name: 'Oldest first' });
   const lowest = page.getByRole('radio', { name: 'Lowest tax' });
   await expect(oldest).toContainText('Tax this adds');
@@ -31,14 +31,14 @@ test('Sell: compare, slide, pick coins and log a sale', async ({ page }) => {
   await review.getByRole('button', { name: 'Save sale' }).click();
   await expect(page.getByText('Sale saved.')).toBeVisible();
 
-  await page.goto('/records?v=entries&search=1');
+  await go(page, '/records?v=entries&search=1');
   await page.getByRole('searchbox', { name: 'Search entries' }).fill('sold');
   await expect(page.getByRole('button', { name: /Sold/ }).first()).toBeVisible();
 });
 
 test('Sell from self-custody offers to prepare a sale', async ({ page }) => {
   await openDemo(page);
-  await page.goto('/what-if');
+  await go(page, '/what-if');
   await page.getByRole('button', { name: /Selling from|·.*BTC/ }).first().click();
   await page.getByRole('button', { name: /Cold storage/ }).click();
   await expect(page.getByRole('button', { name: 'Prepare this sale' })).toBeVisible();
@@ -52,7 +52,7 @@ test('Sell from self-custody offers to prepare a sale', async ({ page }) => {
 
 test('Borrow: loan-to-value, price scale and a saved scenario', async ({ page }) => {
   await openDemo(page);
-  await page.goto('/what-if?mode=borrow');
+  await go(page, '/what-if?mode=borrow');
   const ltv = page.getByRole('region', { name: 'Loan vs. coin value' });
   await expect(ltv).toContainText('26.4%');
   await expect(ltv).toContainText('$31,250');

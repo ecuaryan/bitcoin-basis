@@ -9,6 +9,9 @@ type Listener = () => void;
 
 let pendingKit: { code: string; reason: 'setup' | 'rotate'; at: number } | null = null;
 let incoming: string | null = null;
+/** True when this page was opened from a `#recover=` link (the kit's QR code): browsers can keep that link in history. */
+let openedFromLink = false;
+const linkListeners = new Set<Listener>();
 const listeners = new Set<Listener>();
 const emit = () => {
   for (const l of [...listeners]) l();
@@ -34,6 +37,10 @@ export const kitHandoff = {
 export const incomingRecovery = {
   set(code: string | null): void {
     incoming = code;
+    if (code !== null) {
+      openedFromLink = true;
+      for (const l of [...linkListeners]) l();
+    }
   },
   /** Read it once; it is gone afterwards. */
   take(): string | null {
@@ -42,4 +49,18 @@ export const incomingRecovery = {
     return c;
   },
   peek: () => incoming,
+};
+
+/** One-time notice after unlock: the page was opened from the kit's QR link. */
+export const recoveryLinkNotice = {
+  pending: () => openedFromLink,
+  dismiss(): void {
+    if (!openedFromLink) return;
+    openedFromLink = false;
+    for (const l of [...linkListeners]) l();
+  },
+  subscribe(l: Listener): () => void {
+    linkListeners.add(l);
+    return () => void linkListeners.delete(l);
+  },
 };

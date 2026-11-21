@@ -1,4 +1,5 @@
 import type { BorrowPlan } from '@bitcoin-basis/engine';
+import { sessionMemory } from '../../data/session-memory.ts';
 
 /** `11.5` or `70` to 1/10000ths (1150, 7000). Up to two decimals, 0 to 100. Null if malformed. No floats. */
 export function parsePercentBp(text: string): number | null {
@@ -45,22 +46,13 @@ export interface SavedScenario {
   liquidation: string;
 }
 
-const KEY = 'bb.borrow.scenarios';
+const KEY = 'borrow.scenarios';
 
-export function loadScenarios(storage: Pick<Storage, 'getItem'> = window.localStorage): SavedScenario[] {
-  try {
-    const raw: unknown = JSON.parse(storage.getItem(KEY) ?? '[]');
-    if (!Array.isArray(raw)) return [];
-    return raw.filter((s): s is SavedScenario => typeof s === 'object' && s !== null && ['id', 'wallet', 'loan', 'pledge', 'rate', 'marginCall', 'liquidation'].every((k) => typeof (s as Record<string, unknown>)[k] === 'string'));
-  } catch {
-    return [];
-  }
+/** Saved scenarios are kept in memory until the app locks. They are never written to storage. */
+export function loadScenarios(): SavedScenario[] {
+  return sessionMemory.get<SavedScenario[]>(KEY, []);
 }
 
-export function saveScenarios(list: readonly SavedScenario[], storage: Pick<Storage, 'setItem'> = window.localStorage): void {
-  try {
-    storage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    // Storage blocked: scenarios last until the page closes.
-  }
+export function saveScenarios(list: readonly SavedScenario[]): void {
+  sessionMemory.set(KEY, [...list]);
 }

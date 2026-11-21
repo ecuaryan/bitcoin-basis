@@ -177,6 +177,12 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
         </div>
         <PriceChart points={series} averageCostCents={view.averageCostCentsPerBtc} width={320} height={84} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} />
         <ChartFooter points={series} className="text-[11px]" />
+        <div className="flex items-baseline justify-between border-t border-line pt-2.5">
+          <span className="text-xs text-muted">Losses to use later</span>
+          <span className="text-[15px] font-semibold">
+            <Money cents={view.carryforwardCents} precision="dollars" />
+          </span>
+        </div>
       </Card>
 
       <Card as="section" aria-label="Your coins by age" className="flex flex-col gap-2.5">
@@ -192,6 +198,7 @@ function PhoneHoldings({ view, priceCents }: { view: HoldingsView; priceCents: n
         {view.wallets.map((w) => (
           <WalletLinkCard key={w.id} w={w} />
         ))}
+        <AddWalletButton className="self-start" />
       </section>
 
       <MoneyCard view={view} />

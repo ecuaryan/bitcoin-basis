@@ -66,7 +66,6 @@ describe('route guard', () => {
     const { device } = await deviceWithVault('locked');
     app = await renderWithVault(tree, device, { demo: true });
     expect(app.container.textContent).not.toContain('THE APP');
-    window.localStorage.removeItem('bb.demo');
   });
 });
 

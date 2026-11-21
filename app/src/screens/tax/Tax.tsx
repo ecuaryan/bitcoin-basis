@@ -17,16 +17,13 @@ import { useToast } from '../../ui/Toast.tsx';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import { LockIcon } from '../../ui/icons.tsx';
 import { answerReason, defaultTaxYear, flagsForYear, form1099Rows, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
+import { sessionMemory } from '../../data/session-memory.ts';
 import { useTitle } from '../../ui/use-title.ts';
 
-const CHECKED_KEY = 'bb.1099.checked';
+const CHECKED_KEY = '1099.checked';
+/** The ticks are kept in memory until the app locks; they are never written to storage. */
 function loadChecked(): string[] {
-  try {
-    const raw: unknown = JSON.parse(window.localStorage.getItem(CHECKED_KEY) ?? '[]');
-    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
+  return sessionMemory.get<string[]>(CHECKED_KEY, []);
 }
 
 function Rows({ rows, label }: { rows: readonly [string, ReactNode][]; label: string }) {
@@ -135,11 +132,7 @@ export function Tax() {
     const key = `${year}:${id}`;
     const next = on ? [...checked, key] : checked.filter((k) => k !== key);
     setChecked(next);
-    try {
-      window.localStorage.setItem(CHECKED_KEY, JSON.stringify(next));
-    } catch {
-      // Not saved; it still works until the page closes.
-    }
+    sessionMemory.set(CHECKED_KEY, next);
   }
 
   const picker = (
@@ -220,7 +213,7 @@ export function Tax() {
         <h2 className="m-0 text-[15px] font-semibold">1099-DA check</h2>
         {forms.length > 0 && (
           <span className="text-xs text-amber">
-            {doneCount} of {forms.length} checked
+            {doneCount} of {forms.length} checked · kept until you lock
           </span>
         )}
       </div>

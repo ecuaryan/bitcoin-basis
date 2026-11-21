@@ -34,9 +34,9 @@ All screenshots use the built-in synthetic demo data.
 - **Frozen or failed platform:** close-out with the loss, and later payouts as recovery gains.
 - **Emergency kit:** a printable page with a recovery code and QR that opens your records on a new device, plus a yearly reminder to test it.
 - **Hide amounts** (your choice, off by default), installable on a phone, offline after the first load.
-- **Try the demo:** on the first screen, "Try the demo" loads synthetic data. Nothing is saved to a server.
+- **Try the demo:** on the first screen, "Try the demo" loads synthetic data. Made-up data, kept only in memory and gone when you close it. Import and restore are off.
 
-The only outside request the app makes is the public BTC price from mempool.space.
+The browser talks only to your own Worker. The Worker fetches the public BTC price (history rounded to the hour) from mempool.space, or from your own `MEMPOOL_URL`, and forwards nothing about you.
 
 ## How it works
 

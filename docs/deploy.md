@@ -46,15 +46,12 @@ Without `CLOUDFLARE_API_TOKEN` the Deploy workflow succeeds with a notice and do
 
 ## How a deploy works
 
-`.github/workflows/deploy.yml`:
+`.github/workflows/deploy.yml` has three jobs, so the Cloudflare token never shares a job with code from npm packages:
 
-1. Runs only after the **CI** workflow succeeded for that exact commit on `main` (or a `v*` tag on a commit that is on `main`). It checks out that commit, not "latest main". If a newer commit has landed since, the older run steps aside.
-2. Checks `APP_ORIGIN` (`tools/check-origin.mjs`): must be `https://<name>.workers.dev` or an https custom origin, no path or port, never localhost. Otherwise the deploy fails before anything is uploaded.
-3. `npm ci --ignore-scripts`, `npm run build` (builds the app, then `tools/sri.mjs` adds Subresource Integrity), `tools/hash-build.mjs` writes `dist-hashes.txt`.
-4. `wrangler deploy` with `--var ORIGIN` and `--var RP_ID` set from `APP_ORIGIN`. The localhost defaults in `worker/wrangler.jsonc` are never used in production. Secrets are not touched by a deploy.
-5. Smoke test (`tools/smoke-test.mjs`): `/api/status` answers with `{claimed: boolean}` and the security headers are on the app and the API.
-6. Verifies the live files against the fresh `dist-hashes.txt` (`tools/verify-deployment.mjs --all`).
-7. For `v*` tags, attaches `dist-hashes.txt` to a GitHub Release.
+1. **plan** (no npm, no secrets): runs only after the **CI** workflow succeeded for that exact commit on `main` (or a `v*` tag, which must point at the tested commit, on a commit that is on `main`). It picks that commit, not "latest main"; if a newer commit has landed, the older run steps aside. It checks `APP_ORIGIN` (`tools/check-origin.mjs`): `https://<name>.workers.dev` or an https custom origin, no path or port, never localhost.
+2. **build** (no secrets): `npm ci --ignore-scripts`, `npm run build` (builds the app, then `tools/sri.mjs` adds Subresource Integrity), `tools/hash-build.mjs` writes `dist-hashes.txt`. Uploads the build.
+3. **deploy** (environment `production`): installs only the lockfile-pinned wrangler (`--ignore-scripts`), downloads and checks the build, and gives `CLOUDFLARE_API_TOKEN` to the wrangler step alone. `wrangler deploy` sets `--var ORIGIN` and `--var RP_ID` from `APP_ORIGIN` (and `MEMPOOL_URL` if you set that variable; the default is mempool.space). Secrets are not touched. Then a smoke test (`tools/smoke-test.mjs`: `/api/status` answers and the security headers are on the app and the API) and `tools/verify-deployment.mjs --all` (live files and headers against the fresh `dist-hashes.txt`).
+4. For `v*` tags, `dist-hashes.txt` is attached to a GitHub Release.
 
 Only one deploy runs at a time and a running deploy is never cancelled. If a run was replaced while waiting and a tag has no release, run the workflow by hand with that tag.
 
