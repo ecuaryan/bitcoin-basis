@@ -303,3 +303,28 @@ test('double-clicking Save on a purchase logs it once', async ({ page }) => {
   await expect(page.getByText('3.3767 2105 BTC')).toBeVisible();
   await expect(page.getByText('3.3867 2105 BTC')).toHaveCount(0);
 });
+
+test('the Log sheet footer button stays put across tabs and from form to review', async ({ page }) => {
+  await demo(page);
+  await openLog(page, 'Bought');
+  const d = dialog(page);
+  const footer = d.locator('button[type="submit"]').last();
+  const y = async () => (await footer.boundingBox())?.y ?? -1;
+  const panelBox = async () => (await d.boundingBox())?.height ?? -1;
+  const y0 = await y();
+  const h0 = await panelBox();
+  expect(y0).toBeGreaterThan(0);
+  for (const tab of ['Received', 'Moved', 'Sold', 'Gave', 'Bought']) {
+    await d.getByRole('tab', { name: tab }).click();
+    expect(await y(), `footer on ${tab}`).toBe(y0);
+    expect(await panelBox(), `height on ${tab}`).toBe(h0);
+  }
+  // Form to review (Sold has a review step).
+  await d.getByRole('tab', { name: 'Sold' }).click();
+  await d.getByLabel('From wallet').selectOption({ label: 'Strike' });
+  await d.getByLabel('Amount', { exact: true }).fill('0.002');
+  await footer.click();
+  await expect(d.getByRole('heading', { name: 'Log your sale' })).toBeVisible();
+  expect(await y(), 'footer on review').toBe(y0);
+  expect(await panelBox(), 'height on review').toBe(h0);
+});

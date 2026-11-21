@@ -14,7 +14,7 @@ import { Review } from '../log/Review.tsx';
 /** Close out a frozen wallet: record the loss (cost minus what came back), on a date you can change. */
 export function CloseOutSheet({ open, onClose, wallet }: { open: boolean; onClose(): void; wallet: Wallet }) {
   return (
-    <Sheet open={open} onClose={onClose} title={`Close out ${wallet.name}`}>
+    <Sheet open={open} onClose={onClose} title={`Close out ${wallet.name}`} fixedHeight>
       <CloseOutBody wallet={wallet} onClose={onClose} />
     </Sheet>
   );

@@ -7,6 +7,7 @@ import { AppShell, useLogSheet } from './ui/AppShell.tsx';
 import { lazy, Suspense, useEffect } from 'react';
 import { useServiceWorkerUpdateToast } from './register-sw.ts';
 import { UpdateBoundary } from './ui/UpdateBoundary.tsx';
+import { useScrollBehavior } from './ui/scroll-behavior.ts';
 
 // Everything except Holdings loads on demand, so the first screen stays small.
 const WhatIf = lazy(() => import('./screens/whatif/WhatIf.tsx').then((m) => ({ default: m.WhatIf })));
@@ -28,6 +29,7 @@ function LogRoute() {
 
 export function App() {
   useServiceWorkerUpdateToast();
+  useScrollBehavior();
   return (
     // A screen's code that fails to load (a page left open across a deploy) offers "Reload to update", never a blank app.
     <UpdateBoundary>

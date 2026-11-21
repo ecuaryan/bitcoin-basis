@@ -1,4 +1,5 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
+import { SheetSlot, useFixedFooter } from '../../ui/Sheet.tsx';
 import { cx } from '../../lib/cx.ts';
 import { cleanDecimal, formatMoney, prettyBtc, prettyDollars } from '../../lib/format.ts';
 import { MoneyInput } from '../../ui/formatted-inputs.tsx';
@@ -92,8 +93,31 @@ export function MoreDetails({ open, onOpenChange, children }: { open: boolean; o
   );
 }
 
+/** The button row in the sheet's fixed footer. It sits outside the form in the page, so its submit button asks the form to submit. */
+function PinnedFooter({ children }: { children: ReactNode }) {
+  const anchor = useRef<HTMLSpanElement>(null);
+  return (
+    <>
+      <span ref={anchor} hidden />
+      <SheetSlot name="footer">
+        <div
+          className="flex gap-2.5 pb-1 pt-2"
+          onClick={(e) => {
+            const b = (e.target as HTMLElement).closest('button');
+            if (b && b.type === 'submit' && !b.disabled) anchor.current?.closest('form')?.requestSubmit();
+          }}
+        >
+          {children}
+        </div>
+      </SheetSlot>
+    </>
+  );
+}
+
 /** The pinned button row at the bottom of a form. */
 export function FormFooter({ children }: { children: ReactNode }) {
+  const fixed = useFixedFooter();
+  if (fixed) return <PinnedFooter>{children}</PinnedFooter>;
   return <div className="sticky -bottom-2 -mx-5 mt-2 flex gap-2.5 bg-[linear-gradient(180deg,rgb(22_21_20/0),var(--color-surface)_28%)] px-5 pb-3 pt-4">{children}</div>;
 }
 

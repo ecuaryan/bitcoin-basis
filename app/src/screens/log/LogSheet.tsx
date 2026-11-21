@@ -6,7 +6,7 @@ import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { Button } from '../../ui/Button.tsx';
 import { Callout } from '../../ui/form-fields.tsx';
-import { Sheet } from '../../ui/Sheet.tsx';
+import { Sheet, SheetSlot, SheetSlotsPaused } from '../../ui/Sheet.tsx';
 import { BuyForm } from './BuyForm.tsx';
 import type { Draft, FormProps, LogKind, LogPreset } from './draft.ts';
 import { GiftNoteActions, GiftNoteCard } from './GiftNote.tsx';
@@ -129,11 +129,12 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
     return () => onStep(null);
   }, [sheetTitle, removeDraft, onStep]);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const formAreaRef = useRef<HTMLDivElement>(null);
   const wasReviewing = useRef(false);
   useEffect(() => {
     // Back from the review: top of the form, focus on the tab that was open.
     if (wasReviewing.current && !reviewing) {
-      resetScroll(tabsRef.current);
+      resetScroll(formAreaRef.current);
       tabsRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus({ preventScroll: true });
     }
     wasReviewing.current = reviewing;
@@ -223,12 +224,24 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
   const Form = FORMS[kind];
   return (
     <div className="flex flex-col gap-4">
-      <div ref={tabsRef} hidden={reviewing} className="flex flex-col gap-4">
-        {editing ? <h3 className="m-0 font-display text-lg font-semibold tracking-tight">Change this entry</h3> : <KindTabs kind={kind} onPick={(k) => switchTo(k)} panelId={panelId} />}
+      <div ref={formAreaRef} hidden={reviewing} className="flex flex-col gap-4">
+        {editing ? (
+          <h3 className="m-0 font-display text-lg font-semibold tracking-tight">Change this entry</h3>
+        ) : (
+          <SheetSlotsPaused paused={reviewing}>
+            <SheetSlot name="header">
+              <div ref={tabsRef}>
+                <KindTabs kind={kind} onPick={(k) => switchTo(k)} panelId={panelId} />
+              </div>
+            </SheetSlot>
+          </SheetSlotsPaused>
+        )}
         <div role={editing ? undefined : 'tabpanel'} id={panelId} aria-labelledby={editing ? undefined : `${panelId}-tab-${kind}`} className="flex flex-col gap-4">
-          <SavingContext.Provider value={direct.busy}>
-            <Form key={`${kind}-${formKey}`} initial={editing ? head : null} preset={preset} onReview={(d) => void onReview(d)} onSwitch={switchTo} />
-          </SavingContext.Provider>
+          <SheetSlotsPaused paused={reviewing}>
+            <SavingContext.Provider value={direct.busy}>
+              <Form key={`${kind}-${formKey}`} initial={editing ? head : null} preset={preset} onReview={(d) => void onReview(d)} onSwitch={switchTo} />
+            </SavingContext.Provider>
+          </SheetSlotsPaused>
         </div>
       </div>
       {draft ? <Review draft={draft} showTitle={false} onBack={() => setDraft(null)} onSaved={(s) => saved(draft, s)} /> : null}
@@ -241,7 +254,7 @@ export function LogSheet({ open, onClose, preset }: { open: boolean; onClose(): 
   const [step, setStep] = useState<{ title: string; back: (() => void) | null } | null>(null);
   const title = step?.title ?? (preset.edit !== undefined ? 'Edit entry' : preset.remove !== undefined ? 'Remove entry' : 'Log');
   return (
-    <Sheet open={open} onClose={onClose} title={title} onBack={step?.back ?? undefined} className="sm:max-w-xl">
+    <Sheet open={open} onClose={onClose} title={title} onBack={step?.back ?? undefined} fixedHeight className="sm:max-w-xl">
       <LogBody preset={preset} onClose={onClose} onStep={setStep} />
     </Sheet>
   );

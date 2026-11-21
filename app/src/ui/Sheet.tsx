@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cx } from '../lib/cx.ts';
 import { CloseIcon } from './icons.tsx';
@@ -11,6 +11,31 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 
 function focusables(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.hasAttribute('hidden') && el.getAttribute('aria-hidden') !== 'true');
+}
+
+type Slots = { header: HTMLElement | null; footer: HTMLElement | null; paused: boolean };
+const SlotsContext = createContext<Slots>({ header: null, footer: null, paused: false });
+
+/**
+ * Put content into a fixed part of a `fixedHeight` Sheet: the header (under the title, never scrolls) or the footer
+ * (pinned above the bottom, never moves). In any other sheet it just renders where it is.
+ */
+export function SheetSlot({ name, children }: { name: 'header' | 'footer'; children: ReactNode }) {
+  const slots = useContext(SlotsContext);
+  const target = slots[name];
+  if (slots.paused) return null;
+  return target ? createPortal(children, target) : <>{children}</>;
+}
+
+/** Hide the slot content of a part of the sheet that is mounted but not showing (a form behind its review step). */
+export function SheetSlotsPaused({ paused, children }: { paused: boolean; children: ReactNode }) {
+  const slots = useContext(SlotsContext);
+  return <SlotsContext.Provider value={{ ...slots, paused: slots.paused || paused }}>{children}</SlotsContext.Provider>;
+}
+
+/** True when the sheet has a fixed footer, so a form's button row should not use its own sticky one. */
+export function useFixedFooter(): boolean {
+  return useContext(SlotsContext).footer !== null;
 }
 
 /**
@@ -27,6 +52,7 @@ export function Sheet({
   children,
   className,
   onBack,
+  fixedHeight = false,
 }: {
   open: boolean;
   onClose(): void;
@@ -35,6 +61,11 @@ export function Sheet({
   className?: string;
   /** For a sheet with steps: a back chevron before the title that goes to the step before. */
   onBack?: (() => void) | undefined;
+  /**
+   * A form sheet with a stable height: it fills most of the screen whatever is inside, so nothing moves between tabs or steps.
+   * Content marked with SheetSlot sits in a fixed header or footer; only the middle scrolls. It follows the on-screen keyboard.
+   */
+  fixedHeight?: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -47,6 +78,11 @@ export function Sheet({
   const body = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const timers = useRef<number[]>([]);
+  const wrapper = useRef<HTMLDivElement>(null);
+  const [headerEl, setHeaderEl] = useState<HTMLElement | null>(null);
+  const [footerEl, setFooterEl] = useState<HTMLElement | null>(null);
+  const [more, setMore] = useState(false);
+  const [keyboard, setKeyboard] = useState(false);
 
   // After `open` turns false the sheet stays on screen for a moment, sliding away (no exit under reduced motion,
   // or after a drag, which already moved it off). It is inert and hidden from assistive tech while it goes.
@@ -83,6 +119,42 @@ export function Sheet({
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     return () => el.removeEventListener('touchmove', onTouchMove);
   }, [open]);
+
+  // Fixed height: track the visible area (it shrinks when the keyboard is up) so the footer sits right above the keyboard.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const el = wrapper.current;
+    if (!fixedHeight || !open || !vv || !el) return;
+    const sync = () => {
+      el.style.top = `${vv.offsetTop}px`;
+      el.style.height = `${vv.height}px`;
+      el.style.bottom = 'auto';
+      setKeyboard(window.innerHeight - vv.height > 120);
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => {
+      vv.removeEventListener('resize', sync);
+      vv.removeEventListener('scroll', sync);
+    };
+  }, [fixedHeight, open, rendered]);
+
+  // Fixed height: a soft fade above the footer while there is more to scroll to.
+  useEffect(() => {
+    const el = body.current;
+    if (!fixedHeight || !el) return;
+    const check = () => setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    for (const c of el.children) ro.observe(c);
+    return () => {
+      el.removeEventListener('scroll', check);
+      ro.disconnect();
+    };
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -262,7 +334,7 @@ export function Sheet({
   }
 
   return createPortal(
-    <div className={cx('fixed inset-0 z-50 flex items-end justify-center sm:items-center', closing && 'pointer-events-none')} onKeyDown={closing ? undefined : onKeyDown} inert={closing} aria-hidden={closing || undefined}>
+    <div ref={wrapper} className={cx('fixed inset-0 z-50 flex items-end justify-center sm:items-center', closing && 'pointer-events-none')} onKeyDown={closing ? undefined : onKeyDown} inert={closing} aria-hidden={closing || undefined}>
       <div ref={backdrop} className={cx('absolute inset-0 bg-black/60', closing ? 'animate-fade-out' : 'animate-fade-in')} onClick={closing ? undefined : onClose} aria-hidden="true" />
       <div
         ref={panel}
@@ -275,7 +347,8 @@ export function Sheet({
         onPointerUp={(e) => endDrag(e, false)}
         onPointerCancel={(e) => endDrag(e, true)}
         className={cx(
-          'relative flex max-h-[88dvh] w-full flex-col rounded-t-[28px] shadow-[0_-12px_40px_rgb(0_0_0/0.35)] sm:shadow-[0_24px_64px_rgb(0_0_0/0.55)]',
+          fixedHeight ? (keyboard ? 'h-full' : 'h-[90%] sm:h-[min(680px,88%)]') : 'max-h-[88dvh]',
+          'relative flex w-full flex-col rounded-t-[28px] shadow-[0_-12px_40px_rgb(0_0_0/0.35)] sm:shadow-[0_24px_64px_rgb(0_0_0/0.55)]',
           closing ? 'animate-sheet-out sm:animate-fade-out' : 'animate-sheet-in sm:animate-sheet-pop',
           'border border-b-0 border-line bg-surface pb-[max(20px,env(safe-area-inset-bottom))] outline-none sm:max-w-lg sm:rounded-[28px] sm:border-b',
           className,
@@ -296,10 +369,15 @@ export function Sheet({
               <CloseIcon />
             </button>
           </div>
+          {fixedHeight ? <div ref={setHeaderEl} className="px-5 pb-2 empty:hidden" /> : null}
         </div>
-        <div ref={body} className="overflow-y-auto px-5 pb-2">
-          {children}
+        <div className={cx('relative flex min-h-0 flex-col', fixedHeight && 'flex-1')}>
+          <div ref={body} className={'min-h-0 flex-1 overflow-y-auto px-5 pb-2'}>
+            <SlotsContext.Provider value={{ header: headerEl, footer: footerEl, paused: false }}>{children}</SlotsContext.Provider>
+          </div>
+          {fixedHeight ? <div aria-hidden="true" className={cx('pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-surface to-transparent transition-opacity duration-150', more ? 'opacity-100' : 'opacity-0')} /> : null}
         </div>
+        {fixedHeight ? <div ref={setFooterEl} className="px-5 pt-1 empty:hidden" /> : null}
       </div>
     </div>,
     document.body,
