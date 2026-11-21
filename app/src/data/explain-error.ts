@@ -6,9 +6,9 @@ export function explainError(e: unknown): string {
   if (e instanceof VaultError) {
     switch (e.code) {
       case 'wrong-setup-code':
-        return 'That setup code is not right. Copy it again from your install script.';
+        return 'That setup code is not right. Copy it again from where the setup step printed it.';
       case 'already-claimed':
-        return 'This app already belongs to someone. Use “Open my records” instead.';
+        return 'This app already belongs to someone. Choose “I already use Bitcoin Basis” instead.';
       case 'wrong-recovery-code':
         return 'That recovery code is well formed but does not open these records. It may be from an older kit.';
       case 'prf-unavailable':

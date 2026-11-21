@@ -284,11 +284,15 @@ export const LOAN_KINDS: readonly LoanRecordEntry['kind'][] = ['loan', 'loan-upd
 // Settings
 // ---------------------------------------------------------------------------------------------
 
-/** State income tax: none, a state's flat rate from the tax tables, or a custom flat rate as a whole number of 1/10000ths (530 = 5.3%). */
+/**
+ * State income tax: none, a state's flat rate from the tax tables, or a custom flat rate as a whole number of 1/10000ths
+ * (530 = 5.3%). A custom rate may name the state it is for (a state with graduated rates, where the person enters their
+ * own effective rate); the name is only for showing, the rate is what counts.
+ */
 export type StateTaxSetting =
   | { readonly kind: 'none' }
   | { readonly kind: 'flat'; readonly state: string }
-  | { readonly kind: 'custom'; readonly rate: number };
+  | { readonly kind: 'custom'; readonly rate: number; readonly state?: string };
 
 export interface Settings {
   readonly filingStatus: FilingStatus;

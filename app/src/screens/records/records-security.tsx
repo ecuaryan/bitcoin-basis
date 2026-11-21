@@ -312,7 +312,7 @@ function AddDeviceGroup() {
   const address = appAddress();
   return (
     <Group title="Add another device">
-      <p className={P}>Open this address on the new device and choose “Open my records”. Then type your recovery code.</p>
+      <p className={P}>Open this address on the new device and choose “I already use Bitcoin Basis”. Then type your recovery code.</p>
       <Disclosure label="Show the address and square code">
         <div className="flex items-center gap-4">
           <QrCode text={address} size={132} label={`QR code for ${shortAddress(address)}`} className="flex-none rounded-xl" />

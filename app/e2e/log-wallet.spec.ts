@@ -10,7 +10,7 @@ async function demo(page: Page): Promise<void> {
 }
 
 async function openLog(page: Page, tab: string): Promise<void> {
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Log' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('tab', { name: tab }).click();
@@ -46,6 +46,33 @@ test('log a move with a network fee', async ({ page }) => {
   await axeClean(page);
   await d.getByRole('button', { name: 'Save move' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('Moved: "Add a wallet…" only where coins arrive; the fee value fills in from the price; the first error comes into view', async ({ page }) => {
+  await demo(page);
+  await openLog(page, 'Moved');
+  const d = dialog(page);
+  await expect(d.getByLabel('From', { exact: true }).locator('option', { hasText: 'Add a wallet…' })).toHaveCount(0);
+  await expect(d.getByLabel('To', { exact: true }).locator('option', { hasText: 'Add a wallet…' })).toHaveCount(1);
+  await d.getByLabel('From', { exact: true }).selectOption({ label: 'Strike' });
+  await d.getByLabel('To', { exact: true }).selectOption({ label: 'River' });
+  await d.getByLabel('Amount that arrives').fill('0.01');
+  await d.getByLabel('Network fee in sats (optional)').fill('1500');
+  // 1,500 sats at the demo price ($94,812.40) is $1.42, filled in and editable.
+  await expect(d.getByLabel('Fee worth in dollars')).toHaveValue('1.42');
+  await expect(d).toContainText('From the demo price at $94,812.40 per BTC at that time.');
+  // A bad fee: the error is on the fee, scrolled into view above the pinned Save button, with the cursor in it.
+  await d.getByLabel('Network fee in sats (optional)').fill('15.5');
+  await d.getByRole('button', { name: 'Save move' }).click();
+  const fee = d.getByLabel('Network fee in sats (optional)');
+  await expect(d.getByText('Enter the fee as whole sats, like 2000.')).toBeVisible();
+  await expect(fee).toBeFocused();
+  const save = await d.getByRole('button', { name: 'Save move' }).boundingBox();
+  const err = await d.getByText('Enter the fee as whole sats, like 2000.').boundingBox();
+  expect(save).not.toBeNull();
+  expect(err).not.toBeNull();
+  if (save !== null && err !== null) expect(err.y + err.height).toBeLessThanOrEqual(save.y);
+  await axeClean(page);
 });
 
 test('sell with hand-picked coins saves the pick', async ({ page }) => {

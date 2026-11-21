@@ -11,6 +11,8 @@ import { Amount, Money } from '../../ui/Amount.tsx';
 import { useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
+import { PriceUnavailable } from '../../ui/PriceProblem.tsx';
+import { TaxProfilePrompt } from '../tax/TaxProfilePrompt.tsx';
 import { BtcInput } from '../../ui/formatted-inputs.tsx';
 import { ChevronDownIcon } from '../../ui/more-icons.tsx';
 import { Note, PlanCard, PlanChoice, Sentence } from './sell-parts.tsx';
@@ -114,10 +116,11 @@ export function Sell() {
         </span>
         <span className="text-[15px] text-muted">
           {price === null ? (
-            status === 'error' ? 'No price right now.' : 'Getting the price…'
+            status === 'error' ? 'Needs today’s price.' : 'Getting the price…'
           ) : (
             <>
-              ≈ <Money cents={satsToCents(amount, price)} /> at {formatMoney(price)}
+              ≈ <Money cents={satsToCents(amount, price)} /> at {quote?.source === 'manual' ? 'your price ' : ''}
+              {formatMoney(price)}
             </>
           )}
         </span>
@@ -154,7 +157,7 @@ export function Sell() {
 
   let body;
   if (price === null) {
-    body = <Card className="text-[15px] text-muted">{status === 'error' ? 'The price could not be loaded, so there is nothing to compare yet.' : 'Getting the price…'}</Card>;
+    body = status === 'error' ? <PriceUnavailable need="Selling needs a price to estimate what you would get and the tax." /> : <Card className="text-[15px] text-muted">Getting the price…</Card>;
   } else if (deferred <= 0) {
     body = <Card className="text-[15px] text-muted">Slide to choose how much to sell.</Card>;
   } else if (planned && !planned.plans.ok) {
@@ -221,7 +224,10 @@ export function Sell() {
   return (
     <div className={cx(wide ? 'grid grid-cols-[minmax(0,360px)_minmax(0,1fr)] items-start gap-8' : 'flex flex-col gap-3')}>
       <div className={cx(wide && 'sticky top-8')}>{controls}</div>
-      <div className="flex flex-col gap-3">{body}</div>
+      <div className="flex flex-col gap-3">
+        <TaxProfilePrompt />
+        {body}
+      </div>
 
       <WalletSheet open={sheet === 'wallet'} onClose={() => setSheet(null)} wallets={wallets} selected={wallet.wallet} onPick={pickWallet} />
       {sheet === 'pick' && (

@@ -53,7 +53,8 @@ Type: hero 46px (phone) / 64px (desktop) Space Grotesk 600, tracking -0.03em, `l
 - `Amount({ sats, showUnit, short, interactive, countUp })`: BTC with 8 decimals grouped `0.0074 2665`; tap cycles BTC, sats, USD (global choice, saved). `short` = 4 decimals for lists.
 - `Money({ cents, precision: 'cents'|'dollars', signed, countUp })`: `$1,234.56`.
 - `PriceChart`: hand-rolled SVG price line with dashed average-cost line and orange gap fill.
-- `useCountUp`, `useMediaQuery` (`motion.ts`); `Toast` (`useToast().show(msg)`, polite live region).
+- `useCountUp`, `useMediaQuery` (`motion.ts`); `Toast` (`useToast().show(msg)`, polite live region; just below the header on a phone, bottom right on desktop, never over the brand).
+- `PriceProblem.tsx`: when the live price cannot be loaded, `PriceUnavailable` (a card: "Can’t load today’s Bitcoin price.", what this screen needs it for, Retry, "Use a price I enter") or `PriceUnavailableLine` (the Holdings hero). A typed price is session-only, shown as "Using your price $X" wherever it is used (the `ManualPriceBanner` on every screen), and saved only inside an entry the person saves (its note says "your price").
 - Hide amounts: `usePrefs()` gives `hidden`, `masked`, `toggleHidden`. Holding any masked amount (pointer or Space/Enter) or the eye button shows everything until release. A hidden amount is always one fixed shape (`$•••••`, `•.•••• ••••`; `maskDigits`), so its length never hints at its size.
 - `SectionHeader` (`ui/SectionHeader.tsx`): the one section header. Title left (with its "?" right after the words), a count (`SectionCount`, e.g. `9 entries`) or one action (`SectionLink`, e.g. `All 9 entries`) right. Under a shortened list, `ShowMore` (quiet button, left): `Show all 12 entries`. Empty lists use `EmptyLine`.
 - Entry lists: every list of entries (Records' recent and all entries, a wallet's entries) comes from `entryRows` in `lib/entry-list.ts` and renders `EntryRow`; tapping a row opens `EntrySheet` (details, history, `Edit purchase` / `Remove this purchase`). Settings changes are hidden unless filtered for, balance confirmations are never listed (they show as `Confirmed Nov 21` on the wallet), and every count is the number of rows shown. Strikethrough means removed and always comes with a `Removed` badge; `Edited` appears only for the person's own edits.
@@ -65,7 +66,7 @@ Documentation tiers (`TIER_BG`, `TIER_LABEL` in `screens/holdings-parts.tsx` and
 ## Data
 
 - `useLedger()` (`data/ledger-provider.tsx`): `entries`, replayed `state`, `holdings`, `append(entries)`, `isDemo`, `today`. Build screen numbers from engine output (see `lib/holdings-view.ts`), never re-derive money in components.
-- `usePrice()` (`data/price-provider.tsx`): `quote` (cents per BTC, null until known), `status`, `error`. Live from mempool.space; demo book uses a fixed price.
+- `usePrice()` (`data/price-provider.tsx`): `quote` (cents per BTC, null until known; `source: 'manual'` while a typed price is in use), `status` (of the live price), `error`, `refresh()`, `manualCents` / `setManualCents()`. Live from mempool.space through the Worker; the demo book uses a fixed price; the test build's fake server answers `/api/price` and `/api/price/history` with fixed prices (fail them with `window.__bbFake.server.failing.set('/api/price', 503)`).
 - Demo book: `demo/demo-data.ts` (`buildDemoBook()`); synthetic only.
 
 ## Testing

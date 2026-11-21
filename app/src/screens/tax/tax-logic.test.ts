@@ -1,7 +1,7 @@
 import { createUuidV7, replay, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_TODAY } from '../../demo/demo-data.ts';
-import { answerReason, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, joinWords, overExclusion, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory, nextYearLosses } from './tax-logic.ts';
+import { answerReason, feeOnlyYes, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, joinWords, overExclusion, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory, nextYearLosses } from './tax-logic.ts';
 import { yearSummary } from '@bitcoin-basis/engine';
 
 const state = replay(buildDemoBook().entries);
@@ -21,6 +21,18 @@ describe('answerReason', () => {
     expect(s.digitalAssetAnswer).toBe('yes');
     expect(answerReason(s)).toMatch(/spent coins/);
     expect(answerReason(s)).toMatch(/Buying and holding alone would be No\.$/);
+  });
+  it('says a year with only a network fee is Yes, because the fee is a tiny sale', () => {
+    const fee = replay([
+      { id: 'w1', kind: 'wallet', at: '2025-01-01T12:00:00Z', tz: 'UTC', wallet: 'a', name: 'A', type: 'exchange', defaultProof: '' },
+      { id: 'w2', kind: 'wallet', at: '2025-01-01T12:00:01Z', tz: 'UTC', wallet: 'b', name: 'B', type: 'self-custody', defaultProof: '' },
+      { id: 'b1', kind: 'buy', at: '2025-01-02T12:00:00Z', tz: 'UTC', wallet: 'a', sats: 100_000, costCents: 9_000, tier: 'documented' },
+      { id: 'm1', kind: 'move', at: '2026-02-01T12:00:00Z', tz: 'UTC', from: 'a', to: 'b', sats: 90_000, feeSats: 1_500, feeValueCents: 150, picks: [{ lotId: 'b1', sats: 91_500 }] },
+    ]);
+    const s = yearSummary(fee, 2026);
+    expect(feeOnlyYes(s)).toBe(true);
+    expect(answerReason(s)).toBe('Yes — paying a network fee in BTC counts as a tiny sale.');
+    expect(feeOnlyYes(yearSummary(state, 2026))).toBe(false);
   });
   it('says No for a quiet year', () => {
     const s = yearSummary(replay([]), 2019);

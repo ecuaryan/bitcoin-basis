@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
-import { draftFrom, patchFrom } from './settings-logic.ts';
+import { draftFrom, patchFrom, stateOptionLabel, taxProfileSet } from './settings-logic.ts';
 
 describe('settings form', () => {
   it('starts from the current settings and changes nothing if left alone', () => {
@@ -8,7 +8,7 @@ describe('settings form', () => {
     expect(r).toEqual({ ok: true, patch: {} });
   });
   it('sends only what changed, in cents and basis points', () => {
-    const d = { ...draftFrom(DEFAULT_SETTINGS), wages: '130,000', givingEnabled: true, givingPercent: '12.5', stateKind: 'custom' as const, stateRate: '5.3' };
+    const d = { ...draftFrom(DEFAULT_SETTINGS), wages: '130,000', givingEnabled: true, givingPercent: '12.5', stateChoice: 'custom', stateRate: '5.3' };
     const r = patchFrom(DEFAULT_SETTINGS, d);
     expect(r).toEqual({ ok: true, patch: { wagesCents: 13_000_000, givingEnabled: true, givingPercentBp: 1250, state: { kind: 'custom', rate: 530 } } });
   });
@@ -27,6 +27,27 @@ describe('settings form', () => {
     expect(draftFrom(saved, 2026)).toMatchObject({ carryforwardSt: '50', carryforwardLt: '0' });
     expect(draftFrom(saved, 2025)).toMatchObject({ carryforwardSt: '0', carryforwardLt: '2480' });
     expect(patchFrom(saved, draftFrom(saved, 2026), 2026)).toEqual({ ok: true, patch: {} });
+  });
+  it('starts filing status and state as not set for a new book, and saves them once chosen, even if they match the default', () => {
+    const unset = { filing: false, state: false };
+    const d = draftFrom(DEFAULT_SETTINGS, 2026, unset);
+    expect(d).toMatchObject({ filingStatus: '', stateChoice: '' });
+    expect(patchFrom(DEFAULT_SETTINGS, d, 2026, unset)).toEqual({ ok: true, patch: {} });
+    expect(patchFrom(DEFAULT_SETTINGS, { ...d, filingStatus: 'single', stateChoice: 'ID' }, 2026, unset)).toEqual({ ok: true, patch: { filingStatus: 'single', state: { kind: 'flat', state: 'ID' } } });
+    expect(taxProfileSet([])).toEqual({ filing: false, state: false });
+    const entry = { id: 's', kind: 'settings', at: '2026-01-01T00:00:00Z', tz: 'UTC', patch: { filingStatus: 'single' } } as const;
+    expect(taxProfileSet([entry])).toEqual({ filing: true, state: false });
+  });
+  it('a state with graduated rates saves the rate typed for it, and nothing until one is typed', () => {
+    const d = { ...draftFrom(DEFAULT_SETTINGS), stateChoice: 'CA', stateRate: '' };
+    expect(patchFrom(DEFAULT_SETTINGS, d)).toEqual({ ok: true, patch: {} });
+    expect(patchFrom(DEFAULT_SETTINGS, { ...d, stateRate: '6.2' })).toEqual({ ok: true, patch: { state: { kind: 'custom', rate: 620, state: 'CA' } } });
+    expect(draftFrom({ ...DEFAULT_SETTINGS, state: { kind: 'custom', rate: 620, state: 'CA' } })).toMatchObject({ stateChoice: 'CA', stateRate: '6.2' });
+    expect(patchFrom(DEFAULT_SETTINGS, { ...d, stateChoice: 'TX' })).toEqual({ ok: true, patch: { state: { kind: 'flat', state: 'TX' } } });
+    expect(patchFrom(DEFAULT_SETTINGS, { ...d, stateChoice: 'none' })).toEqual({ ok: true, patch: { state: { kind: 'none' } } });
+    expect(stateOptionLabel('CA')).toBe('California (enter your rate)');
+    expect(stateOptionLabel('ID')).toBe('Idaho 5.3% · 2026 rate');
+    expect(stateOptionLabel('TX')).toBe('Texas no tax · 2026 rate');
   });
   it('explains what is wrong', () => {
     const r = patchFrom(DEFAULT_SETTINGS, { ...draftFrom(DEFAULT_SETTINGS), wages: 'lots', givingName: ' ', timeZone: 'Mars/Base' });

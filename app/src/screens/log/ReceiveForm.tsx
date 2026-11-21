@@ -9,6 +9,7 @@ import type { FormProps } from './draft.ts';
 import { stripSource, useAmount, useFormEnv, usePriceAt, useValue, withSource } from './hooks.ts';
 import { centsText, cleanNumber, localInputFor, longDate, noonOn, nowInstant, usableWallets, usualWallet, whenLabel, zonedInstant } from './model.ts';
 import { AmountInput, FormFooter, ValueField, WalletSelect, WhenField } from './parts.tsx';
+import { focusFirstError } from './first-error.ts';
 
 type SourceType = ReceiveSource['type'];
 const SOURCES: { value: SourceType; label: string }[] = [
@@ -108,6 +109,7 @@ export function ReceiveForm({ initial, preset, onReview, onSwitch }: FormProps) 
       onSubmit={(e) => {
         e.preventDefault();
         review();
+        focusFirstError(e.currentTarget);
       }}
     >
       <div className="flex flex-col gap-1.5">

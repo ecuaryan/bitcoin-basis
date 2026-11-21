@@ -27,8 +27,18 @@ export function joinWords(items: readonly string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
+/** What the "?" next to a fee-only Yes says. */
+export const FEE_SALE_HELP =
+  'Moving coins costs a network fee, paid in bitcoin. Paying with bitcoin, even a few sats, counts as selling them, so the year’s answer is Yes. The gain or loss is usually a few cents; it is listed with your sales.';
+
+/** True when the only reason the year is Yes is network fees paid in BTC (a move with a fee). */
+export function feeOnlyYes(s: YearSummary): boolean {
+  return s.digitalAssetAnswer === 'yes' && s.disposals.length > 0 && s.disposals.every((d) => d.kind === 'fee') && s.income.length === 0 && s.gifts.length + s.charityGifts.length === 0 && s.closeOuts.length === 0 && s.recoveries.length === 0;
+}
+
 /** Why the Form 1040 digital-asset question is Yes or No, in plain words. */
 export function answerReason(s: YearSummary): string {
+  if (feeOnlyYes(s)) return 'Yes — paying a network fee in BTC counts as a tiny sale.';
   const sold = s.disposals.filter((d) => d.kind === 'sell').length;
   const spent = s.disposals.filter((d) => d.kind === 'spend').length;
   const fees = s.disposals.filter((d) => d.kind === 'fee').length;

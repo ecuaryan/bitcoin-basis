@@ -39,7 +39,7 @@ test('reminder: appears for a wallet with coins that was never checked, and Not 
   await sheet.getByLabel('Name').fill('Ledger');
   await sheet.getByRole('button', { name: 'Add wallet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const d = page.getByRole('dialog', { name: 'Log' });
   await d.getByRole('tab', { name: 'Bought' }).click();
   await d.getByLabel('Amount', { exact: true }).fill('0.01');
@@ -82,7 +82,7 @@ test('losses from past years: Holdings explains them and Settings uses the new w
 
 test('year close: offers the losses left for next year and saves them', async ({ page }) => {
   await openDemo(page);
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const d = page.getByRole('dialog', { name: 'Log' });
   await d.getByRole('tab', { name: 'Sold' }).click();
   await d.getByLabel('From wallet').selectOption({ label: 'Strike' });

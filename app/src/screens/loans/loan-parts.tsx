@@ -16,6 +16,11 @@ import { SectionHeader } from '../../ui/SectionHeader.tsx';
 export const LOAN_ESTIMATE_HELP =
   '≈ marks an estimate. Interest since your last payment is worked out from your rate until a statement shows it, and each purchase’s share of the interest is split by how long its money was borrowed. Everything else comes from what you entered.';
 
+/** The break-even label everywhere, and what its "?" says. */
+export const BREAK_EVEN_LABEL = 'Break-even price (with interest paid so far)';
+export const BREAK_EVEN_HELP =
+  'The price at which the coins still held would cover what they cost plus the interest you have paid. Interest you have not paid yet is not included until you pay it.';
+
 /** A quiet "≈" before an estimated figure (read as "about"). */
 export function Approx() {
   return (
@@ -90,7 +95,7 @@ export function loanLines(s: LoanSummary, plain: boolean): { key: string; node: 
       key: 'break-even',
       node: (
         <>
-          Break-even price {s.interestOnPurchasesEstimated ? <Approx /> : null}
+          {BREAK_EVEN_LABEL} {s.interestOnPurchasesEstimated ? <Approx /> : null}
           <M cents={s.breakEvenPriceCents} />
           {words !== null ? <span className="text-muted"> · {words}</span> : null}
         </>

@@ -53,10 +53,54 @@ test('a year with its own table shows no notice, and Settings names the state ra
   await expect(page.getByRole('region', { name: 'What this means' })).toBeVisible();
   await expect(page.getByText(/rates aren't in the app yet/)).toHaveCount(0);
   await go(page, '/settings');
-  await page.getByLabel('State income tax').selectOption('flat');
-  await expect(page.getByRole('option', { name: 'Idaho 5.3% · 2026 rate' })).toBeAttached();
-  const last = await page.getByLabel('State income tax').locator('option').last().textContent();
-  expect(last).toBe('Other state or custom rate…');
+  // The demo keeps its own choices; every state and DC is listed, graduated-rate states ask for your rate.
+  await expect(page.getByLabel('Filing status')).toHaveValue('married-joint');
+  const state = page.getByLabel('State', { exact: true });
+  await expect(state).toHaveValue('ID');
+  await expect(state.getByRole('option', { name: 'Idaho 5.3% · 2026 rate' })).toBeAttached();
+  await expect(state.getByRole('option', { name: 'California (enter your rate)' })).toBeAttached();
+  await expect(state.getByRole('option', { name: 'District of Columbia (enter your rate)' })).toBeAttached();
+  await expect(state.locator('option')).toHaveCount(51 + 2);
+});
+
+test('a new book: filing status and state start Not set, Tax asks once, and each change shows Saved ✓ by its field', async ({ page }) => {
+  await setUp(page);
+  await go(page, '/tax');
+  const prompt = page.getByRole('link', { name: 'Set your filing status and state for tax estimates' });
+  await expect(prompt).toBeVisible();
+  await expectNoViolations(page);
+  await prompt.click();
+  await expect(page).toHaveURL(/\/settings#taxes$/);
+  const filing = page.getByLabel('Filing status');
+  const state = page.getByLabel('State', { exact: true });
+  await expect(filing.locator('option:checked')).toHaveText('Not set');
+  await expect(state.locator('option:checked')).toHaveText('Not set');
+
+  await filing.selectOption('single');
+  const taxes = page.getByRole('region', { name: 'Filing and income' });
+  await expect(taxes.getByText('Saved ✓')).toHaveCount(1);
+  const mark = await taxes.getByText('Saved ✓').boundingBox();
+  const label = await taxes.getByText('Filing status', { exact: true }).boundingBox();
+  expect(Math.abs((mark?.y ?? 0) - (label?.y ?? 100))).toBeLessThan(8); // on the filing status label line
+
+  await state.selectOption('CA');
+  const rate = page.getByLabel('Your California tax rate');
+  await expect(rate).toBeVisible();
+  await expect(taxes).toContainText('last year’s state tax divided by your taxable income');
+  await rate.fill('6.2');
+  await rate.press('Tab');
+  await expect(async () => {
+    const m = await taxes.getByText('Saved ✓').boundingBox();
+    const r = await rate.boundingBox();
+    expect(m).not.toBeNull();
+    expect(r).not.toBeNull();
+    expect((m?.y ?? 0) < (r?.y ?? 0) && (r?.y ?? 0) - (m?.y ?? 0) < 40).toBe(true); // just above the rate box
+  }).toPass();
+  await expect(filing.locator('option', { hasText: 'Not set' })).toHaveCount(0);
+  await expectNoViolations(page);
+
+  await go(page, '/tax');
+  await expect(page.getByRole('link', { name: 'Set your filing status and state for tax estimates' })).toHaveCount(0);
 });
 
 test('Settings › App shows the version and build, linked to the commit', async ({ page }) => {

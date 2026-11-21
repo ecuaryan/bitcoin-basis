@@ -5,15 +5,15 @@ import { useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { PlusIcon } from '../../ui/icons.tsx';
-import { Segmented } from '../../ui/Segmented.tsx';
+import { Segmented, type SegmentedOption } from '../../ui/Segmented.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 import { TextField } from '../../ui/form-fields.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { nowInstant } from '../log/model.ts';
 
-const TYPE_OPTIONS: readonly { value: WalletType; label: string }[] = [
+const TYPE_OPTIONS: readonly SegmentedOption<WalletType>[] = [
   { value: 'exchange', label: 'Exchange' },
-  { value: 'self-custody', label: 'Self-custody' },
+  { value: 'self-custody', label: 'Self-custody', sub: '(your own wallet)' },
   { value: 'retirement', label: 'Retirement' },
 ];
 
@@ -89,7 +89,7 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
       </div>
       <div role="group" aria-labelledby="proof-q" className="flex flex-col gap-1.5">
         <span id="proof-q" className="text-xs text-muted">
-          Where are the receipts for this wallet?
+          Where do you keep receipts for this wallet?
         </span>
         <div className="flex flex-wrap gap-2">
           {[...PROOF_CHIPS, 'Other'].map((c) => (

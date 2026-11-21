@@ -95,7 +95,7 @@ test('a new device: restore with the code, then add a passkey there', async ({ p
   await expect(page.getByRole('heading', { name: 'These records are already set up.' })).toBeVisible();
   await expect(page.getByLabel('Setup code')).toHaveCount(0);
   await expectNoViolations(page);
-  await page.getByRole('button', { name: 'Open my records' }).click();
+  await page.getByRole('button', { name: 'I already use Bitcoin Basis' }).click();
   await expect(page.getByText('This is NOT a Bitcoin seed phrase.')).toBeVisible();
   await expectNoViolations(page);
   await page.getByLabel('Recovery code', { exact: true }).fill(code);

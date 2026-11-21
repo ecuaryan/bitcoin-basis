@@ -14,6 +14,7 @@ import { Sheet } from '../ui/Sheet.tsx';
 import { ChevronRightIcon } from '../ui/icons.tsx';
 import { useHelp } from '../ui/Help.tsx';
 import { usePrice } from '../data/price-provider.tsx';
+import { PriceUnavailableLine, yourPriceText } from '../ui/PriceProblem.tsx';
 import { walletKindLabel } from '../lib/wallet-label.ts';
 import { sumWorth, worthNow } from '../lib/worth-now.ts';
 import { GainWords, WorthLine } from '../ui/WorthLine.tsx';
@@ -30,10 +31,11 @@ const TIER_ORDER: Tier[] = ['documented', 'reconstructed', 'estimated', 'unknown
 
 // ---- Hero ------------------------------------------------------------------------------
 
-export function PriceLine({ quote, status, error, className }: { quote: PriceQuote | null; status: string; error: string | null; className?: string }) {
+export function PriceLine({ quote, status, className }: { quote: PriceQuote | null; status: string; error?: string | null; className?: string }) {
   if (quote === null) {
-    return <span className={cx('text-muted', className)}>{status === 'error' ? `${error ?? 'No price right now.'} Showing cost only.` : 'Getting the price…'}</span>;
+    return status === 'error' ? <PriceUnavailableLine className={className} /> : <span className={cx('text-muted', className)}>Getting the price…</span>;
   }
+  if (quote.source === 'manual') return <span className={cx('text-amber', className)}>{yourPriceText(quote.usdCents)}</span>;
   const tenths = dayChangeTenthsPercent(quote);
   return (
     <>

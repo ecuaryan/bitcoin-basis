@@ -213,7 +213,7 @@ function ClaimedHome({ onOpen, onDemo }: { onOpen(): void; onDemo(): void }) {
       </section>
       <div className="min-h-10 flex-1 lg:flex-none" />
       <div className="relative flex flex-col gap-3">
-        <BigButton onClick={onOpen}>Open my records</BigButton>
+        <BigButton onClick={onOpen}>I already use Bitcoin Basis</BigButton>
       </div>
       <div className="relative mt-2 flex flex-col items-center gap-0.5 text-center text-xs text-muted">
         <span>
@@ -262,7 +262,7 @@ function SetupForm({ busy, error, onClaim }: { busy: boolean; error: string | nu
         />
       </div>
       <span id={`${id}-hint`} className="-mt-1 text-xs text-muted">
-        Printed by <code className="font-mono">npm run setup</code>
+        Shown when the app was set up (the setup step printed it)
       </span>
       <ErrorLine>{problem ?? error}</ErrorLine>
       <BigButton type="submit" disabled={busy || code.trim() === ''}>
@@ -322,7 +322,7 @@ function ConfirmStep({ code, onDone }: { code: string; onDone(): void }) {
       >
         <div className="flex flex-col gap-1.5">
           <label htmlFor={id} className="text-[13px] text-soft">
-            Group&nbsp;4 of your recovery code
+            Group 4 of your recovery code
           </label>
           <input
             id={id}

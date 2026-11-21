@@ -212,6 +212,8 @@ export function Sheet({
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     gesture.current = null;
     if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    // A sheet opened from inside this one is a React child too: its events bubble here, but are not ours to drag.
+    if (!(e.target instanceof Node) || panel.current?.contains(e.target) !== true) return;
     if (window.matchMedia('(min-width: 640px)').matches) return;
     const target = e.target as HTMLElement;
     const inHeader = target.closest('[data-sheet-grip]') !== null;
@@ -334,7 +336,16 @@ export function Sheet({
   }
 
   return createPortal(
-    <div ref={wrapper} className={cx('fixed inset-0 z-50 flex items-end justify-center sm:items-center', closing && 'pointer-events-none')} onKeyDown={closing ? undefined : onKeyDown} inert={closing} aria-hidden={closing || undefined}>
+    <div
+      ref={wrapper}
+      className={cx('fixed inset-0 z-50 flex items-end justify-center sm:items-center', closing && 'pointer-events-none')}
+      onKeyDown={closing ? undefined : onKeyDown}
+      // A form in this sheet must never submit a form around the place the sheet was opened from (React events bubble
+      // through portals): "Add a loan" or "Add a wallet" inside the Log sheet would otherwise save the purchase too.
+      onSubmit={(e) => e.stopPropagation()}
+      inert={closing}
+      aria-hidden={closing || undefined}
+    >
       <div ref={backdrop} className={cx('absolute inset-0 bg-black/60', closing ? 'animate-fade-out' : 'animate-fade-in')} onClick={closing ? undefined : onClose} aria-hidden="true" />
       <div
         ref={panel}

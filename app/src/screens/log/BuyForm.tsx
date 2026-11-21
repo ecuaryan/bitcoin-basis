@@ -1,4 +1,4 @@
-import { mulDivRoundHalfUp, parseDollars, SATS_PER_BTC, uuidv7, type BuyEntry, type Entry, type Tier } from '@bitcoin-basis/engine';
+import { localDate, mulDivRoundHalfUp, parseDollars, SATS_PER_BTC, uuidv7, type BuyEntry, type Entry, type Tier } from '@bitcoin-basis/engine';
 import { useSaving } from './saving.ts';
 import { useState } from 'react';
 import { formatMoney } from '../../lib/format.ts';
@@ -11,8 +11,9 @@ import type { FormProps } from './draft.ts';
 import { useAmount, useFormEnv, usePriceAt, withSource, stripSource } from './hooks.ts';
 import { centsText, chainIds, cleanNumber, localInputFor, nowInstant, usableWallets, usualWallet, whenLabel, zonedInstant } from './model.ts';
 import { AmountInput, FormFooter, WalletSelect, WhenField } from './parts.tsx';
-import { LoanSetupSheet } from '../loans/LoanSetup.tsx';
+import { LoanSetupSheet, type PendingLoan } from '../loans/LoanSetup.tsx';
 import { drawLots } from '../../lib/loans-view.ts';
+import { focusFirstError } from './first-error.ts';
 
 const ADD_LOAN = '__new-loan__';
 
@@ -38,9 +39,12 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
   const link = state.loans.flatMap((l) => l.draws.filter((d) => drawLots(d).includes(lotId)).map((d) => ({ loanId: l.id, entryId: d.entryId }))).at(0) ?? null;
   const [paidWith, setPaidWith] = useState(link?.loanId ?? '');
   const [addingLoan, setAddingLoan] = useState(false);
+  // A loan set up from here waits in the form: it is saved with the purchase (or not at all).
+  const [pending, setPending] = useState<PendingLoan | null>(null);
   const [linkIds] = useState(() => [uuidv7(), uuidv7()] as const);
-  const loans = state.loans.filter((l) => !l.closed || l.id === link?.loanId);
-  const loan = state.loans.find((l) => l.id === paidWith);
+  const loans = [...state.loans.filter((l) => !l.closed || l.id === link?.loanId), ...(pending === null ? [] : [{ id: pending.id, name: pending.name }])];
+  const loan = loans.find((l) => l.id === paidWith);
+  const newLoan = pending !== null && paidWith === pending.id ? pending : null;
 
   const wallets = usableWallets(state, edit?.wallet);
   const w = state.wallets.find((x) => x.id === wallet);
@@ -74,9 +78,12 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
       ...(note.trim() === '' && !usd ? {} : { note: withSource(note, usd ? `Price source: ${price.source} at ${formatMoney(price.cents ?? 0)} per BTC` : '') }),
     };
     const was = link?.loanId ?? '';
+    // The new loan starts no later than this purchase, so its rate history covers the money drawn for it.
+    const buyDate = localDate(at, tz);
+    const loanEntries: Entry[] = newLoan === null ? [] : newLoan.entries.map((e) => (e.kind === 'loan' && buyDate < e.opened ? { ...e, opened: buyDate } : e));
     const linkEntries = (reason: string): Entry[] => {
       if (paidWith === was) return [];
-      const out: Entry[] = [];
+      const out: Entry[] = [...loanEntries];
       if (link !== null) out.push({ id: linkIds[0], kind: 'delete', at: nowInstant(nowMs), tz, replaces: link.entryId, reason: reason === '' ? 'Paid with changed' : reason });
       if (paidWith !== '') out.push({ id: linkIds[1], kind: 'loan-link', at: edit === null ? at : nowInstant(nowMs), tz, loan: paidWith, lot: lotId });
       return out;
@@ -92,7 +99,7 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
         ...(perBtc === null ? [] : [{ label: 'Cost per BTC', value: <Money cents={perBtc} /> }]),
         { label: 'When', value: whenLabel(at, tz, nowMs) },
         { label: 'Wallet', value: w.name },
-        ...(loan !== undefined || was !== '' ? [{ label: 'Paid with', value: loan?.name ?? 'Bank or cash' }] : []),
+        ...(loan !== undefined || was !== '' ? [{ label: 'Paid with', value: loan === undefined ? 'Bank or cash' : newLoan !== null ? `${loan.name} (new loan)` : loan.name }] : []),
         { label: 'Receipt', value: proofText || 'None yet' },
         { label: 'How sure', value: TIER_LABEL[tier] },
       ],
@@ -106,6 +113,7 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
       onSubmit={(e) => {
         e.preventDefault();
         review();
+        focusFirstError(e.currentTarget);
       }}
     >
       <AmountInput amount={amount} label="Amount" needsPrice error={tried ? errors.amount : null} />
@@ -128,9 +136,16 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
         value={paidWith}
         onChange={(e) => (e.target.value === ADD_LOAN ? setAddingLoan(true) : setPaidWith(e.target.value))}
         options={[{ value: '', label: 'Bank or cash' }, ...loans.map((l) => ({ value: l.id, label: l.name })), ...(edit === null ? [{ value: ADD_LOAN, label: 'Add a loan…' }] : [])]}
-        hint={loan !== undefined ? `Counts as money drawn from ${loan.name} that day.` : undefined}
+        hint={loan !== undefined ? `Counts as money drawn from ${loan.name} that day.${newLoan !== null ? ' The loan is saved with this purchase.' : ''}` : undefined}
       />
-      <LoanSetupSheet open={addingLoan} quick onClose={() => setAddingLoan(false)} onAdded={setPaidWith} />
+      <LoanSetupSheet
+        open={addingLoan}
+        onClose={() => setAddingLoan(false)}
+        onPending={(l) => {
+          setPending(l);
+          setPaidWith(l.id);
+        }}
+      />
       <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
       <TextField label="Receipt" value={proofText} onChange={(e) => setProof(e.target.value)} autoComplete="off" hint={w && proof === null ? `${w.name}'s usual` : undefined} />
       <details className="rounded-2xl border border-line px-3.5 py-1">

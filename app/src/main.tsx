@@ -4,7 +4,7 @@ import { App } from './App.tsx';
 import { AppProviders } from './AppProviders.tsx';
 import { captureInstallPrompt } from './data/install.ts';
 import { createMemoryStore } from './data/memory-store.ts';
-import { openVault } from './data/open-vault.ts';
+import { openPriceService, openVault } from './data/open-vault.ts';
 import { incomingRecovery } from './data/recovery-handoff.ts';
 import { purgeLegacyStorage } from './data/session-memory.ts';
 import { registerServiceWorker } from './register-sw.ts';
@@ -22,8 +22,10 @@ purgeLegacyStorage();
 captureInstallPrompt();
 
 let vault: Awaited<ReturnType<typeof openVault>>;
+let priceService: Awaited<ReturnType<typeof openPriceService>>;
 try {
   vault = await openVault();
+  priceService = await openPriceService();
 } catch (e) {
   // Storage that won't open (held by another window, or broken) gets a plain message, never a blank page.
   createRoot(root).render(<StartupProblem error={e} />);
@@ -34,7 +36,7 @@ const demoStore = createMemoryStore();
 
 createRoot(root).render(
   <StrictMode>
-    <AppProviders vault={vault} demoStore={demoStore}>
+    <AppProviders vault={vault} demoStore={demoStore} {...(priceService === undefined ? {} : { priceService })}>
       <App />
     </AppProviders>
   </StrictMode>,

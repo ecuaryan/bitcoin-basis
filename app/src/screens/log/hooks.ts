@@ -51,7 +51,8 @@ export function usePriceAt(at: string | null, nowMs: number): PriceAt {
 
   return useMemo<PriceAt>(() => {
     if (at === null) return { cents: null, status: 'idle', source };
-    if (useQuote && quote !== null) return { cents: quote.usdCents, status: 'ok', source };
+    // A price the person typed (the live one could not be loaded) is named as theirs in the hint and the entry's note.
+    if (useQuote && quote !== null) return { cents: quote.usdCents, status: 'ok', source: quote.source === 'manual' ? 'your price' : source };
     if (fetched !== null && fetched.at === at) return { cents: fetched.cents, status: fetched.error ? 'error' : 'ok', source };
     return { cents: null, status: 'loading', source };
   }, [at, useQuote, quote, fetched, source]);

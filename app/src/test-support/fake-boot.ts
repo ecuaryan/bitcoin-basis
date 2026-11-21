@@ -3,6 +3,8 @@
  * server and fake authenticator, and exposes them on `window.__bbFake` for Playwright.
  * BB_FAKE_AUTHENTICATOR_MARKER: the production bundle must never contain this text.
  */
+import { createMempoolPriceService, type PriceService } from '../data/price.ts';
+import { DEMO_PRICE_CENTS, demoPriceAt } from '../demo/demo-data.ts';
 import { createApiClient } from '../vault/api.ts';
 import { createMemoryDb } from '../vault/idb.ts';
 import { FakeAuthenticator } from '../vault/test/fake-authenticator.ts';
@@ -31,6 +33,10 @@ export async function openFakeVault(): Promise<Vault> {
   const host = window.location.hostname;
   if (host !== '127.0.0.1' && host !== 'localhost') throw new Error('The fake vault only runs on localhost.');
   const server = new FakeServer(FAKE_SETUP_CODE);
+  // Prices for the app's own price endpoints, so testers and tests see real figures: today's is fixed, the past
+  // follows the demo's made-up curve. Tests can fail them with `server.failing.set('/api/price', 503)`.
+  server.priceCents = DEMO_PRICE_CENTS;
+  server.priceAt = (ts) => demoPriceAt(ts * 1000);
   const auth = new FakeAuthenticator('e2e', { origin: window.location.origin, rpId: host });
   const client = server.client();
   const vault = await Vault.open({
@@ -46,4 +52,11 @@ export async function openFakeVault(): Promise<Vault> {
   });
   window.__bbFake = { server, auth, client, vault, setupCode: FAKE_SETUP_CODE, marker: FAKE_MARKER };
   return vault;
+}
+
+/** The price service of the test build: the real client code, answered by the fake server (same switches: offline, failing). */
+export function fakePriceService(): PriceService {
+  const fake = window.__bbFake;
+  if (fake === undefined) throw new Error('Open the fake vault first.');
+  return createMempoolPriceService((url, init) => fake.client.fetch(url, { ...init, credentials: 'same-origin' }));
 }

@@ -47,7 +47,7 @@ test('Holdings: hiding amounts and changing the unit move nothing', async ({ pag
 });
 
 test('Log sheet: switching kinds keeps the sheet and its Save button still', async ({ page }) => {
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Log' });
   await expect(dialog).toBeVisible();
   const sheetTop = await top(dialog);
@@ -58,7 +58,7 @@ test('Log sheet: switching kinds keeps the sheet and its Save button still', asy
 });
 
 test('Log sheet: fixing an error while typing does not pull the form up', async ({ page }) => {
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Log' });
   await dialog.getByRole('button', { name: 'Save purchase' }).click();
   await expect(dialog.getByRole('alert').first()).toBeVisible();

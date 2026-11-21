@@ -95,7 +95,7 @@ async function addWallet(page: Page, name: string): Promise<void> {
 }
 
 async function openLog(page: Page, tab: string): Promise<void> {
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Log' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('tab', { name: tab }).click();
@@ -132,10 +132,10 @@ async function holdings(page: Page): Promise<{ btc: string[]; wallets: string[] 
   return { btc, wallets };
 }
 
-/** Restore on a device that has nothing: "Open my records" (the server already holds a vault), then the code. */
+/** Restore on a device that has nothing: "I already use Bitcoin Basis" (the server already holds a vault), then the code. */
 async function restoreAndEnter(d: Device, code: string, addPasskey: boolean): Promise<void> {
   await d.page.goto('/');
-  await d.page.getByRole('button', { name: /^(Open my records|I already use Bitcoin Basis)$/ }).click();
+  await d.page.getByRole('button', { name: 'I already use Bitcoin Basis', exact: true }).click();
   await d.page.getByLabel('Recovery code', { exact: true }).fill(code);
   await d.page.getByRole('button', { name: 'Restore my records' }).click();
   await expect(d.page.getByRole('heading', { name: 'Records restored' })).toBeVisible({ timeout: 60_000 });
@@ -199,7 +199,7 @@ test('restore drill: backup cron, wipe the data bucket, restore, recover on fres
   const A = await newDevice(browser, 'A-desktop', 'desktop');
   const a = A.page;
   await a.goto('/');
-  await a.getByLabel('Setup code').fill(SETUP_CODE);
+  await a.getByLabel('Setup code', { exact: true }).fill(SETUP_CODE);
   await a.getByRole('button', { name: 'Claim and create my passkey' }).click();
   await expect(a.getByRole('heading', { name: 'Save your recovery code' })).toBeVisible({ timeout: 60_000 });
   const code = await readCode(a);

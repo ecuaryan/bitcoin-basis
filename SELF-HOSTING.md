@@ -154,11 +154,11 @@ Check that `/api/status` now says `{"claimed":true}`.
 
 ### 10. Add a second device
 
-Settings (the gear), Security and devices, "Add another device" shows the address and a QR. On the new device open the address. The first screen says "These records are already set up."; press **"Open my records"**. That opens **"Open your records"**: type the recovery code into its field, or press **"Use a passkey"** if a passkey that syncs to this device exists (iCloud Keychain, Google Password Manager, a password manager). When it asks, add a passkey on this device.
+Settings (the gear), Security and devices, "Add another device" shows the address and a QR. On the new device open the address. The first screen says "These records are already set up."; press **"I already use Bitcoin Basis"**. That opens **"Open your records"**: type the recovery code into its field, or press **"Use a passkey"** if a passkey that syncs to this device exists (iCloud Keychain, Google Password Manager, a password manager). When it asks, add a passkey on this device.
 
 ### 11. Print the emergency kit
 
-Right after setup, the app offers the kit (Settings, Emergency kit, or "Print the kit" while the code is on screen). Print it, write your name at the top, keep it with your estate papers. A year later, or when the app reminds you, test it: open a private window, press "Open my records", type the code.
+Right after setup, the app offers the kit (Settings, Emergency kit, or "Print the kit" while the code is on screen). Print it, write your name at the top, keep it with your estate papers. A year later, or when the app reminds you, test it: open a private window, press "I already use Bitcoin Basis", type the code.
 
 ## Updating
 

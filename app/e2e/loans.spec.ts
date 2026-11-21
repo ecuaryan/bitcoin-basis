@@ -14,7 +14,7 @@ const expected = (() => {
 const dollars = (c: number) => formatMoney(c, { precision: 'dollars' });
 
 async function openLog(page: Page) {
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Log' });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -28,7 +28,7 @@ test('Holdings: the loan card shows exactly the engine’s figures for the demo 
   await expect(card).toContainText(`Bought ${shortBtc(expected.heldSats)} BTC · worth ${dollars(expected.valueCents ?? 0)}`);
   await expect(card).toContainText(`Interest paid ${dollars(expected.interestPaidCents)}`);
   await expect(card).toContainText(formatMoney(expected.gainIncludingInterestCents ?? 0, { precision: 'dollars', signed: true }));
-  await expect(card).toContainText(`Break-even price ${dollars(expected.breakEvenPriceCents ?? 0)}`);
+  await expect(card).toContainText(`Break-even price (with interest paid so far) ${dollars(expected.breakEvenPriceCents ?? 0)}`);
   const left = expected.payoffLeftoverSats ?? 0;
   await expect(card).toContainText(`${shortBtc(Math.abs(left))} BTC ${left < 0 ? 'short' : 'left over'}`);
   await expect(page.getByRole('region', { name: 'Loan payment reminder' })).toHaveCount(0);
@@ -141,17 +141,54 @@ test('Bought: "Paid with" a loan saves the purchase and its link in one save, an
   await expect(page.getByRole('region', { name: 'Purchases' })).toContainText('5 purchases');
 });
 
-test('Bought: "Add a loan…" sets one up without leaving the purchase', async ({ page }) => {
+test('Bought: "Add a loan…" returns to the purchase with the new loan chosen and saves nothing until Save purchase', async ({ page }) => {
+  await openDemo(page);
+  const log = await openLog(page);
+  await log.getByLabel('Amount', { exact: true }).fill('0.01');
+  await log.getByLabel('Total paid, including fees').fill('900');
+  await log.getByLabel('When').fill('2026-10-01T10:00');
+  await log.getByLabel('Paid with').selectOption({ label: 'Add a loan…' });
+  const setup = page.getByRole('dialog', { name: 'Track a loan' });
+  await setup.getByLabel('Name').fill('Card line');
+  await setup.getByLabel('Interest rate (APR)').fill('19.99');
+  await setup.getByRole('button', { name: 'Use this loan' }).click();
+  await expect(setup).toHaveCount(0);
+
+  // Back on the purchase, everything as typed, the new loan chosen, and nothing saved yet.
+  await expect(log).toBeVisible();
+  await expect(log.getByLabel('Paid with').locator('option:checked')).toHaveText('Card line');
+  await expect(log.getByLabel('Total paid, including fees')).toHaveValue('900');
+  await expect(log).toContainText('The loan is saved with this purchase.');
+  await expect(page.getByText('Purchase saved.')).toHaveCount(0);
+  await expectNoViolations(page);
+
+  // One save: the purchase, the loan and the link together.
+  await log.getByRole('button', { name: 'Save purchase' }).click();
+  await expect(page.getByText('Purchase saved.')).toBeVisible();
+  await expect(log).toHaveCount(0);
+  await go(page, '/records?v=loans');
+  await page.getByRole('link', { name: /^Card line/ }).click();
+  await expect(page.getByRole('heading', { name: 'Card line', level: 1 })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Purchases' })).toContainText('1 purchase');
+  // The loan starts on the purchase's day, not today, so its rate covers the money drawn for it.
+  await expect(page.getByRole('region', { name: 'Rate' })).toContainText('From the start, Oct 1');
+});
+
+test('Bought: a loan added from the form is not saved if the purchase is not', async ({ page }) => {
   await openDemo(page);
   const log = await openLog(page);
   await log.getByLabel('Paid with').selectOption({ label: 'Add a loan…' });
   const setup = page.getByRole('dialog', { name: 'Track a loan' });
   await setup.getByLabel('Name').fill('Card line');
   await setup.getByLabel('Interest rate (APR)').fill('19.99');
-  await setup.getByRole('button', { name: 'Save loan' }).click();
+  await setup.getByRole('button', { name: 'Use this loan' }).click();
   await expect(setup).toHaveCount(0);
   await expect(log.getByLabel('Paid with').locator('option:checked')).toHaveText('Card line');
-  await expectNoViolations(page);
+  await log.getByRole('button', { name: 'Close' }).click();
+  await expect(log).toHaveCount(0);
+  await go(page, '/records?v=loans');
+  await expect(page.getByRole('link', { name: /Home equity line/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Card line/ })).toHaveCount(0);
 });
 
 test('Loan payment sheet: typing and errors never move the Save button', async ({ page }) => {

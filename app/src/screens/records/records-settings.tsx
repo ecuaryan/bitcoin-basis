@@ -1,4 +1,4 @@
-import { carryforwardFor, FILING_STATUSES, STATE_RATES, yearOf } from '@bitcoin-basis/engine';
+import { carryforwardFor, FILING_STATUSES, US_STATES, yearOf } from '@bitcoin-basis/engine';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useDelayedSave } from '../../ui/use-delayed-save.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -10,12 +10,29 @@ import { MoneyInput, PercentInput } from '../../ui/formatted-inputs.tsx';
 import { Field, SelectBox, Toggle } from '../../ui/Field.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { useWriter } from '../../ui/use-writer.ts';
-import { draftFrom, FILING_LABELS, patchFrom, timeZoneChoices, type SettingsDraft } from './settings-logic.ts';
+import { draftFrom, FILING_LABELS, needsOwnRate, NO_STATE_TAX, OTHER_STATE, patchFrom, stateOptionLabel, taxProfileSet, timeZoneChoices, type SettingsDraft } from './settings-logic.ts';
 
 /** How long after the last change the settings are saved. */
 export const SAVE_DELAY_MS = 1500;
 
-const STATES = Object.values(STATE_RATES).sort((a, b) => a.name.localeCompare(b.name));
+const STATE_CODES = Object.keys(US_STATES).sort((a, b) => (US_STATES[a] ?? a).localeCompare(US_STATES[b] ?? b));
+
+/**
+ * Marks the field changed last once it is saved: "Saved ✓" stays on its label line (no toast to miss, and nothing
+ * below moves). Only one field carries it at a time.
+ */
+function SavedMark({ show, children }: { show: boolean; children: ReactNode }) {
+  return (
+    <div className="relative">
+      {children}
+      {show ? (
+        <span role="status" className="pointer-events-none absolute right-0 top-0 text-xs font-semibold leading-4 text-accent">
+          Saved ✓
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -28,20 +45,24 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 /** Settings are entries too: saving adds a settings entry with only what changed. */
 export function SettingsView() {
-  const { state, today } = useLedger();
+  const { state, entries, today } = useLedger();
   const thisYear = yearOf(today);
+  const set = useMemo(() => taxProfileSet(entries), [entries]);
   const stale = staleLosses(state.settings, thisYear);
   const help = useHelp(`What are ${LOSSES_TITLE.toLowerCase()}?`, LOSSES_HELP);
   const write = useWriter();
   const toast = useToast();
   const s = state.settings;
-  const [draft, setDraft] = useState<SettingsDraft>(() => draftFrom(s, thisYear));
+  const [draft, setDraft] = useState<SettingsDraft>(() => draftFrom(s, thisYear, set));
   const [errors, setErrors] = useState<Partial<Record<keyof SettingsDraft, string>>>({});
   const err = (k: keyof SettingsDraft) => errors[k];
+  /** The field whose change was saved last: it shows "Saved ✓". */
+  const [savedKey, setSavedKey] = useState<keyof SettingsDraft | null>(null);
+  const saved = (...keys: (keyof SettingsDraft)[]) => savedKey !== null && keys.includes(savedKey);
 
   /** Changes save as you go, a moment after the last one, as a single entry with only what differs from now. Nothing to forget to press. */
-  async function save(d: SettingsDraft, relabelYear = false) {
-    const r = patchFrom(s, d, thisYear);
+  async function save(d: SettingsDraft, relabelYear = false, key: keyof SettingsDraft | null = null) {
+    const r = patchFrom(s, d, thisYear, set);
     if (!r.ok) {
       setErrors(r.errors);
       return;
@@ -56,52 +77,66 @@ export function SettingsView() {
       setDraft((cur) => ({ ...cur, carryforwardSt: shown.carryforwardSt, carryforwardLt: shown.carryforwardLt }));
     }
     await write({ kind: 'settings', patch });
+    setSavedKey(relabelYear ? 'carryforwardLt' : key);
     toast.show('Saved.', { success: true });
   }
-  const later = useDelayedSave((d: SettingsDraft) => save(d), SAVE_DELAY_MS);
+  const later = useDelayedSave((v: { d: SettingsDraft; key: keyof SettingsDraft }) => save(v.d, false, v.key), SAVE_DELAY_MS);
   /** A choice (select or switch): set it and save it soon. */
   const pick = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
-    later(next);
+    later({ d: next, key });
   };
   /** A typed field: update while typing, save on leaving the field. */
   const type = <K extends keyof SettingsDraft>(key: K) => ({
     onChange: (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [key]: e.target.value })),
-    onBlur: () => later(draft),
+    onBlur: () => later({ d: draft, key }),
   });
   const num = <K extends keyof SettingsDraft>(key: K) => ({
     onChange: (v: string) => setDraft((d) => ({ ...d, [key]: v })),
-    onBlur: () => later(draft),
+    onBlur: () => later({ d: draft, key }),
   });
   const zones = useMemo(() => timeZoneChoices(draft.timeZone), [draft.timeZone]);
 
   return (
     <div className="flex max-w-[640px] flex-col gap-3">
       <Group title="Filing and income">
-        <SelectBox label="Filing status" value={draft.filingStatus} onChange={(e) => pick('filingStatus', e.target.value as SettingsDraft['filingStatus'])}>
-          {FILING_STATUSES.map((f) => (
-            <option key={f} value={f}>
-              {FILING_LABELS[f]}
-            </option>
-          ))}
-        </SelectBox>
-        <MoneyInput label="Wages and other income (a year)" value={draft.wages} {...num('wages')} error={err('wages')} />
-        <SelectBox label="State income tax" value={draft.stateKind} onChange={(e) => pick('stateKind', e.target.value as SettingsDraft['stateKind'])}>
-          <option value="none">None</option>
-          <option value="flat">A state with one rate</option>
-          <option value="custom">Other state or custom rate…</option>
-        </SelectBox>
-        {draft.stateKind === 'flat' && (
-          <SelectBox label="State" value={draft.stateCode} onChange={(e) => pick('stateCode', e.target.value)}>
-            {STATES.map((st) => (
-              <option key={st.code} value={st.code}>
-                {`${st.name} ${st.kind === 'none' ? 'no tax' : `${st.rate / 100}%`} · ${st.year} rate`}
+        <SavedMark show={saved('filingStatus')}>
+          <SelectBox label="Filing status" value={draft.filingStatus} onChange={(e) => pick('filingStatus', e.target.value as SettingsDraft['filingStatus'])}>
+            {draft.filingStatus === '' ? <option value="">Not set</option> : null}
+            {FILING_STATUSES.map((f) => (
+              <option key={f} value={f}>
+                {FILING_LABELS[f]}
               </option>
             ))}
           </SelectBox>
+        </SavedMark>
+        <SavedMark show={saved('wages')}>
+          <MoneyInput label="Wages and other income (a year)" value={draft.wages} {...num('wages')} error={err('wages')} />
+        </SavedMark>
+        <SavedMark show={saved('stateChoice') || (saved('stateRate') && !needsOwnRate(draft.stateChoice))}>
+          <SelectBox label="State" value={draft.stateChoice} onChange={(e) => pick('stateChoice', e.target.value)}>
+            {draft.stateChoice === '' ? <option value="">Not set</option> : null}
+            {STATE_CODES.map((code) => (
+              <option key={code} value={code}>
+                {stateOptionLabel(code)}
+              </option>
+            ))}
+            <option value={NO_STATE_TAX}>No state income tax</option>
+            <option value={OTHER_STATE}>Somewhere else (enter your rate)</option>
+          </SelectBox>
+        </SavedMark>
+        {needsOwnRate(draft.stateChoice) && (
+          <SavedMark show={saved('stateRate')}>
+            <PercentInput
+              label={draft.stateChoice === OTHER_STATE ? 'Your state tax rate' : `Your ${US_STATES[draft.stateChoice] ?? 'state'} tax rate`}
+              value={draft.stateRate}
+              {...num('stateRate')}
+              error={err('stateRate')}
+              hint="Your effective rate: last year’s state tax divided by your taxable income, like 5.5."
+            />
+          </SavedMark>
         )}
-        {draft.stateKind === 'custom' && <PercentInput label="Your state rate" value={draft.stateRate} {...num('stateRate')} error={err('stateRate')} />}
         <div role="group" aria-label={LOSSES_TITLE} className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between gap-2">
             <span className="flex items-baseline gap-1 text-sm font-semibold">
@@ -120,37 +155,51 @@ export function SettingsView() {
             </p>
           )}
           <div className="grid grid-cols-2 gap-2.5">
-            <MoneyInput label="Short-term" value={draft.carryforwardSt} {...num('carryforwardSt')} error={err('carryforwardSt')} />
-            <MoneyInput label="Long-term" value={draft.carryforwardLt} {...num('carryforwardLt')} error={err('carryforwardLt')} />
+            <SavedMark show={saved('carryforwardSt')}>
+              <MoneyInput label="Short-term" value={draft.carryforwardSt} {...num('carryforwardSt')} error={err('carryforwardSt')} />
+            </SavedMark>
+            <SavedMark show={saved('carryforwardLt')}>
+              <MoneyInput label="Long-term" value={draft.carryforwardLt} {...num('carryforwardLt')} error={err('carryforwardLt')} />
+            </SavedMark>
           </div>
         </div>
       </Group>
 
       <Group title="Giving">
-        <Toggle label="Set aside a share of gains" hint="Off unless you want it" checked={draft.givingEnabled} onChange={(v) => pick('givingEnabled', v)} />
+        <Toggle label="Set aside a share of gains" hint={saved('givingEnabled') ? 'Saved ✓' : 'Off unless you want it'} checked={draft.givingEnabled} onChange={(v) => pick('givingEnabled', v)} />
         {draft.givingEnabled && (
           <>
-            <Field label="What to call it" value={draft.givingName} {...type('givingName')} hint={err('givingName')} />
+            <SavedMark show={saved('givingName')}>
+              <Field label="What to call it" value={draft.givingName} {...type('givingName')} hint={err('givingName')} />
+            </SavedMark>
             <div className="grid grid-cols-2 gap-2.5">
-              <PercentInput label="Share of gains" value={draft.givingPercent} {...num('givingPercent')} error={err('givingPercent')} />
-              <SelectBox label="Counted" value={draft.givingMode} onChange={(e) => pick('givingMode', e.target.value as SettingsDraft['givingMode'])}>
-                <option value="before-tax">Before tax</option>
-                <option value="after-tax">After tax</option>
-              </SelectBox>
+              <SavedMark show={saved('givingPercent')}>
+                <PercentInput label="Share of gains" value={draft.givingPercent} {...num('givingPercent')} error={err('givingPercent')} />
+              </SavedMark>
+              <SavedMark show={saved('givingMode')}>
+                <SelectBox label="Counted" value={draft.givingMode} onChange={(e) => pick('givingMode', e.target.value as SettingsDraft['givingMode'])}>
+                  <option value="before-tax">Before tax</option>
+                  <option value="after-tax">After tax</option>
+                </SelectBox>
+              </SavedMark>
             </div>
           </>
         )}
       </Group>
 
       <Group title="Your records">
-        <MoneyInput label="Dollars you put in before using this app" value={draft.earlierMoneyIn} {...num('earlierMoneyIn')} error={err('earlierMoneyIn')} hint="Shown in Holdings. Never used in tax math." />
-        <SelectBox label="Time zone" value={draft.timeZone} onChange={(e) => pick('timeZone', e.target.value)}>
-          {zones.map((z) => (
-            <option key={z} value={z}>
-              {z.replaceAll('_', ' ')}
-            </option>
-          ))}
-        </SelectBox>
+        <SavedMark show={saved('earlierMoneyIn')}>
+          <MoneyInput label="Dollars you put in before using this app" value={draft.earlierMoneyIn} {...num('earlierMoneyIn')} error={err('earlierMoneyIn')} hint="Shown in Holdings. Never used in tax math." />
+        </SavedMark>
+        <SavedMark show={saved('timeZone')}>
+          <SelectBox label="Time zone" value={draft.timeZone} onChange={(e) => pick('timeZone', e.target.value)}>
+            {zones.map((z) => (
+              <option key={z} value={z}>
+                {z.replaceAll('_', ' ')}
+              </option>
+            ))}
+          </SelectBox>
+        </SavedMark>
         <span className="-mt-1 text-xs text-muted">{err('timeZone') ?? 'Decides the date, and so the tax year, of each entry.'}</span>
       </Group>
     </div>

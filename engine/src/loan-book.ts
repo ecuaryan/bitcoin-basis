@@ -66,8 +66,12 @@ function applyLoans(loans: Map<LoanId, Work>, entries: readonly LoanRecordEntry[
     if (e.kind === 'loan') {
       const bad = createLoan(loans, e);
       report(e, bad);
-      if (bad === null) for (const u of early.get(e.loan) ?? []) update(u);
-      early.delete(e.loan);
+      // Updates that waited for this loan apply now. If it was not created (its name was taken), they keep waiting
+      // for a later version and are reported with the rest at the end, never dropped without a word.
+      if (bad === null) {
+        for (const u of early.get(e.loan) ?? []) update(u);
+        early.delete(e.loan);
+      }
     } else if (loans.has((e as LoanUpdateEntry).loan)) update(e as LoanUpdateEntry);
     else early.set((e as LoanUpdateEntry).loan, [...(early.get((e as LoanUpdateEntry).loan) ?? []), e as LoanUpdateEntry]);
   }

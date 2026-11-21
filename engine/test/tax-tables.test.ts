@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { divRoundHalfUp } from '../src/money.ts';
 import { taxForYear, type TaxInput } from '../src/tax/tax.ts';
 import { FEDERAL_TABLES, federalTableFor } from '../src/tax/tables/index.ts';
-import { STATE_RATES } from '../src/tax/tables/state.ts';
+import { STATE_RATES, US_STATES } from '../src/tax/tables/state.ts';
 import { TAX_FILING_STATUSES, type TaxFilingStatus } from '../src/tax/types.ts';
 
 /**
@@ -141,6 +141,13 @@ describe('state table', () => {
       if (s.kind === 'none') expect(s.rate).toBe(0);
       else expect(s.rate).toBeGreaterThan(0);
     }
+  });
+
+  test('the state list has all 50 states and DC, and every rated state is in it under the same name', () => {
+    expect(Object.keys(US_STATES)).toHaveLength(51);
+    expect(US_STATES.DC).toBe('District of Columbia');
+    for (const [code, s] of Object.entries(STATE_RATES)) expect(US_STATES[code]).toBe(s.name);
+    expect(Object.keys(US_STATES).filter((c) => !Object.hasOwn(STATE_RATES, c))).toContain('CA');
   });
 
   test('Idaho is 5.3%', () => {

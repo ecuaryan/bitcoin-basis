@@ -62,7 +62,8 @@ function usePriceSeries(): { points: PricePoint[]; loading: boolean } {
   }, [service, isDemo, nowMs]);
 
   const points = useMemo(() => {
-    if (isDemo || quote === null) return past;
+    // A price the person typed is not a market price: it never joins the chart.
+    if (isDemo || quote === null || quote.source === 'manual') return past;
     return [...past, { ms: quote.fetchedAt, cents: quote.usdCents }];
   }, [past, quote, isDemo]);
   return { points, loading: !loaded };

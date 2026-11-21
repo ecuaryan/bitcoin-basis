@@ -7,6 +7,7 @@ import { useLedger } from '../data/ledger-provider.tsx';
 import { useVaultOptional } from '../data/vault-provider.tsx';
 import { cx } from '../lib/cx.ts';
 import { LinkHistoryPrompt } from './LinkHistoryPrompt.tsx';
+import { ManualPriceBanner } from './PriceProblem.tsx';
 import { SyncIndicator } from './SyncIndicator.tsx';
 import type { LogPreset } from '../screens/log/draft.ts';
 import { EyeIcon, EyeOffIcon, GearIcon, HoldingsIcon, LockIcon, PlusIcon, RecordsIcon, TaxIcon, WhatIfIcon } from './icons.tsx';
@@ -213,6 +214,7 @@ function PhoneShell({ onLog }: { onLog(): void }) {
       </header>
       <PullToSync />
       <DemoBanner className="mx-5 mt-3" />
+      <ManualPriceBanner className="mx-5 mt-3" />
       <main className="relative flex flex-1 flex-col px-5 pb-[130px] pt-6">
         <Suspense fallback={<LoadingSkeleton />}>
           <ReadyOutlet />
@@ -221,7 +223,7 @@ function PhoneShell({ onLog }: { onLog(): void }) {
       <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 mx-auto grid h-[92px] max-w-[560px] grid-cols-5 items-center justify-items-center bg-[linear-gradient(180deg,rgb(11_11_12/0),#0b0b0c_30%)] px-3 pb-[max(20px,env(safe-area-inset-bottom))] pt-2">
         <PhoneTab to="/" end also={inWallet} label="Holdings" icon={<HoldingsIcon size={22} />} />
         <PhoneTab to="/what-if" label="What if" icon={<WhatIfIcon size={22} />} />
-        <button type="button" onClick={onLog} aria-label="Log something" className="-mt-[18px] flex size-[60px] items-center justify-center rounded-full bg-accent text-bg shadow-fab transition-transform duration-150 active:scale-[0.92]">
+        <button type="button" onClick={onLog} aria-label="Log" className="-mt-[18px] flex size-[60px] items-center justify-center rounded-full bg-accent text-bg shadow-fab transition-transform duration-150 active:scale-[0.92]">
           <PlusIcon size={28} />
         </button>
         <PhoneTab to="/tax" label="Tax" icon={<TaxIcon size={22} />} />
@@ -267,6 +269,7 @@ function DesktopShell({ onLog }: { onLog(): void }) {
       </nav>
       <main className="relative min-w-0 flex-1 px-10 pb-10 pt-8">
         <DemoBanner className="mb-4" />
+        <ManualPriceBanner className="mb-4" />
         <Suspense fallback={<LoadingSkeleton />}>
           <ReadyOutlet />
         </Suspense>

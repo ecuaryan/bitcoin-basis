@@ -262,7 +262,7 @@ function SettingsBody({ loan, onClose }: { loan: Loan; onClose(): void }) {
     >
       <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" error={tried ? errors.name : null} />
       <MoneyInput label="Credit limit" value={limit} onChange={setLimit} error={tried ? errors.limit : null} />
-      <SelectField label="Statement closing day" value={day} onChange={(e) => setDay(e.target.value)} options={day === '' ? [{ value: '', label: 'Not set' }, ...STATEMENT_DAYS] : STATEMENT_DAYS} hint="A new day counts from today on. Payments already logged keep the day they were made under." />
+      <SelectField label="Statement closing day" value={day} onChange={(e) => setDay(e.target.value)} options={day === '' ? [{ value: '', label: 'Not set' }, ...STATEMENT_DAYS] : STATEMENT_DAYS} hint="The “closing date” on your monthly statement. A new day counts from today on." />
       <details className="rounded-2xl border border-line px-3.5 py-1" open={dayCount !== 'actual/365'}>
         <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-soft">Advanced</summary>
         <div className="flex flex-col gap-2 pb-3">

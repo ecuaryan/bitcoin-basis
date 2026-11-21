@@ -24,7 +24,7 @@ import { useTitle } from '../../ui/use-title.ts';
 import { GainWords } from '../../ui/WorthLine.tsx';
 import { EntrySheet } from '../entry-parts.tsx';
 import { cleanNumber } from '../log/model.ts';
-import { Approx, IncludingInterest, LOAN_ESTIMATE_HELP, SignedMoney } from './loan-parts.tsx';
+import { Approx, BREAK_EVEN_HELP, BREAK_EVEN_LABEL, IncludingInterest, LOAN_ESTIMATE_HELP, SignedMoney } from './loan-parts.tsx';
 import { CloseLoanSheet, LoanSettingsSheet, PaymentSheet, RateSheet, useReopen } from './loan-sheets.tsx';
 import { ManagePurchasesSheet } from './LoanSetup.tsx';
 import { useLoanWriter } from './loan-writer.ts';
@@ -34,16 +34,22 @@ const ROUND_BTN = 'press flex size-11 flex-none items-center justify-center roun
 type SheetName = 'pay' | 'rate' | 'settings' | 'close' | 'purchases';
 
 /** Label and value rows on a dark well, as on an entry's details. */
-function Rows({ rows, label }: { rows: { k: string; v: ReactNode; sub?: ReactNode }[]; label: string }) {
+type Row = { k: string; v: ReactNode; sub?: ReactNode; help?: { button: ReactNode; panel: ReactNode } };
+
+function Rows({ rows, label }: { rows: Row[]; label: string }) {
   return (
     <dl aria-label={label} className="m-0 flex flex-col rounded-2xl border border-line bg-bg px-4 py-1">
       {rows.map((r, i) => (
-        <div key={r.k} className={cx('flex min-h-11 items-baseline justify-between gap-4 py-2.5 text-sm', i < rows.length - 1 && 'border-b border-line')}>
-          <dt className="text-soft">{r.k}</dt>
-          <dd className="m-0 text-right font-semibold">
+        <div key={r.k} className={cx('flex min-h-11 flex-wrap items-baseline justify-between gap-x-4 py-2.5 text-sm', i < rows.length - 1 && 'border-b border-line')}>
+          <dt className="text-soft">
+            {r.k}
+            {r.help ? <span className="ml-1.5 inline-flex align-middle">{r.help.button}</span> : null}
+          </dt>
+          <dd className="m-0 ml-auto text-right font-semibold">
             {r.v}
             {r.sub ? <span className="mt-0.5 block text-xs font-normal text-muted">{r.sub}</span> : null}
           </dd>
+          {r.help?.panel ? <dd className="m-0 basis-full pt-1.5 text-left">{r.help.panel}</dd> : null}
         </div>
       ))}
     </dl>
@@ -57,9 +63,10 @@ const runOf = (item: EntryItem): EntryRun => ({ item, count: 1, items: [item], n
 function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
   const { today } = useLedger();
   const help = useHelp('What does ≈ mean?', LOAN_ESTIMATE_HELP);
+  const breakEvenHelp = useHelp('What is in the break-even price?', BREAK_EVEN_HELP);
   const variable = loan.rates.length > 1;
   const left = s.payoffLeftoverSats;
-  const rows: { k: string; v: ReactNode; sub?: ReactNode }[] = [
+  const rows: Row[] = [
     { k: 'Owed', v: <Money cents={s.principalOwedCents} /> },
     ...(s.owedNowEstimated
       ? [
@@ -111,7 +118,8 @@ function Standing({ loan, s }: { loan: Loan; s: LoanSummary }) {
     ...(s.breakEvenPriceCents !== null
       ? [
           {
-            k: 'Break-even price',
+            k: BREAK_EVEN_LABEL,
+            help: breakEvenHelp,
             v: (
               <>
                 {s.interestOnPurchasesEstimated ? <Approx /> : null}

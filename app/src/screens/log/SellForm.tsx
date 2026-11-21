@@ -9,6 +9,7 @@ import { stripSource, useAmount, useBaseState, useFormEnv, usePriceAt, useValue,
 import { choosePicks, localInputFor, lotsAvailable, nowInstant, usableWallets, usualWallet, zonedInstant, type PickMode } from './model.ts';
 import { saleDraft } from './sale-review.tsx';
 import { AmountInput, FormFooter, MoreDetails, ValueField, WalletSelect, WhenField } from './parts.tsx';
+import { focusFirstError } from './first-error.ts';
 
 type How = 'sold' | 'spent';
 
@@ -83,6 +84,7 @@ export function SellForm({ initial, preset, onReview, onSwitch }: FormProps) {
       onSubmit={(e) => {
         e.preventDefault();
         review();
+        focusFirstError(e.currentTarget);
       }}
     >
       <Segmented<How>
@@ -95,7 +97,7 @@ export function SellForm({ initial, preset, onReview, onSwitch }: FormProps) {
         ]}
       />
       <AmountInput amount={amount} error={tried ? errors.amount : null} needsPrice />
-      <WalletSelect label="From wallet" value={wallet} onChange={(v) => { setWallet(v); setChosen(new Set()); }} wallets={usableWallets(state, edit?.wallet)} error={tried ? errors.wallet : null} />
+      <WalletSelect label="From wallet" value={wallet} onChange={(v) => { setWallet(v); setChosen(new Set()); }} wallets={usableWallets(state, edit?.wallet)} canAdd={false} error={tried ? errors.wallet : null} />
       <ValueField label={how === 'sold' ? 'Dollars you received' : 'Worth in dollars when spent'} value={value} price={price} error={tried ? errors.value : null} hasAmount={sats !== null} />
       <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
       {how === 'spent' ? <TextField label="What did it buy?" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Groceries, a laptop, a donation receipt" autoComplete="off" error={tried ? errors.what : null} /> : null}

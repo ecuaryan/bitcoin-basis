@@ -63,8 +63,9 @@ async function readCode(page: Page): Promise<string> {
   return groups.join('-');
 }
 
+/** The sync dot (a link to Settings › Security; hidden on a phone while all is well, so look for it in the page, not on screen). */
 async function expectSynced(page: Page): Promise<void> {
-  await expect(page.getByRole('status', { name: 'Sync: Synced' }).first()).toBeAttached({ timeout: 60_000 });
+  await expect(page.locator('a[aria-label^="Sync: Synced"]').first()).toBeAttached({ timeout: 60_000 });
 }
 
 /** Wait until local changes have reached the server (a short "Waiting to sync" may flash first). */
@@ -77,15 +78,26 @@ async function goTab(page: Page, name: 'Holdings' | 'Records'): Promise<void> {
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name }).click();
 }
 
-async function goRecords(page: Page, tile: 'Wallets' | 'Security'): Promise<void> {
+async function goRecords(page: Page, tile: 'Wallets'): Promise<void> {
   await goTab(page, 'Records');
   await page.getByRole('link', { name: new RegExp(`^${tile}`) }).click();
 }
 
+/** Settings › Security and devices, by the gear (phone) or the sidebar (desktop). */
+async function goSecurity(page: Page): Promise<void> {
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Security and devices' })).toBeVisible();
+}
+
+/** Settings › Security: press "Check now" until the sync region says everything is up to date. */
 async function syncNow(page: Page): Promise<void> {
-  await goRecords(page, 'Security');
-  await page.getByRole('button', { name: 'Sync now' }).click();
-  await expect(page.getByText('Synced.', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await goSecurity(page);
+  const region = page.getByRole('region', { name: 'Sync between devices' });
+  await expect(async () => {
+    await region.getByRole('button', { name: 'Check now' }).click();
+    await expect(region).toContainText('Up to date', { timeout: 5000 });
+    await expect(region).not.toContainText('Syncing', { timeout: 5000 });
+  }).toPass({ timeout: 90_000 });
 }
 
 async function addWallet(page: Page, name: string, type: 'Exchange' | 'Self-custody'): Promise<void> {
@@ -99,15 +111,16 @@ async function addWallet(page: Page, name: string, type: 'Exchange' | 'Self-cust
 }
 
 async function openLog(page: Page, tab: string): Promise<void> {
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Log' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('tab', { name: tab }).click();
 }
 
-async function saveEntry(page: Page, review: string, save: string): Promise<void> {
+/** A purchase or a move saves straight from its form; a sale goes through its review first. */
+async function saveEntry(page: Page, review: string | null, save: string): Promise<void> {
   const d = page.getByRole('dialog').last();
-  await d.getByRole('button', { name: review }).click();
+  if (review !== null) await d.getByRole('button', { name: review }).click();
   await d.getByRole('button', { name: save }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
@@ -121,7 +134,7 @@ async function logBuy(page: Page): Promise<void> {
   await d.getByLabel('Wallet', { exact: true }).selectOption({ label: WALLET_1 });
   await d.getByText('More details').click();
   await d.getByLabel('Note', { exact: true }).fill(NOTE);
-  await saveEntry(page, 'Review purchase', 'Save purchase');
+  await saveEntry(page, null, 'Save purchase');
 }
 
 async function logMove(page: Page): Promise<void> {
@@ -131,7 +144,7 @@ async function logMove(page: Page): Promise<void> {
   await d.getByLabel('To', { exact: true }).selectOption({ label: WALLET_2 });
   await d.getByLabel('Amount that arrives').fill(MOVE_BTC);
   await d.getByLabel('When', { exact: true }).fill('2021-03-06T10:00');
-  await saveEntry(page, 'Review move', 'Save move');
+  await saveEntry(page, null, 'Save move');
 }
 
 async function logSale(page: Page): Promise<void> {
@@ -155,9 +168,21 @@ async function holdings(page: Page): Promise<{ btc: string[]; wallets: string[] 
   return { btc, wallets };
 }
 
+/** Unlock with the passkey: the app may prompt on its own after a reload; otherwise press Unlock (after `beforeTap`). */
+async function passkeyUnlock(page: Page, beforeTap?: () => Promise<void>): Promise<void> {
+  const unlock = page.getByRole('button', { name: 'Unlock', exact: true });
+  const lock = page.getByRole('button', { name: 'Lock', exact: true });
+  await expect(unlock.or(lock)).toBeVisible({ timeout: 60_000 });
+  if (await unlock.isVisible()) {
+    await beforeTap?.();
+    await unlock.click();
+  }
+  await expect(lock).toBeVisible({ timeout: 60_000 });
+}
+
 async function restoreWithCode(d: Device, code: string): Promise<void> {
   await d.page.goto('/');
-  await d.page.getByRole('button', { name: 'Restore on this device' }).click();
+  await d.page.getByRole('button', { name: 'I already use Bitcoin Basis', exact: true }).click();
   await d.page.getByLabel('Recovery code', { exact: true }).fill(code);
   await d.page.getByRole('button', { name: 'Restore my records' }).click();
 }
@@ -201,31 +226,38 @@ test('two devices: setup, sync, restore, lock, fresh device, rotate, and an opaq
   await a.goto('/');
   await expect(a.getByRole('heading', { name: /on the record/ })).toBeVisible();
   await shot(A, '01-welcome');
-  await a.getByLabel('Setup code from your install script').fill(SETUP_CODE);
+  await a.getByLabel('Setup code', { exact: true }).fill(SETUP_CODE);
   await a.getByRole('button', { name: 'Claim and create my passkey' }).click();
   await expect(a.getByRole('heading', { name: 'Save your recovery code' })).toBeVisible({ timeout: 60_000 });
   const code1 = await readCode(a);
   expect(code1).toMatch(/^([0-9A-Z]{5}-){5}[0-9A-Z]{5}$/);
   await shot(A, '02-recovery-code');
-  await a.getByRole('button', { name: 'I wrote it down' }).click();
+  await a.getByRole('button', { name: "I've saved it" }).click();
   await a.getByLabel('Group 4 of your recovery code').fill(code1.split('-')[3] as string);
   await a.getByRole('button', { name: 'Continue' }).click();
-  await a.getByRole('button', { name: 'Go to my records' }).click();
+  await expect(a.getByRole('heading', { name: "You're all set" })).toBeVisible();
+  // "Add my first wallet" opens Add a wallet over Holdings: the first wallet goes in there.
+  await a.getByRole('button', { name: 'Add my first wallet' }).click();
+  const first = a.getByRole('dialog', { name: 'Add a wallet' });
+  await first.getByLabel('Name', { exact: true }).fill(WALLET_1);
+  await first.getByRole('radio', { name: 'Exchange' }).click();
+  await first.getByRole('button', { name: 'Add wallet' }).click();
+  await expect(a.getByRole('dialog')).toHaveCount(0);
   await expect(a.getByRole('heading', { name: 'Holdings' })).toBeVisible();
-  await shot(A, '03-empty-holdings');
+  await shot(A, '03-first-wallet');
 
   // Unlock wording on Android: fingerprint, never Face ID.
   await a.getByRole('button', { name: 'Lock', exact: true }).click();
-  const unlockA = a.getByRole('button', { name: /^Unlock with/ });
-  await expect(unlockA).toHaveText('Unlock with fingerprint or screen lock');
+  const unlockA = a.getByRole('button', { name: 'Unlock', exact: true });
+  await expect(unlockA).toBeVisible();
+  await expect(a.getByText('Fingerprint or screen lock', { exact: true })).toBeVisible();
   await expect(a.locator('body')).not.toContainText(/Face ID/i);
   await expect(a.locator('body')).not.toContainText(/Touch ID/i);
   await shot(A, '04-unlock-android');
   await unlockA.click();
   await expect(a.getByRole('heading', { name: 'Holdings' })).toBeVisible();
 
-  // ---- b. A: wallets, a buy and a move ---------------------------------------------------------
-  await addWallet(a, WALLET_1, 'Exchange');
+  // ---- b. A: a second wallet, a buy and a move -------------------------------------------------
   await addWallet(a, WALLET_2, 'Self-custody');
   await logBuy(a);
   await logMove(a);
@@ -256,15 +288,16 @@ test('two devices: setup, sync, restore, lock, fresh device, rotate, and an opaq
 
   // ---- e. Lock A and unlock with its passkey; reload B and unlock with its own passkey ---------
   await a.getByRole('button', { name: 'Lock', exact: true }).click();
-  await a.getByRole('button', { name: /^Unlock with/ }).click();
+  await a.getByRole('button', { name: 'Unlock', exact: true }).click();
   await expect(a.getByRole('heading', { name: 'Holdings' })).toBeVisible();
   expect(await holdings(a)).toEqual(holdingsA2);
 
+  // After a reload the app may open the passkey prompt by itself; if it waits for a tap, check the Mac wording first.
   await b.reload();
-  const unlockB = b.getByRole('button', { name: /^Unlock with/ });
-  await expect(unlockB).toHaveText('Unlock with Touch ID');
-  await shot(B, '09-unlock-desktop');
-  await unlockB.click();
+  await passkeyUnlock(b, async () => {
+    await expect(b.getByText('Touch ID or password', { exact: true })).toBeVisible();
+    await shot(B, '09-unlock-desktop');
+  });
   await expect(b.getByRole('heading', { name: 'Holdings' })).toBeVisible();
   expect(await holdings(b)).toEqual(holdingsA2);
 
@@ -276,7 +309,7 @@ test('two devices: setup, sync, restore, lock, fresh device, rotate, and an opaq
   await C.context.close();
 
   // ---- g. Rotate the recovery code on A ---------------------------------------------------------
-  await goRecords(a, 'Security');
+  await goSecurity(a);
   await a.getByRole('button', { name: 'Make a new recovery code' }).click();
   await a.getByRole('button', { name: 'Make a new code' }).click();
   await expect(a.getByRole('article', { name: 'Emergency kit' })).toBeVisible({ timeout: 60_000 });
@@ -301,7 +334,7 @@ test('two devices: setup, sync, restore, lock, fresh device, rotate, and an opaq
 
   // Device B (not rotated by itself) still opens with its own passkey and shows the same records.
   await b.reload();
-  await b.getByRole('button', { name: /^Unlock with/ }).click();
+  await passkeyUnlock(b);
   await expect(b.getByRole('heading', { name: 'Holdings' })).toBeVisible();
   await b.waitForTimeout(1000);
   await syncNow(b);

@@ -166,11 +166,23 @@ describe('loan records in replay', () => {
     const clash = replay([loan('a', '2025-01-01', APR_7_3), loan('b', '2025-01-01', APR_7_3, { name: 'Other' }), { id: 'u', kind: 'loan-update', at: noon('2025-02-01'), tz: TZ, loan: 'b', name: ' heloc ' }]);
     expect(clash.errors).toEqual([{ entryId: 'u', code: 'loan-name-taken', message: 'another loan is already named "heloc"' }]);
   });
-  test('an update dated before a loan whose creation fails does not break replay', () => {
+  test('an update dated before a loan whose creation fails is reported, never dropped without a word', () => {
     const early = { id: 'a-early', kind: 'loan-update', at: noon('2024-12-01'), tz: TZ, loan: 'b', creditLimitCents: 5 } as const;
     const state = replay([loan('a', '2025-01-01', APR_7_3), loan('b', '2025-01-01', APR_7_3), early]);
-    expect(state.errors.map((e) => [e.entryId, e.code])).toEqual([['loan-b', 'loan-name-taken']]);
+    expect(state.errors.map((e) => [e.entryId, e.code])).toEqual([
+      ['loan-b', 'loan-name-taken'],
+      ['a-early', 'unknown-loan'],
+    ]);
+    expect(state.applied).not.toContain('a-early');
     expect(state.loans.map((l) => l.id)).toEqual(['a']);
+  });
+  test('an early update keeps waiting through a failed creation and applies to a later one that works', () => {
+    const early = { id: 'a-early', kind: 'loan-update', at: noon('2024-12-01'), tz: TZ, loan: 'b', creditLimitCents: 5 } as const;
+    const retry = { ...loan('b', '2025-02-01', APR_7_3, { name: 'Car loan' }), id: 'loan-b2' };
+    const state = replay([loan('a', '2025-01-01', APR_7_3), loan('b', '2025-01-01', APR_7_3), retry, early]);
+    expect(state.errors.map((e) => [e.entryId, e.code])).toEqual([['loan-b', 'loan-name-taken']]);
+    expect(state.applied).toContain('a-early');
+    expect(state.loans.find((l) => l.id === 'b')).toMatchObject({ name: 'Car loan', creditLimitCents: 5 });
   });
   test('every loan record is applied exactly once', () => {
     const state = replay([...coins(['A', '2025-01-01', '1000']), loan('h', '2025-01-01', APR_7_3), link('K', 'h', 'A'), draw('D', 'h', '2025-01-02', '10'), payment('Y', 'h', '2025-01-03', '1'), statement('S', 'h', '2025-01-03', '1010')]);

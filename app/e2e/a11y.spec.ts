@@ -52,7 +52,7 @@ test('axe: the gift note page', async ({ page }) => {
 });
 
 async function openLogSheet(page: Page, tab: string) {
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Log' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('tab', { name: tab }).click();
@@ -194,4 +194,83 @@ test('keyboard only: log a sale, tab stays inside the sheet, Esc and focus retur
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Log', exact: true })).toBeFocused();
+});
+
+/** The name a screen reader would read for an element (enough for buttons and links: label, labelled-by, text, title). */
+async function names(page: Page, selector: string): Promise<{ html: string; name: string }[]> {
+  return page.locator(selector).evaluateAll((els) =>
+    els
+      .filter((el) => el.checkVisibility({ contentVisibilityAuto: true, visibilityProperty: true }))
+      .map((el) => {
+        const by = el.getAttribute('aria-labelledby');
+        const labelled = by === null ? '' : by.split(' ').map((id) => document.getElementById(id)?.textContent ?? '').join(' ');
+        const name = (el.getAttribute('aria-label') ?? '') || labelled || (el as HTMLElement).innerText || el.getAttribute('title') || '';
+        return { html: el.outerHTML.slice(0, 120), name: name.trim() };
+      }),
+  );
+}
+
+test('icon-only buttons have names: Hide amounts and Show amounts, Settings, Lock, Log', async ({ page, isMobile }) => {
+  await openDemo(page);
+  if (isMobile) {
+    const header = page.locator('header').first();
+    await expect(header.getByRole('button', { name: 'Hide amounts', exact: true })).toBeVisible();
+    await expect(header.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
+    await expect(header.getByRole('button', { name: 'Lock', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Log', exact: true })).toBeVisible();
+    await header.getByRole('button', { name: 'Hide amounts', exact: true }).click();
+    await expect(header.getByRole('button', { name: 'Show amounts', exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByRole('button', { name: 'Hide amounts', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Lock', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Log', exact: true })).toBeVisible();
+  }
+  // Every visible button and link on the busiest screens has a name.
+  for (const path of ['/', `/wallet/wallet-strike`, '/loans/loan-home-equity', '/what-if', '/records', '/settings']) {
+    await go(page, path);
+    await expect(page.locator('h1, h2').first()).toBeVisible();
+    expect((await names(page, 'button, a[href]')).filter((n) => n.name === ''), path).toEqual([]);
+  }
+  const log = await openLogSheet(page, 'Moved');
+  expect((await names(page, '[role="dialog"] button, [role="dialog"] a[href]')).filter((n) => n.name === '')).toEqual([]);
+  await expect(log.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
+});
+
+test('a sheet opens within 250 ms, and with no motion when motion is reduced', async ({ page }) => {
+  await openDemo(page);
+  const duration = async () => {
+    await page.getByRole('button', { name: 'Log', exact: true }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Log' });
+    await expect(dialog).toBeVisible();
+    const s = await dialog.evaluate((el) => getComputedStyle(el).animationDuration);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    return Math.max(...s.split(',').map((d) => (d.trim().endsWith('ms') ? parseFloat(d) : parseFloat(d) * 1000)));
+  };
+  expect(await duration()).toBeLessThan(1);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const ms = await duration();
+  expect(ms).toBeGreaterThan(0);
+  expect(ms).toBeLessThanOrEqual(250);
+});
+
+test('a toast never covers the header or the brand', async ({ page, isMobile }) => {
+  await openDemo(page);
+  // In the demo, Lock explains itself in a toast.
+  await page.getByRole('button', { name: 'Lock', exact: true }).first().click();
+  const toast = page.getByText('This is the demo, so there is nothing to lock.');
+  await expect(toast).toBeVisible();
+  const box = await toast.boundingBox();
+  const brand = await page.getByRole('link', { name: 'Bitcoin Basis, go to Holdings' }).boundingBox();
+  expect(box).not.toBeNull();
+  expect(brand).not.toBeNull();
+  if (box === null || brand === null) return;
+  const overlaps = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  expect(overlaps(box, brand)).toBe(false);
+  if (isMobile) {
+    const header = await page.locator('header').first().boundingBox();
+    expect(header).not.toBeNull();
+    if (header !== null) expect(box.y).toBeGreaterThanOrEqual(header.y + header.height);
+  }
 });

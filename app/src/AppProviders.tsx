@@ -15,7 +15,12 @@ function PriceBridge({ live, children }: { live: PriceService; children: ReactNo
   const { isDemo, state } = useLedger();
   const service = useMemo(() => (isDemo ? createFixedPriceService(DEMO_PRICE_CENTS, DEMO_PREV_DAY_CENTS, (ts) => demoPriceAt(ts * 1000)) : live), [isDemo, live]);
   // No book yet means nothing to value, so a first visit makes no outside request.
-  return <PriceProvider service={service} enabled={isDemo || state.wallets.length > 0}>{children}</PriceProvider>;
+  // Keyed by book, so a price typed for one (the demo or your own) never carries over to the other.
+  return (
+    <PriceProvider key={isDemo ? 'demo' : 'own'} service={service} enabled={isDemo || state.wallets.length > 0}>
+      {children}
+    </PriceProvider>
+  );
 }
 
 export interface ProvidersProps {

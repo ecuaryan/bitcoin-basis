@@ -1,9 +1,10 @@
-import { parseAprPercent, parseDollars, uuidv7, type Loan, type LoanId } from '@bitcoin-basis/engine';
+import { parseAprPercent, parseDollars, uuidv7, type Entry, type Loan, type LoanId } from '@bitcoin-basis/engine';
 import { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { countOf, shortDate } from '../../lib/format.ts';
+import { buildItems } from '../../lib/entry-list.ts';
 import { planLinks, purchaseOptions, type PurchaseOption } from '../../lib/loans-view.ts';
 import { Amount } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
@@ -142,19 +143,29 @@ function useOpenLoanNames(): Set<string> {
   return useMemo(() => new Set(state.loans.filter((l) => !l.closed).map((l) => l.name.trim().toLowerCase())), [state.loans]);
 }
 
+/** A loan set up from the Bought form: not saved yet. It is saved with the purchase (and its link), or not at all. */
+export interface PendingLoan {
+  id: LoanId;
+  name: string;
+  /** The loan record first, then any "interest paid so far". */
+  entries: Entry[];
+}
+
 /**
  * Track a loan: its name, rate, statement day and (optional) limit and interest paid so far, then which purchases it
- * paid for. One save. `quick` skips the purchases step (from the Bought form, where the purchase is not saved yet).
+ * paid for. One save. With `onPending` (from the Bought form) it skips the purchases step and saves nothing: the loan
+ * goes back to the form, which saves it together with the purchase.
  */
-export function LoanSetupSheet({ open, onClose, quick = false, onAdded }: { open: boolean; onClose(): void; quick?: boolean; onAdded?(loanId: LoanId): void }) {
+export function LoanSetupSheet({ open, onClose, onPending }: { open: boolean; onClose(): void; onPending?(loan: PendingLoan): void }) {
   return (
     <Sheet open={open} onClose={onClose} title="Track a loan" fixedHeight>
-      {open ? <SetupBody quick={quick} onClose={onClose} {...(onAdded ? { onAdded } : {})} /> : null}
+      {open ? <SetupBody onClose={onClose} {...(onPending ? { onPending } : {})} /> : null}
     </Sheet>
   );
 }
 
-function SetupBody({ quick, onClose, onAdded }: { quick: boolean; onClose(): void; onAdded?(loanId: LoanId): void }) {
+function SetupBody({ onClose, onPending }: { onClose(): void; onPending?(loan: PendingLoan): void }) {
+  const quick = onPending !== undefined;
   const { entries, state, today } = useLedger();
   const toast = useToast();
   const navigate = useNavigate();
@@ -209,11 +220,15 @@ function SetupBody({ quick, onClose, onAdded }: { quick: boolean; onClose(): voi
       setProblems(made.problems);
       return;
     }
+    if (onPending) {
+      onPending({ id: loanId, name: name.trim(), entries: made.entries });
+      onClose();
+      return;
+    }
     await writer.save(made.entries);
     toast.show('Loan added.', { success: true });
     onClose();
-    if (onAdded) onAdded(loanId);
-    else navigate(`/loans/${loanId}`);
+    navigate(`/loans/${loanId}`);
   });
 
   function next() {
@@ -258,10 +273,12 @@ function SetupBody({ quick, onClose, onAdded }: { quick: boolean; onClose(): voi
         next();
       }}
     >
-      <p className="m-0 text-[13px] leading-snug text-muted">For money you borrowed to buy Bitcoin, like a home equity line. Tracking only: it never changes your cost or taxes.</p>
+      <p className="m-0 text-[13px] leading-snug text-muted">
+        For money you borrowed to buy Bitcoin, like a home equity line. Tracking only: it never changes your cost or taxes.{quick ? ' It is saved when you save the purchase.' : ''}
+      </p>
       <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="HELOC" autoComplete="off" error={tried ? errors.name : null} />
       <AprInput label="Interest rate (APR)" value={apr} onChange={setApr} hint="Today’s rate. If it changes later, add the change on the loan’s page." error={tried ? errors.apr : null} />
-      <SelectField label="Statement closing day" value={day} onChange={(e) => setDay(e.target.value)} options={STATEMENT_DAYS} hint="Each monthly statement ends on this day. A payment pays the month before it." />
+      <SelectField label="Statement closing day" value={day} onChange={(e) => setDay(e.target.value)} options={STATEMENT_DAYS} hint="The “closing date” on your monthly statement." />
       <MoneyInput label="Credit limit (optional)" value={limit} onChange={setLimit} error={tried ? errors.limit : null} />
       <details className="rounded-2xl border border-line px-3.5 py-1" open={paidSoFar !== ''}>
         <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-soft">Already paying it? Add the interest paid so far</summary>
@@ -277,7 +294,7 @@ function SetupBody({ quick, onClose, onAdded }: { quick: boolean; onClose(): voi
       ) : null}
       <FormFooter>
         <Button type="submit" variant="primary" disabled={saver.busy} className={BIG_BUTTON}>
-          {quick ? (saver.busy ? 'Saving…' : 'Save loan') : 'Next: its purchases'}
+          {quick ? 'Use this loan' : 'Next: its purchases'}
         </Button>
       </FormFooter>
     </form>
@@ -285,6 +302,18 @@ function SetupBody({ quick, onClose, onAdded }: { quick: boolean; onClose(): voi
 }
 
 // ---- Add or remove purchases later ---------------------------------------------------------
+
+/**
+ * A purchase older than the loan's start: the loan record gets a new version that starts on the earliest draw, so its
+ * rate history covers every day money was drawn (interest itself is the same: before its first rate, the first rate applies).
+ */
+function startEarlier(entries: readonly Entry[], loan: Loan, options: readonly PurchaseOption[], chosen: ReadonlyMap<string, string | null>): LoanDraft[] {
+  const earliest = [...chosen.entries()].map(([lot, d]) => d ?? options.find((o) => o.lotId === lot)?.date ?? loan.opened).sort()[0];
+  if (earliest === undefined || earliest >= loan.opened) return [];
+  const head = buildItems(entries).find((i) => !i.deleted && i.current.kind === 'loan' && i.current.loan === loan.id)?.current;
+  if (head?.kind !== 'loan') return [];
+  return [{ draft: { ...head, opened: earliest, replaces: head.id, reason: 'Starts with its oldest purchase' } }];
+}
 
 /** The loan page's "Add purchases": tick or untick, change a draw date, one save. */
 export function ManagePurchasesSheet({ loan, open, onClose }: { loan: Loan; open: boolean; onClose(): void }) {
@@ -302,7 +331,8 @@ function ManageBody({ loan, onClose }: { loan: Loan; onClose(): void }) {
   const options = useMemo(() => purchaseOptions(entries, state), [entries, state]);
   const [chosen, setChosen] = useState<Map<string, string | null>>(() => new Map(options.filter((o) => o.loanId === loan.id).map((o) => [o.lotId, o.drawDate !== null && o.drawDate !== o.date ? o.drawDate : null])));
   const [problems, setProblems] = useState<string[]>([]);
-  const drafts = linkDrafts(loan.id, options, chosen);
+  const links = linkDrafts(loan.id, options, chosen);
+  const drafts = links.length === 0 ? links : [...startEarlier(entries, loan, options, chosen), ...links];
   const saver = useSubmit(async () => {
     const made = writer.make(drafts);
     if (made.problems.length > 0) {

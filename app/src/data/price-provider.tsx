@@ -2,12 +2,21 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { PriceQuote, PriceService } from './price.ts';
 
 export interface PriceState {
+  /** The price to use: the person's own price while they have set one, else the live (or fixed) quote. */
   quote: PriceQuote | null;
+  /** How the live price is doing (a typed-in price does not change it). */
   status: 'loading' | 'ok' | 'error';
   /** Plain-language reason when the last refresh failed (a previous quote may still show). */
   error: string | null;
   service: PriceService;
+  /** Ask for the live price again now. */
   refresh(): void;
+  /**
+   * A price the person typed because the live one could not be loaded, in cents per BTC. Kept in memory for this
+   * session only: it is never stored, and becomes part of an entry only if they save one with it.
+   */
+  manualCents: number | null;
+  setManualCents(cents: number | null): void;
 }
 
 const PriceContext = createContext<PriceState | null>(null);
@@ -36,8 +45,15 @@ export function PriceProvider({ service, children, refreshMs = REFRESH_MS, enabl
   const [error, setError] = useState<string | null>(null);
   const failures = useRef(0);
   const [tick, setTick] = useState(0);
+  const [manual, setManual] = useState<{ cents: number; at: number } | null>(null);
+  const manualCents = manual?.cents ?? null;
+  const setManualCents = useCallback((cents: number | null) => setManual(cents === null ? null : { cents, at: Date.now() }), []);
 
-  const refresh = useCallback(() => setTick((t) => t + 1), []);
+  const refresh = useCallback(() => {
+    setStatus('loading');
+    setError(null);
+    setTick((t) => t + 1);
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -89,7 +105,8 @@ export function PriceProvider({ service, children, refreshMs = REFRESH_MS, enabl
     };
   }, [service, refreshMs, tick, enabled]);
 
-  const value = useMemo<PriceState>(() => ({ quote, status, error, service, refresh }), [quote, status, error, service, refresh]);
+  const shown = useMemo<PriceQuote | null>(() => (manual === null ? quote : { usdCents: manual.cents, prevDayUsdCents: null, fetchedAt: manual.at, source: 'manual' }), [manual, quote]);
+  const value = useMemo<PriceState>(() => ({ quote: shown, status, error, service, refresh, manualCents, setManualCents }), [shown, status, error, service, refresh, manualCents, setManualCents]);
   return <PriceContext.Provider value={value}>{children}</PriceContext.Provider>;
 }
 

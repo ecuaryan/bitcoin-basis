@@ -18,12 +18,13 @@ import { Sheet } from '../../ui/Sheet.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import { LockIcon } from '../../ui/icons.tsx';
-import { answerReason, defaultTaxYear, flagsForYear, form1099Rows, nextYearLosses, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
+import { answerReason, defaultTaxYear, FEE_SALE_HELP, feeOnlyYes, flagsForYear, form1099Rows, nextYearLosses, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
 import { LOSSES_CHECK, staleLosses } from '../../lib/losses.ts';
 import { useWriter } from '../../ui/use-writer.ts';
 import { useTitle } from '../../ui/use-title.ts';
 import { TERM_HELP } from '../../lib/terms.ts';
 import { useHelp } from '../../ui/Help.tsx';
+import { TaxProfilePrompt } from './TaxProfilePrompt.tsx';
 
 /** A card of label/value rows. `help` puts a "?" after one row's label, with its answer under the rows. */
 function Rows({ rows, label, help }: { rows: readonly [string, ReactNode][]; label: string; help?: { row: string; label: string; text: string } }) {
@@ -178,6 +179,8 @@ export function Tax() {
   const closed = state.closedYears.includes(year);
   const stale = year === yearOf(today) ? staleLosses(state.settings, year) : null;
   const yes = summary.digitalAssetAnswer === 'yes';
+  const feeHelp = useHelp('Why does a network fee count?', FEE_SALE_HELP);
+  const feeOnly = feeOnlyYes(summary);
 
   const picker = (
     <SelectBox label="Tax year" hideLabel value={String(year)} onChange={(e) => setParams({ year: e.target.value }, { replace: true })} className="w-[104px]" selectClassName="!min-h-11 !rounded-xl !font-bold !bg-surface">
@@ -193,7 +196,11 @@ export function Tax() {
     <section aria-label="Digital asset question" className="flex flex-col gap-1.5 rounded-[18px] border-[1.5px] border-accent bg-[linear-gradient(180deg,rgb(247_147_26/0.16),rgb(247_147_26/0.04))] p-4">
       <span className="text-xs font-semibold tracking-[0.02em] text-amber">FORM 1040 · DIGITAL ASSETS</span>
       <span className="font-display text-[26px] font-semibold">Answer: {yes ? 'Yes' : 'No'}</span>
-      <span className="text-[13px] leading-[1.45] text-soft">{answerReason(summary)}</span>
+      <span className="text-[13px] leading-[1.45] text-soft">
+        {answerReason(summary)}
+        {feeOnly ? <span className="ml-1.5 inline-flex align-middle">{feeHelp.button}</span> : null}
+      </span>
+      {feeOnly ? feeHelp.panel : null}
     </section>
   );
 
@@ -206,7 +213,25 @@ export function Tax() {
     ] as const
   )
     .filter(([, t]) => t.count > 0)
-    .map(([label, t]) => [label, <Count key={label} n={t.count}><Money cents={t.gainCents} signed /></Count>]);
+    .map(([label, t]) => [
+      label,
+      <Count key={label} n={t.count}>
+        {/* A fee is a tiny sale: its dollar value (from the price then) says more than a gain of a few cents or $0.00. */}
+        {t === totals.fees && t.proceedsCents > 0 ? (
+          <>
+            worth <Money cents={t.proceedsCents} />
+            {t.gainCents !== 0 ? (
+              <span className="font-normal text-muted">
+                {' '}
+                (gain <Money cents={t.gainCents} signed />)
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <Money cents={t.gainCents} signed />
+        )}
+      </Count>,
+    ]);
   const summaryRows: [string, ReactNode][] = [
     ...(kindRows.length > 0 ? kindRows : ([['Sales and spending', 'None this year.']] as [string, ReactNode][])),
     ['Short-term total', <Money key="st" cents={view.stCents} signed />],
@@ -396,6 +421,7 @@ export function Tax() {
       <div className={cx(wide ? 'grid grid-cols-2 items-start gap-6' : 'flex flex-col gap-3')}>
         <div className="flex flex-col gap-3">
           {answer}
+          <TaxProfilePrompt />
           {stale !== null && (
             <p className="m-0 text-[13px] leading-snug text-amber">
               Your losses from past years are saved for {stale.savedFor}.{' '}

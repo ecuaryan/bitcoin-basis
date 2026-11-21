@@ -28,7 +28,7 @@ test.describe('@visual snapshots', () => {
   });
 
   test('@visual Log sheet', async ({ page }) => {
-    await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+    await page.getByRole('button', { name: 'Log', exact: true }).first().click();
     await expect(page.getByRole('dialog', { name: 'Log' }).getByLabel('Amount', { exact: true })).toBeVisible();
     await settle(page);
     await expect(page).toHaveScreenshot('log-sheet.png', { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.002, mask: [page.locator('input[type="datetime-local"]')] });

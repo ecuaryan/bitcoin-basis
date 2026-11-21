@@ -3,7 +3,7 @@
  * Unknown fields are rejected so typos cannot silently drop data.
  */
 import { instantMs, isValidInstant, isValidLocalDate, isValidTimeZone } from './dates.ts';
-import { STATE_RATES } from './tax/tables/state.ts';
+import { STATE_RATES, US_STATES } from './tax/tables/state.ts';
 import { MAX_ENTRY_CENTS, MAX_ENTRY_SATS } from './money.ts';
 import { err, ok } from './result.ts';
 import { DAY_COUNTS, FILING_STATUSES, LOST_CAUSES, TIERS, WALLET_TYPES, type Entry, type EntryKind, type Result } from './types.ts';
@@ -35,6 +35,7 @@ const isYear: Check = (v) => Number.isSafeInteger(v) && (v as number) >= 1970 &&
 const isTimeZone: Check = (v) => typeof v === 'string' && isValidTimeZone(v);
 const isRateTenThousandths = intIn(0, 10_000);
 const isStateCode: Check = (v) => typeof v === 'string' && Object.hasOwn(STATE_RATES, v);
+const isUsState: Check = (v) => typeof v === 'string' && Object.hasOwn(US_STATES, v);
 const oneOf =
   (values: readonly string[]): Check =>
   (v) =>
@@ -80,7 +81,7 @@ const isSource = taggedUnion('type', {
 const isStateTax = taggedUnion('kind', {
   none: { kind: req(isString) },
   flat: { kind: req(isString), state: req(isStateCode) },
-  custom: { kind: req(isString), rate: req(isRateTenThousandths) },
+  custom: { kind: req(isString), rate: req(isRateTenThousandths), state: opt(isUsState) },
 });
 
 /** `{ "2026": { st, lt } }`: four-digit tax years (1970-9999) to positive cents. */

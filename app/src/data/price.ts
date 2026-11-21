@@ -12,7 +12,8 @@ export interface PriceQuote {
   prevDayUsdCents: number | null;
   /** When the quote was fetched (ms since epoch). */
   fetchedAt: number;
-  source: 'live' | 'fixed';
+  /** `manual`: a price the person typed because the live one could not be loaded (this session only). */
+  source: 'live' | 'fixed' | 'manual';
 }
 
 export interface PriceService {

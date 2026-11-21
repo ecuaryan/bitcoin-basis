@@ -9,6 +9,7 @@ import { Amount, Money } from '../../ui/Amount.tsx';
 import { useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
+import { PriceUnavailable } from '../../ui/PriceProblem.tsx';
 import { BtcInput, MoneyInput, PercentInput } from '../../ui/formatted-inputs.tsx';
 import { SelectBox } from '../../ui/Field.tsx';
 import { useToast } from '../../ui/Toast.tsx';
@@ -156,7 +157,7 @@ export function Borrow() {
 
   let results;
   if (outcome.kind === 'wait') {
-    results = <Card className="text-[15px] text-muted">{status === 'error' ? 'The price could not be loaded, so there is nothing to work out yet.' : 'Getting the price…'}</Card>;
+    results = status === 'error' ? <PriceUnavailable need="Borrowing against your Bitcoin needs a price to work out how much is safe." /> : <Card className="text-[15px] text-muted">Getting the price…</Card>;
   } else if (outcome.kind === 'bad') {
     results = (
       <Card role="alert" className="text-[15px] text-loss">

@@ -68,7 +68,7 @@ export function ValueField({ label, value, price, error, hasAmount = true }: { l
   ) : !hasAmount ? undefined : price.status === 'loading' ? (
     'Getting the price for that time…'
   ) : price.cents === null ? (
-    'No price for that time. Type the value you know.'
+    'Can’t load the Bitcoin price for that time, so type the dollar value here.'
   ) : (
     `From ${price.source} at ${formatMoney(price.cents)} per BTC at that time. Change it if you know better.`
   );
@@ -119,10 +119,13 @@ export function FormFooter({ children }: { children: ReactNode }) {
 
 export const ADD_WALLET = '__new__';
 
-/** A wallet picker with an "Add a wallet" choice that opens the add-wallet sheet. */
-export function WalletSelect({ label, value, onChange, wallets, error, hint, frameClassName }: { label: string; value: string; onChange(id: string): void; wallets: readonly { id: string; name: string }[]; error?: string | null | undefined; hint?: ReactNode; frameClassName?: string }) {
+/**
+ * A wallet picker with an "Add a wallet" choice that opens the add-wallet sheet. `canAdd={false}` for a wallet coins
+ * leave from (a new wallet has none), so the choice is only offered where coins arrive.
+ */
+export function WalletSelect({ label, value, onChange, wallets, error, hint, frameClassName, canAdd = true }: { label: string; value: string; onChange(id: string): void; wallets: readonly { id: string; name: string }[]; error?: string | null | undefined; hint?: ReactNode; frameClassName?: string; canAdd?: boolean }) {
   const [adding, setAdding] = useState(false);
-  const options: SelectOption[] = [...wallets.map((w) => ({ value: w.id, label: w.name })), { value: ADD_WALLET, label: 'Add a wallet…' }];
+  const options: SelectOption[] = [...wallets.map((w) => ({ value: w.id, label: w.name })), ...(canAdd ? [{ value: ADD_WALLET, label: 'Add a wallet…' }] : [])];
   if (!wallets.some((w) => w.id === value)) options.unshift({ value: '', label: 'Choose a wallet' });
   return (
     <>
@@ -138,14 +141,16 @@ export function WalletSelect({ label, value, onChange, wallets, error, hint, fra
           else onChange(e.target.value);
         }}
       />
-      <AddWalletSheet
-        open={adding}
+      {canAdd ? (
+        <AddWalletSheet
+          open={adding}
         onClose={() => setAdding(false)}
-        onAdded={(id) => {
-          setAdding(false);
-          onChange(id);
-        }}
-      />
+          onAdded={(id) => {
+            setAdding(false);
+            onChange(id);
+          }}
+        />
+      ) : null}
     </>
   );
 }

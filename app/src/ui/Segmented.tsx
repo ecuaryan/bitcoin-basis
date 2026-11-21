@@ -4,6 +4,8 @@ import { cx } from '../lib/cx.ts';
 export interface SegmentedOption<T extends string> {
   value: T;
   label: string;
+  /** A few quiet words under the label, read as part of its name: `Self-custody` / `(your own wallet)`. */
+  sub?: string;
 }
 
 /** Pick one of a few options. A radio group: arrow keys move, Tab leaves. */
@@ -42,7 +44,13 @@ export function Segmented<T extends string>({ options, value, onChange, label, c
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cx('press min-h-11 flex-1 rounded-lg px-2 text-sm normal-nums', on ? (solid ? 'bg-accent font-bold text-bg' : 'bg-accent/15 font-semibold text-amber') : 'font-medium text-soft hover:text-text')}
           >
-            {o.label}
+            {o.sub === undefined ? (
+              o.label
+            ) : (
+              <span className="flex flex-col items-center leading-tight">
+                <span>{o.label}</span> <span className="text-[11px] font-medium opacity-80">{o.sub}</span>
+              </span>
+            )}
           </button>
         );
       })}

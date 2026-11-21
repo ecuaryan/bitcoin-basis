@@ -68,6 +68,12 @@ export class FakeServer {
   readonly failing = new Map<string, number>();
   /** Server clock for blob keys (ms). Tests may move it to model a slow upload. */
   clock = 1_800_000_000_000;
+  /**
+   * The Bitcoin price the Worker would pass on from mempool.space, in cents per BTC: `GET /api/price` answers
+   * `priceCents`, `GET /api/price/history?ts=` answers `priceAt(ts)` (null: no price, 404). Fixed, so tests never drift.
+   */
+  priceCents = 9_500_000;
+  priceAt: (unixSeconds: number) => number | null = () => this.priceCents;
   private readonly sessions = new Map<string, Session>();
   private readonly challenges = new Map<string, { challenge: string; type: 'create' | 'get'; purpose?: string; cookie?: string }>();
 
@@ -163,6 +169,13 @@ export class FakeServer {
     switch (`${method} ${url.pathname}`) {
       case 'GET /api/status':
         return { status: 200, json: { claimed: this.claimed !== null } };
+      case 'GET /api/price':
+        return { status: 200, json: { usdCents: this.priceCents } };
+      case 'GET /api/price/history': {
+        const ts = Number(url.searchParams.get('ts'));
+        const cents = Number.isSafeInteger(ts) && ts > 0 ? this.priceAt(Math.floor(ts / 3600) * 3600) : null;
+        return cents === null ? { status: 404, json: { error: 'no price' } } : { status: 200, json: { usdCents: cents } };
+      }
       case 'POST /api/register/options': {
         if (session === null) {
           if (this.claimed !== null) return { status: 401 };

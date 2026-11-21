@@ -5,7 +5,7 @@ async function openBought(page: Page): Promise<Locator> {
   await page.goto('/');
   await page.getByRole('button', { name: 'Try the demo' }).click();
   await expect(page.getByText('Your Bitcoin is worth', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Log something' }).or(page.getByRole('button', { name: 'Log', exact: true })).first().click();
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
   const d = page.getByRole('dialog', { name: 'Log' });
   await expect(d).toBeVisible();
   await d.getByRole('tab', { name: 'Bought' }).click();

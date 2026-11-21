@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { countOf } from '../../lib/format.ts';
 import { TIER_LABEL } from '../../lib/origin.ts';
-import { Segmented } from '../../ui/Segmented.tsx';
+import { Segmented, type SegmentedOption } from '../../ui/Segmented.tsx';
 import { nowInstant } from '../log/model.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { Amount, Money } from '../../ui/Amount.tsx';
@@ -51,9 +51,9 @@ function NotInDemo({ title, label }: { title: string; label: string }) {
   );
 }
 
-const KIND_OPTIONS: readonly { value: WalletType; label: string }[] = [
+const KIND_OPTIONS: readonly SegmentedOption<WalletType>[] = [
   { value: 'exchange', label: 'Exchange' },
-  { value: 'self-custody', label: 'Self-custody' },
+  { value: 'self-custody', label: 'Self-custody', sub: '(your own wallet)' },
 ];
 const BATCH = 200;
 
