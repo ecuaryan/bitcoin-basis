@@ -46,12 +46,12 @@ Without `CLOUDFLARE_API_TOKEN` the Deploy workflow succeeds with a notice and do
 
 ## How a deploy works
 
-`.github/workflows/deploy.yml` has three jobs, so the Cloudflare token never shares a job with code from npm packages:
+`.github/workflows/deploy.yml` has four jobs, so the Cloudflare token never shares a job with code from npm packages:
 
 1. **plan** (no npm, no secrets): runs only after the **CI** workflow succeeded for that exact commit on `main` (or a `v*` tag, which must point at the tested commit, on a commit that is on `main`). It picks that commit, not "latest main"; if a newer commit has landed, the older run steps aside. It checks `APP_ORIGIN` (`tools/check-origin.mjs`): `https://<name>.workers.dev` or an https custom origin, no path or port, never localhost.
 2. **build** (no secrets): `npm ci --ignore-scripts`, `npm run build` (builds the app, then `tools/sri.mjs` adds Subresource Integrity), `tools/hash-build.mjs` writes `dist-hashes.txt`. Uploads the build.
-3. **deploy** (environment `production`): installs only the lockfile-pinned wrangler (`--ignore-scripts`), downloads and checks the build, and gives `CLOUDFLARE_API_TOKEN` to the wrangler step alone. `wrangler deploy` sets `--var ORIGIN` and `--var RP_ID` from `APP_ORIGIN` (and `MEMPOOL_URL` if you set that variable; the default is mempool.space). Secrets are not touched. Then a smoke test (`tools/smoke-test.mjs`: `/api/status` answers and the security headers are on the app and the API) and `tools/verify-deployment.mjs --all` (live files and headers against the fresh `dist-hashes.txt`).
-4. For `v*` tags, `dist-hashes.txt` is attached to a GitHub Release.
+3. **deploy** (environment `production`): installs only the lockfile-pinned wrangler (`--ignore-scripts`), downloads the build into a scratch folder outside the checkout, checks that it holds only `app/dist/**` and `dist-hashes.txt` (regular files, no symlinks, no `..`), and copies just those into the checkout. The wrangler config, the Worker source and `node_modules` therefore come only from the checkout and the lockfile, never from the build job. It gives `CLOUDFLARE_API_TOKEN` to the wrangler step alone. `wrangler deploy` sets `--var ORIGIN` and `--var RP_ID` from `APP_ORIGIN` (and `MEMPOOL_URL` if you set that variable; the default is mempool.space). Secrets are not touched. Then a smoke test (`tools/smoke-test.mjs`: `/api/status` answers and the security headers are on the app and the API) and `tools/verify-deployment.mjs --all` (live files and headers against the fresh `dist-hashes.txt`).
+4. **release** (only for `v*` tags; no checkout, no npm): attaches `dist-hashes.txt` to a GitHub Release.
 
 Only one deploy runs at a time and a running deploy is never cancelled. If a run was replaced while waiting and a tag has no release, run the workflow by hand with that tag.
 
@@ -77,6 +77,8 @@ node tools/restore-backup.mjs --account-id <CF_ACCOUNT_ID> --apply    # only-if-
 ```
 
 It uses your `wrangler login` through the Cloudflare API (never printing the token), takes `--vault <id>` when the backup bucket holds several vaults, and `--data-bucket` / `--backup-bucket` for other names. After it runs, `/api/status` says `claimed` again and every passkey and the recovery code work as before.
+
+Restore only into an **emptied** data bucket. `--apply` refuses when the data bucket already holds any `meta/`, `cred/`, `recovery/` or `epoch/` object, or `meta/claimed` names a different vault: those keys are shared by every vault, so an older vault's newer `recovery/<n>` would become the current recovery code and its passkeys could sign in. `--force` overrides the check (only to resume a restore of the same vault that stopped partway) and prints a warning. The API base is always `api.cloudflare.com`; `BB_CF_API` is honoured only together with `BB_TEST_ALLOW_CF_API=1`, for tests.
 
 **Practising it (staging only).** `app/e2e-live/restore-drill.spec.ts` runs the whole drill (set up, backup cron, wipe, restore, fresh device, passkey device) against a throwaway staging Worker and buckets (`*-staging-*`, no bucket lock so they can be deleted). The cron cannot be called from outside, so the staging config uses a tiny wrapper entry file that re-exports the Worker and adds `POST /__cron` guarded by a `CRON_KEY` secret. Keep that wrapper and its config out of the repo and never use it on `bitcoin-basis`. Environment: `BB_LIVE_URL`, `BB_LIVE_SETUP_CODE`, `BB_LIVE_CRON_KEY`, `BB_LIVE_CF_ACCOUNT`, `BB_LIVE_DATA_BUCKET`, `BB_LIVE_BACKUP_BUCKET`; run `npx playwright test -c playwright.live.config.ts restore-drill` in `app/`.
 

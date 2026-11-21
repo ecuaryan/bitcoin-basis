@@ -9,7 +9,9 @@
  * `useServiceWorkerUpdateToast` (mount it once inside <ToastProvider>) first checks that this page
  * really runs an older build (the server's index.html names a different entry script). If it does
  * and nothing can be lost (the vault is locked, no unlock running, nothing typed), it reloads at
- * once; otherwise it offers a quiet Reload, so an unsaved form is never thrown away.
+ * once; otherwise it offers a quiet Reload, so an unsaved form is never thrown away, and checks
+ * again when the vault locks and when the page comes back to the foreground (reloading then, if
+ * that has become safe).
  *
  * An installed app brought back from the background makes no navigation, so the browser would not
  * look for a new service worker: we ask it to whenever the page becomes visible again.
@@ -83,10 +85,14 @@ export async function isStaleShell(fetchImpl: typeof fetch = (i, o) => fetch(i, 
   }
 }
 
-/** Something typed on the page that a reload would lose. */
+/**
+ * Something typed on the page that a reload would lose. Fields nobody can type into (read-only,
+ * disabled, hidden, or inside `aria-hidden`, like the recovery code's password-manager form) don't count.
+ */
 export function hasUnsavedInput(doc: Document = document): boolean {
   for (const el of doc.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')) {
-    if (el instanceof HTMLInputElement && ['checkbox', 'radio', 'hidden', 'button', 'submit', 'range'].includes(el.type)) continue;
+    if (el.tagName === 'INPUT' && ['checkbox', 'radio', 'hidden', 'button', 'submit', 'reset', 'range'].includes((el as HTMLInputElement).type)) continue;
+    if (el.readOnly || el.disabled || el.closest('[hidden], [aria-hidden="true"]') !== null) continue;
     if (el.value.trim() !== '') return true;
   }
   return false;
@@ -100,7 +106,8 @@ export function safeToReload(vault: Pick<Vault, 'status' | 'unlocking'> | null, 
 
 /**
  * When a new service worker has taken over: if this page is an older build, reload it when that is
- * safe, else show "New version available — Reload" once. A page that is already current shows nothing.
+ * safe, else show "New version available — Reload" once and check again when the vault locks
+ * (Lock, or auto-lock) and when the page becomes visible. A page that is already current shows nothing.
  */
 const checkServer = () => isStaleShell();
 
@@ -109,20 +116,57 @@ export function useServiceWorkerUpdateToast(reload: () => void = reloadPage, che
   const vault = useVaultOptional();
   useEffect(() => {
     let live = true;
+    /** A new version took over, but this page could not reload yet (or could not tell). */
+    let waiting = false;
+    let toastShown = false;
+    let checking = false;
+    const check = () => {
+      if (checking) return;
+      checking = true;
+      void checkStale().then((stale) => {
+        checking = false;
+        if (!live) return;
+        if (stale === false) {
+          waiting = false;
+          return;
+        }
+        if (stale === true && safeToReload(vault)) {
+          waiting = false;
+          reload();
+          return;
+        }
+        waiting = true;
+        if (!toastShown) {
+          toastShown = true;
+          toast.show(UPDATE_TEXT, { action: { label: 'Reload', onClick: reload } });
+        }
+      });
+    };
     const show = () => {
       if (!updatePending) return;
       updatePending = false;
-      void checkStale().then((stale) => {
-        if (!live || stale === false) return;
-        if (stale === true && safeToReload(vault)) reload();
-        else toast.show(UPDATE_TEXT, { action: { label: 'Reload', onClick: reload } });
-      });
+      check();
     };
+    const retry = () => {
+      if (waiting) check();
+    };
+    let wasUnlocked = vault?.status.state === 'unlocked';
+    const unsubscribe = vault?.subscribe((s) => {
+      const unlocked = s.state === 'unlocked';
+      if (wasUnlocked && !unlocked) retry();
+      wasUnlocked = unlocked;
+    });
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') retry();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     updateListeners.add(show);
     show(); // a message that arrived before this mounted
     return () => {
       live = false;
       updateListeners.delete(show);
+      unsubscribe?.();
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [toast, reload, checkStale, vault]);
 }

@@ -203,7 +203,7 @@ node tools/restore-backup.mjs --account-id <your CF_ACCOUNT_ID>             # dr
 node tools/restore-backup.mjs --account-id <your CF_ACCOUNT_ID> --apply     # copies it
 ```
 
-It copies `vault/<id>/<key>` to `<key>` in `bitcoin-basis-data` and never overwrites an object that is already there, so running it twice is safe. If the backup holds more than one vault (you claimed the instance again after a wipe), it lists their ids and you pick the one you want with `--vault <id>`. Then clear site data in your browsers and open the app: your recovery code (or a passkey already registered) opens it. Anything logged after the last daily backup (03:17 UTC) and not yet synced from a device is still on that device and syncs up again. Use `--data-bucket` / `--backup-bucket` if you renamed the buckets.
+It copies `vault/<id>/<key>` to `<key>` in `bitcoin-basis-data` and never overwrites an object that is already there. `--apply` refuses if the data bucket still holds a vault (any `meta/`, `cred/`, `recovery/` or `epoch/` object), because copying an older vault next to it would let the older vault's recovery code and passkeys in; empty the bucket first. `--force` overrides that, only to finish a restore of the same vault that stopped partway. If the backup holds more than one vault (you claimed the instance again after a wipe), it lists their ids and you pick the one you want with `--vault <id>`. Then clear site data in your browsers and open the app: your recovery code (or a passkey already registered) opens it. Anything logged after the last daily backup (03:17 UTC) and not yet synced from a device is still on that device and syncs up again. Use `--data-bucket` / `--backup-bucket` if you renamed the buckets.
 
 ## Costs
 

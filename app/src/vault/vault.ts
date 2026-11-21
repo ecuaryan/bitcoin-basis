@@ -23,6 +23,7 @@ import { EncryptedLedgerStore, type SyncResult, type SyncStatus } from './encryp
 import { defaultChannel, realScheduler, type BroadcastLike, type Scheduler } from './env.ts';
 import { VaultError } from './errors.ts';
 import { openIndexedDb, type VaultDb } from './idb.ts';
+import { flushPendingSaves } from '../lib/pending-saves.ts';
 import {
   authVerifier,
   bindCredential,
@@ -133,7 +134,15 @@ export interface VaultOptions {
   readonly pollIntervalMs?: number;
   /** How long an unlock waits for the server before the prompt. Default `UNLOCK_NETWORK_MS`. */
   readonly unlockNetworkMs?: number;
+  /**
+   * Runs before the idle auto-lock drops the keys, so a save that was waiting (a note typed a moment
+   * ago) is finished first. Waited for at most `AUTO_LOCK_FLUSH_MS`. Default: the app's pending saves.
+   */
+  readonly beforeAutoLock?: () => Promise<void>;
 }
+
+/** The longest the idle auto-lock waits for pending saves before it locks anyway. */
+export const AUTO_LOCK_FLUSH_MS = 3_000;
 
 /** A non-extractable KEK and the wrapping it opens: produces the current DK's raw bytes briefly, to wrap new copies. */
 interface Rewrap {
@@ -178,6 +187,8 @@ export class Vault {
   private signIns = 0;
   /** The unlock attempt in progress (aborted by the next one). */
   private unlockCtrl: AbortController | null = null;
+  /** The unlock attempt whose sign-in set the current session cookie (`null`: another kind of sign-in did). */
+  private signedInBy: AbortController | null = null;
   /** Until when unlocks skip the server (it just timed out). */
   private serverSlowUntil = 0;
   private refreshing: Promise<void> | null = null;
@@ -196,6 +207,7 @@ export class Vault {
   private readonly prfSupport: () => Promise<PrfSupport>;
   private readonly env: VaultEnvironment | null;
   private readonly unlockNetworkMs: number;
+  private readonly beforeAutoLock: () => Promise<void>;
   private cachedStatus: VaultStatus | null = null;
 
   /** Open the vault stored on this device (or an empty one). */
@@ -220,6 +232,7 @@ export class Vault {
     this.prfSupport = options.prfSupport ?? (() => detectPrfSupport());
     this.autoLockMinutes = options.autoLockMinutes ?? 5;
     this.unlockNetworkMs = options.unlockNetworkMs ?? UNLOCK_NETWORK_MS;
+    this.beforeAutoLock = options.beforeAutoLock ?? flushPendingSaves;
     this.env =
       options.environment === undefined
         ? { document: typeof document === 'undefined' ? null : document, window: typeof window === 'undefined' ? null : window }
@@ -453,7 +466,7 @@ export class Vault {
           }
           throw mapApi(e);
         }
-        this.sessionStarted('passkey');
+        this.sessionStarted('passkey', ctrl);
         if (this.record !== null && login.vaultId !== this.record.vaultId) throw new VaultError('vault-mismatch');
         const local = this.record?.credentials.find((c) => c.id === assertion.credentialId);
         const server = login.credential;
@@ -576,7 +589,7 @@ export class Vault {
                   return false;
                 },
               );
-              if (ok) this.sessionStarted('recovery');
+              if (ok) this.sessionStarted('recovery', ctrl);
               step('opening');
             }
             this.assertLive(gen, signal);
@@ -596,7 +609,7 @@ export class Vault {
         const login = await this.api.recoveryLogin(b64(token), { signal }).catch((e: unknown) => {
           throw e instanceof ApiError && e.kind === 'unauthorized' ? new VaultError('wrong-recovery-code', undefined, { cause: e }) : mapApi(e);
         });
-        this.sessionStarted('recovery');
+        this.sessionStarted('recovery', ctrl);
         step('opening');
         const kek = await deriveRecoveryKek(code.secret, salt);
         const aad = wrapAad(params.vaultId, { type: 'recovery', version: login.version });
@@ -789,15 +802,20 @@ export class Vault {
    */
   lock(reason: LockReason = 'user'): void {
     this.lockGen++;
-    if (this.session === null) return;
-    wipe(this.session.recoveryToken);
+    const session = this.session;
+    // Also when no session is open: an unlock in flight (or one that failed) may already hold keys in
+    // the store, or have signed in. Every one of those is dropped and ended here.
+    const signedIn = this.serverSession !== null;
+    if (session === null && !signedIn && !this.store.unlocked) return;
+    if (session !== null) wipe(session.recoveryToken);
     this.session = null;
     this.serverSession = null;
+    this.signedInBy = null;
     this.store.stop();
     this.clearIdle();
     this.hiddenAt = null;
-    this.lockReason = reason;
-    this.endServerSession();
+    if (session !== null) this.lockReason = reason;
+    if (session !== null || signedIn) this.endServerSession();
     this.emit();
   }
 
@@ -1075,8 +1093,9 @@ export class Vault {
    * A sign-in set a new session cookie. The old cookie is gone from the browser, so a still-queued
    * logout could now only end the NEW session: drop it.
    */
-  private sessionStarted(kind: 'passkey' | 'recovery'): void {
+  private sessionStarted(kind: 'passkey' | 'recovery', by: AbortController | null = null): void {
     this.serverSession = kind;
+    this.signedInBy = by;
     this.signIns++;
     this.serverSlowUntil = 0;
     if (this.logoutPending) this.markLogoutPending(false);
@@ -1112,11 +1131,18 @@ export class Vault {
       wipe(session.recoveryToken);
       throw new VaultError('aborted');
     }
-    await this.store.start(storeKeys(session));
-    if (gen !== this.lockGen || isAborted(signal)) {
-      this.store.stop();
+    // On any failure (the local read failed, a lock, an abort) the store drops these keys again, but
+    // only if it still holds this start's: a newer unlock that has taken over is left alone.
+    const token = this.store.open(storeKeys(session));
+    try {
+      await this.store.load(token);
+      if (gen !== this.lockGen || isAborted(signal)) throw gen !== this.lockGen ? new VaultError('locked', 'the vault was locked while unlocking') : new VaultError('aborted');
+    } catch (e) {
+      this.store.stop(token);
       wipe(session.recoveryToken);
-      throw gen !== this.lockGen ? new VaultError('locked', 'the vault was locked while unlocking') : new VaultError('aborted');
+      session.recoveryToken = null;
+      session.keys.clear();
+      throw e;
     }
     this.session = session;
     this.lockReason = null;
@@ -1146,7 +1172,21 @@ export class Vault {
 
   /** Run an unlock attempt in the queue; an abort releases the queue at once. */
   private attempt<T>(ctrl: AbortController, fn: () => Promise<T>): Promise<T> {
-    return this.exclusive(fn, ctrl.signal).finally(() => {
+    const run = async (): Promise<T> => {
+      try {
+        return await fn();
+      } catch (e) {
+        // This attempt signed in but did not unlock (failed, abandoned, or locked meanwhile), and no
+        // later sign-in replaced its cookie: end that server session now instead of leaving it open.
+        if (this.signedInBy === ctrl && this.session === null) {
+          this.signedInBy = null;
+          this.serverSession = null;
+          this.endServerSession();
+        }
+        throw e;
+      }
+    };
+    return this.exclusive(run, ctrl.signal).finally(() => {
       if (this.unlockCtrl === ctrl) this.unlockCtrl = null;
     });
   }
@@ -1216,9 +1256,25 @@ export class Vault {
     this.idleTimer = this.scheduler.setTimeout(() => {
       this.idleTimer = null;
       if (this.session === null) return;
-      if (this.scheduler.now() - this.lastActivity >= limit) this.lock('idle');
+      if (this.scheduler.now() - this.lastActivity >= limit) this.idleLock();
       else this.scheduleIdle();
     }, wait);
+  }
+
+  /** Finish pending saves while the keys are still here (never waiting long), then lock. */
+  private idleLock(): void {
+    const session = this.session;
+    const gen = this.lockGen;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      this.scheduler.clearTimeout(timer);
+      // Locked or unlocked again meanwhile: that already decided.
+      if (this.session === session && this.lockGen === gen) this.lock('idle');
+    };
+    const timer = this.scheduler.setTimeout(finish, AUTO_LOCK_FLUSH_MS);
+    (async () => this.beforeAutoLock())().then(finish, finish);
   }
 
   private clearIdle(): void {

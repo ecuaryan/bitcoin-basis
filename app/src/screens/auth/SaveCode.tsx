@@ -40,6 +40,8 @@ export function SaveCode({ code, className }: { code: string; className?: string
     <div className={cx('flex flex-col gap-2.5', className)}>
       <form
         ref={formRef}
+        // POST, never GET: should it ever be submitted for real, the code must not land in a URL.
+        method="post"
         aria-hidden="true"
         autoComplete="on"
         className="sr-only"

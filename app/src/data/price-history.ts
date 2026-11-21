@@ -13,8 +13,20 @@ export interface PriceCache {
 }
 
 const CACHE_KEY = 'bb.price-history.v1';
+/** At most this many prices are kept; the oldest times go first. */
+export const PRICE_CACHE_MAX = 400;
+const HOUR_MS = 3_600_000;
 
-/** Past prices never change, so they are kept on this device and asked for only once. */
+/** `ms` rounded down to the whole hour (the Worker's price history has hourly resolution anyway). */
+export function floorToHour(ms: number): number {
+  return Math.floor(ms / HOUR_MS) * HOUR_MS;
+}
+
+/**
+ * Past prices never change, so they are kept on this device and asked for only once. Times are whole
+ * hours and the cache is capped at `PRICE_CACHE_MAX` entries, so it can't grow into a long record of
+ * when the app was opened.
+ */
 export function createLocalPriceCache(storage: Pick<Storage, 'getItem' | 'setItem'> = window.localStorage): PriceCache {
   let map: Record<string, number> = {};
   try {
@@ -23,6 +35,25 @@ export function createLocalPriceCache(storage: Pick<Storage, 'getItem' | 'setIte
   } catch {
     map = {};
   }
+  const save = () => {
+    try {
+      storage.setItem(CACHE_KEY, JSON.stringify(map));
+    } catch {
+      // Storage full or blocked: fine, it will be asked for again next time.
+    }
+  };
+  const prune = (): boolean => {
+    const keys = Object.keys(map);
+    // Older versions kept exact seconds: drop those, then keep the newest times.
+    const hourly = keys.filter((k) => Number.isSafeInteger(Number(k)) && Number(k) % 3600 === 0);
+    if (hourly.length === keys.length && keys.length <= PRICE_CACHE_MAX) return false;
+    const keep = hourly.sort((a, b) => Number(b) - Number(a)).slice(0, PRICE_CACHE_MAX);
+    const next: Record<string, number> = {};
+    for (const k of keep) next[k] = map[k] as number;
+    map = next;
+    return true;
+  };
+  if (prune()) save();
   return {
     get: (ts) => {
       const v = map[String(ts)];
@@ -30,11 +61,8 @@ export function createLocalPriceCache(storage: Pick<Storage, 'getItem' | 'setIte
     },
     set: (ts, cents) => {
       map[String(ts)] = cents;
-      try {
-        storage.setItem(CACHE_KEY, JSON.stringify(map));
-      } catch {
-        // Storage full or blocked: fine, it will be asked for again next time.
-      }
+      prune();
+      save();
     },
   };
 }

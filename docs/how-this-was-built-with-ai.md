@@ -14,7 +14,7 @@ Bitcoin Basis was built by AI agents working under a human owner. This page says
 - The orchestrator re-ran the tests itself and compared screenshots with the mockups.
 - **Differential test:** the tax module against an independent reference on 2,800 random cases. Where the reference is exact, they matched exactly; the remaining differences were simplifications in the reference (for example NIIT on short-term gains), where the engine was right.
 - **Property tests** (fast-check) for conservation of sats and cost, saved sales never changing, order independence, and export/import round trips. 100% engine coverage is a CI gate.
-- **Adversarial reviewers:** separate agents were told to break each step. Engine: two rounds. Security design: two rounds. UX: one full first-time-user audit.
+- **Adversarial reviewers:** separate agents were told to break each step. Engine: two rounds. Security design: four rounds. UX: one full first-time-user audit.
 - CI on every push: typecheck, lint, tests, Playwright with axe on phone and desktop, lockfile check, `npm audit`, CodeQL, gitleaks.
 - Memory across interruptions: usage limits stopped the build several times; git history and [PROGRESS.md](PROGRESS.md) were enough to resume.
 
@@ -42,4 +42,4 @@ Earlier, in the private history cleanup that motivated the app, audits also caug
 
 ## What this does not prove
 
-Tests, reviews and a reference script lower the odds of error; they are not an audit. The security design has had two adversarial reviews and no outside audit, and the tax figures are not tax advice.
+Tests, reviews and a reference script lower the odds of error; they are not an audit. The security design has had four adversarial review rounds and no outside audit, and the tax figures are not tax advice.

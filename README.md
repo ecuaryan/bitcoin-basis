@@ -112,7 +112,7 @@ Counts from `npm run check` and `npx playwright test --list`:
 | Property tests | fast-check over thousands of random histories: sats and cost balance, saved sales never change, order independence, export/import round trip |
 | Tax math | Matches an independent Decimal reference on 2,800 random cases; worked examples in the [engine spec](docs/engine-spec.md) are tests |
 | CI | typecheck, lint, tests, lockfile check, `npm audit`, CodeQL, gitleaks, Playwright |
-| Reviews | Independent adversarial reviews of the engine (two rounds), the security design (two rounds) and the UX (65 findings). See [how this was built with AI](docs/how-this-was-built-with-ai.md) |
+| Reviews | Independent adversarial reviews of the engine (two rounds), the security design (four rounds) and the UX (65 findings). See [how this was built with AI](docs/how-this-was-built-with-ai.md) |
 
 ## Status
 

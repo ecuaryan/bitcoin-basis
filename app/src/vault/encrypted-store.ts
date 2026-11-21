@@ -198,11 +198,25 @@ export class EncryptedLedgerStore implements LedgerStore {
 
   /** Load and decrypt everything stored on this device. Does not touch the network. */
   async start(keys: Keys): Promise<void> {
+    await this.load(this.open(keys));
+  }
+
+  /**
+   * Take the keys (dropping anything held before) and return this start's token. Pass the token to
+   * `load`, and to `stop` when the start fails: a stale `stop(token)` never wipes a newer start.
+   */
+  open(keys: Keys): number {
     this.stop();
     this.keys = keys;
-    const gen = this.gen;
     this.setStatus({ ...OFF, phase: 'idle' });
-    await this.reload(gen);
+    return this.gen;
+  }
+
+  /** Decrypt the local copy for the start `token` names. Rejects if that start was replaced or stopped meanwhile. */
+  async load(token: number): Promise<void> {
+    if (token !== this.gen) throw new VaultError('locked', 'the store was stopped while opening');
+    await this.reload(token);
+    if (token !== this.gen) throw new VaultError('locked', 'the store was stopped while opening');
   }
 
   /** New keys (a newer epoch, or older keys now available). Re-reads anything that failed to open. */
@@ -214,8 +228,9 @@ export class EncryptedLedgerStore implements LedgerStore {
     void this.reload(this.gen);
   }
 
-  /** Drop the key and every plaintext entry, cancel sync. */
-  stop(): void {
+  /** Drop the key and every plaintext entry, cancel sync. With a `token` (from `open`), only if that start is still the current one. */
+  stop(token?: number): void {
+    if (token !== undefined && token !== this.gen) return;
     this.gen++;
     this.keys = null;
     this.blobEntries.clear();

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useLedger } from '../data/ledger-provider.tsx';
-import { loadPriceSeries, memoryPriceCache, seriesTimes, createLocalPriceCache, type PricePoint } from '../data/price-history.ts';
+import { floorToHour, loadPriceSeries, memoryPriceCache, seriesTimes, createLocalPriceCache, type PricePoint } from '../data/price-history.ts';
 import { usePrice } from '../data/price-provider.tsx';
 import { demoPriceAt } from '../demo/demo-data.ts';
 import { cx } from '../lib/cx.ts';
@@ -47,8 +47,9 @@ function usePriceSeries(): { points: PricePoint[]; loading: boolean } {
 
   useEffect(() => {
     const ctl = new AbortController();
-    const end = nowMs ?? Date.now();
-    const times = isDemo ? seriesTimes(end, YEARS_BACK * 12, YEARS_BACK * 12 + 1) : seriesTimes(end, YEARS_BACK * 12, YEARS_BACK * 4 + 1).slice(0, -1);
+    // Live: whole hours only, so the cached times don't record when the app was opened.
+    const end = nowMs ?? floorToHour(Date.now());
+    const times = isDemo ? seriesTimes(end, YEARS_BACK * 12, YEARS_BACK * 12 + 1) : seriesTimes(end, YEARS_BACK * 12, YEARS_BACK * 4 + 1).slice(0, -1).map(floorToHour);
     const svc = isDemo ? { current: service.current, historical: (ts: number) => Promise.resolve(demoPriceAt(ts * 1000)) } : service;
     const cache = isDemo ? memoryPriceCache() : createLocalPriceCache();
     void loadPriceSeries(svc, times, cache, { signal: ctl.signal, pauseMs: isDemo ? 0 : 250 }).then((pts) => {

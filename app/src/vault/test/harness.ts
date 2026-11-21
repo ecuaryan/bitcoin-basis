@@ -1,6 +1,6 @@
 /** Test harness: a manual clock and "devices" (memory IndexedDB + API client + vault) sharing a fake server. */
 import { createApiClient } from '../api.ts';
-import type { Scheduler } from '../env.ts';
+import type { BroadcastLike, Scheduler } from '../env.ts';
 import { createMemoryDb, type MemoryDb } from '../idb.ts';
 import type { CredentialsLike, PrfSupport } from '../passkey.ts';
 import { Vault, type VaultEnvironment } from '../vault.ts';
@@ -69,6 +69,8 @@ export async function makeDevice(
     /** Real milliseconds: the API client's request timeout, and the unlock's pre-prompt network budget. */
     apiTimeoutMs?: number;
     unlockNetworkMs?: number;
+    channel?: BroadcastLike | null;
+    beforeAutoLock?: () => Promise<void>;
   } = {},
 ): Promise<Device> {
   const db = opts.db ?? createMemoryDb();
@@ -83,7 +85,8 @@ export async function makeDevice(
     scheduler,
     isOnline: () => !client.offline,
     environment: opts.environment ?? null,
-    channel: null,
+    channel: opts.channel ?? null,
+    beforeAutoLock: opts.beforeAutoLock ?? (() => Promise.resolve()),
     pollIntervalMs: opts.pollIntervalMs ?? 0,
     ...(opts.unlockNetworkMs === undefined ? {} : { unlockNetworkMs: opts.unlockNetworkMs }),
     ...(opts.autoLockMinutes === undefined ? {} : { autoLockMinutes: opts.autoLockMinutes }),
