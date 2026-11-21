@@ -18,6 +18,7 @@ import {
   openDelivery,
   openHistory,
   openHistoryBytes,
+  sameDataKey,
   sealHistory,
   unwrapCredentialKey,
   unwrapDataKey,
@@ -208,5 +209,15 @@ describe('credential keys, deliveries and bindings', () => {
     expect(await verifyCredentialBinding(dk, VAULT, 'cred-1', 3, publicKey, binding)).toBe(false);
     expect(await verifyCredentialBinding(await importDataKey(fromHex('41'.repeat(32))), VAULT, 'cred-1', 2, publicKey, binding)).toBe(false);
     expect(await verifyCredentialBinding(dk, VAULT, 'cred-1', 2, publicKey, binding.slice(1))).toBe(false);
+  });
+});
+
+describe('sameDataKey', () => {
+  test('true only for the same key', async () => {
+    const a = await importDataKey(DK);
+    const again = await importDataKey(DK);
+    const other = await importDataKey(fromHex('41'.repeat(32)));
+    expect(await sameDataKey(a, again)).toBe(true);
+    expect(await sameDataKey(a, other)).toBe(false);
   });
 });

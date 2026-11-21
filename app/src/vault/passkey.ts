@@ -42,6 +42,14 @@ export type PasskeyErrorCode =
   | 'cancelled'
   | 'no-credential'
   | 'prf-unavailable'
+  /**
+   * `create` found a passkey for these records already on this authenticator (WebAuthn
+   * `InvalidStateError`: it matched `excludeCredentials`). Typically a synced passkey from another
+   * device: use it (`Vault.addPasskey` adopts it) instead of registering a duplicate.
+   */
+  | 'exists'
+  /** The authenticator can't meet the requirements (`ConstraintError`): usually no screen lock is set. */
+  | 'constraint'
   | 'failed'
   /** The caller's signal fired (a newer attempt started, or "Try again"). */
   | 'aborted'
@@ -367,7 +375,8 @@ async function call<T>(fn: () => Promise<T>): Promise<T> {
     const name = (e as { name?: string } | null)?.name;
     if (name === 'NotAllowedError' || name === 'AbortError') throw new PasskeyError('cancelled', 'the passkey prompt was cancelled or timed out', { cause: e });
     if (name === 'NotSupportedError' || name === 'SecurityError') throw new PasskeyError('unsupported', 'passkeys are not available here', { cause: e });
-    if (name === 'InvalidStateError') throw new PasskeyError('failed', 'this passkey is already registered', { cause: e });
+    if (name === 'InvalidStateError') throw new PasskeyError('exists', 'a passkey for these records is already on this authenticator', { cause: e });
+    if (name === 'ConstraintError') throw new PasskeyError('constraint', 'the authenticator cannot verify the user here', { cause: e });
     throw new PasskeyError('failed', 'the passkey request failed', { cause: e });
   }
 }

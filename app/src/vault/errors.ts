@@ -18,6 +18,11 @@ export type VaultErrorCode =
   | 'passkey-rejected'
   /** The passkey or browser has no PRF: unlock with the recovery code on this device. */
   | 'prf-unavailable'
+  /**
+   * The passkey that is already on this device (synced from another device) signed in, but gives
+   * no PRF output, so it can't unlock records here.
+   */
+  | 'synced-passkey-no-prf'
   /** No passkey on this device can unlock offline. */
   | 'no-passkey'
   /** Passkeys are not available in this browser. */

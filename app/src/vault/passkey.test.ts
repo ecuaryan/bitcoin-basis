@@ -103,3 +103,27 @@ describe('getAssertion', () => {
     await expect(evaluatePrf(auth, [pk.credentialId])).rejects.toBeInstanceOf(PasskeyError);
   });
 });
+
+describe('error codes', () => {
+  test('a passkey for these records already on the authenticator is "exists", not a generic failure', async () => {
+    const auth = new FakeAuthenticator('i', { honorExclude: true });
+    const pk = await createPasskey(auth, creation());
+    await expect(createPasskey(auth, { ...creation(), excludeCredentials: [{ id: pk.credentialId, type: 'public-key' }] })).rejects.toMatchObject({ name: 'PasskeyError', code: 'exists' });
+    // Another passkey is fine.
+    await expect(createPasskey(auth, { ...creation(), excludeCredentials: [{ id: toBase64Url(randomBytes(16)), type: 'public-key' }] })).resolves.toBeDefined();
+  });
+
+  test.each([
+    ['NotAllowedError', 'cancelled'],
+    ['AbortError', 'cancelled'],
+    ['NotSupportedError', 'unsupported'],
+    ['SecurityError', 'unsupported'],
+    ['InvalidStateError', 'exists'],
+    ['ConstraintError', 'constraint'],
+    ['UnknownError', 'failed'],
+  ])('%s from the browser is %s', async (name, code) => {
+    const failing = { create: () => Promise.reject(Object.assign(new Error(name), { name })), get: () => Promise.reject(Object.assign(new Error(name), { name })) };
+    await expect(createPasskey(failing, creation())).rejects.toMatchObject({ code });
+    await expect(getAssertion(failing, request(), [])).rejects.toMatchObject({ code });
+  });
+});

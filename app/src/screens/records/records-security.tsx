@@ -7,7 +7,7 @@ import { explainError, wasCancelled } from '../../data/explain-error.ts';
 import { installPrompt, isStandalone } from '../../data/install.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { currentPlatform, isIos } from '../../data/platform.ts';
-import { kitHandoff } from '../../data/recovery-handoff.ts';
+import { kitHandoff, recoveryLinkNotice } from '../../data/recovery-handoff.ts';
 import { describeSync, syncRowText, type SyncTone } from '../../data/sync-view.ts';
 import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
 import { ExitDemoButton } from '../../ui/AppShell.tsx';
@@ -229,8 +229,8 @@ function RealSecurity() {
                 disabled={busy !== null}
                 onClick={() =>
                   void run('passkey', async () => {
-                    await vault.addPasskey();
-                    toast.show('Passkey added on this device.', { success: true });
+                    const r = await vault.addPasskey();
+                    toast.show(addedText(r.adopted), { success: true });
                   })
                 }
               >
@@ -260,28 +260,7 @@ function RealSecurity() {
         </div>
       </Group>
 
-      <Sheet open={rotateOpen} onClose={() => setRotateOpen(false)} title="Make a new recovery code?">
-        <div className="flex flex-col gap-3 p-1">
-          <p className={P}>Your current kit stops working the moment this finishes. You&apos;ll see the new code once, and print a new kit right away.</p>
-          <div className="flex flex-wrap gap-2.5">
-            <Button onClick={() => setRotateOpen(false)}>Cancel</Button>
-            <Button
-              variant="primary"
-              disabled={busy !== null}
-              onClick={() =>
-                void run('rotate', async () => {
-                  const r = await vault.rotateRecoveryCode();
-                  kitHandoff.set(r.recoveryCode, 'rotate');
-                  setRotateOpen(false);
-                  navigate('/kit');
-                })
-              }
-            >
-              {busy === 'rotate' ? 'Working…' : 'Make a new code'}
-            </Button>
-          </div>
-        </div>
-      </Sheet>
+      <RotateSheet open={rotateOpen} onClose={() => setRotateOpen(false)} />
 
       <Sheet open={forgetOpen} onClose={() => setForgetOpen(false)} title="Forget this device?">
         <div className="flex flex-col gap-3 p-1">
@@ -308,11 +287,96 @@ function RealSecurity() {
   );
 }
 
+const addedText = (adopted: boolean) => (adopted ? 'Your passkey from your other device works here too.' : 'Passkey added on this device.');
+
+/**
+ * Make a new recovery code. That needs a passkey on this device (the server only rotates for a passkey
+ * session), so without one the sheet offers to add it first, then goes on. Errors show inside the sheet.
+ */
+function RotateSheet({ open, onClose }: { open: boolean; onClose(): void }) {
+  const vault = useVault();
+  const status = useVaultStatus();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState<'passkey' | 'rotate' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [added, setAdded] = useState<string | null>(null);
+  useEffect(() => {
+    // This is the question the one-time kit-link prompt asks; it must not open on top of this sheet.
+    if (open) recoveryLinkNotice.dismiss();
+  }, [open]);
+  const close = () => {
+    setError(null);
+    setAdded(null);
+    onClose();
+  };
+  const run = async (name: 'passkey' | 'rotate', fn: () => Promise<void>) => {
+    setBusy(name);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError(wasCancelled(e) ? 'Cancelled. Tap to try again.' : explainError(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const ready = status.passkeyUnlock;
+  return (
+    <Sheet open={open} onClose={close} title="Make a new recovery code?">
+      <div className="flex flex-col gap-3 p-1">
+        {added !== null && (
+          <p role="status" className={cx(P, 'text-amber')}>
+            {added}
+          </p>
+        )}
+        <p className={P}>{ready ? "Your current kit stops working the moment this finishes. You'll see the new code once, and print a new kit right away." : 'This device needs a passkey before it can make a new code.'}</p>
+        {error !== null && (
+          <p role="alert" className="m-0 rounded-xl border border-loss/40 bg-loss/10 px-3.5 py-2.5 text-[13px] leading-[1.45] text-loss">
+            {error}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2.5">
+          <Button onClick={close}>Cancel</Button>
+          {ready ? (
+            <Button
+              variant="primary"
+              disabled={busy !== null}
+              onClick={() =>
+                void run('rotate', async () => {
+                  const r = await vault.rotateRecoveryCode();
+                  kitHandoff.set(r.recoveryCode, 'rotate');
+                  close();
+                  navigate('/kit');
+                })
+              }
+            >
+              {busy === 'rotate' ? 'Working…' : 'Make a new code'}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              disabled={busy !== null}
+              onClick={() =>
+                void run('passkey', async () => {
+                  const r = await vault.addPasskey();
+                  setAdded(addedText(r.adopted));
+                })
+              }
+            >
+              {busy === 'passkey' ? 'Waiting for your passkey…' : 'Add a passkey on this device'}
+            </Button>
+          )}
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
 function AddDeviceGroup() {
   const address = appAddress();
   return (
     <Group title="Add another device">
-      <p className={P}>Open this address on the new device and choose “I already use Bitcoin Basis”. Then type your recovery code.</p>
+      <p className={P}>Open this address on the new device and choose “I already use Bitcoin Basis”. Use your passkey if it syncs; otherwise type your recovery code.</p>
       <Disclosure label="Show the address and square code">
         <div className="flex items-center gap-4">
           <QrCode text={address} size={132} label={`QR code for ${shortAddress(address)}`} className="flex-none rounded-xl" />

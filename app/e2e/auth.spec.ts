@@ -90,7 +90,11 @@ test('unlock with the recovery code, with live checking', async ({ page }) => {
 test('a new device: restore with the code, then add a passkey there', async ({ page }) => {
   const code = await setUp(page);
   // The fake build keeps everything in the page, so a reload would reset it: use in-app navigation instead.
-  await page.evaluate(() => window.__bbFake?.vault.forgetDevice());
+  // A new device whose authenticator doesn't have the first passkey (it doesn't sync here).
+  await page.evaluate(async () => {
+    await window.__bbFake?.vault.forgetDevice();
+    window.__bbFake?.auth.creds.splice(0);
+  });
   // The server already holds records, so Welcome offers opening them, not claiming.
   await expect(page.getByRole('heading', { name: 'These records are already set up.' })).toBeVisible();
   await expect(page.getByLabel('Setup code')).toHaveCount(0);
@@ -106,6 +110,76 @@ test('a new device: restore with the code, then add a passkey there', async ({ p
   await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
   await lock(page);
   await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible();
+});
+
+test('a new device whose passkey already syncs there: restore with the code, and adding a passkey adopts it', async ({ page }) => {
+  const code = await setUp(page);
+  // Forgetting the device keeps the authenticator's passkey: it stands in for one synced from the other device.
+  await page.evaluate(() => window.__bbFake?.vault.forgetDevice());
+  await page.getByRole('button', { name: 'I already use Bitcoin Basis' }).click();
+  await expect(page.getByRole('button', { name: 'Use my passkey' })).toBeVisible();
+  await expect(page.getByText('usually work on your other devices too')).toBeVisible();
+  await expectNoViolations(page);
+  await page.getByLabel('Recovery code', { exact: true }).fill(code);
+  await page.getByRole('button', { name: 'Restore my records' }).click();
+  await expect(page.getByRole('heading', { name: 'Records restored' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add a passkey on this device' }).click();
+  await expect(page.getByText('Your passkey from your other device works here too.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
+  // Adopted, never registered twice.
+  expect(await page.evaluate(() => window.__bbFake?.server.creds.size)).toBe(1);
+  expect(await page.evaluate(() => window.__bbFake?.vault.status.passkeyUnlock)).toBe(true);
+  await lock(page);
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
+});
+
+test('"Use my passkey" on a new device: nothing here, so it points to the recovery code', async ({ page }) => {
+  await setUp(page);
+  await page.evaluate(async () => {
+    await window.__bbFake?.vault.forgetDevice();
+    window.__bbFake?.auth.creds.splice(0);
+  });
+  await page.getByRole('button', { name: 'I already use Bitcoin Basis' }).click();
+  await page.getByRole('button', { name: 'Use my passkey' }).click();
+  await expect(page.getByRole('alert')).toHaveText('No passkey was used. If your passkey is not on this device, type your recovery code below.');
+  await expect(page.getByLabel('Recovery code', { exact: true })).toBeFocused();
+  await expectNoViolations(page);
+});
+
+test('opened from the kit QR code: restore, add the passkey, then make a new recovery code', async ({ page }) => {
+  await page.goto(`${FAKE_URL}/?fake=kit-link`);
+  // The code from the link is filled in.
+  await expect(page.getByRole('button', { name: 'Restore my records' })).toBeEnabled();
+  await expectNoViolations(page);
+  await page.getByRole('button', { name: 'Restore my records' }).click();
+  await expect(page.getByRole('heading', { name: 'Records restored' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add a passkey on this device' }).click();
+  const offer = page.getByRole('dialog', { name: 'Make a new recovery code?' });
+  await expect(offer).toContainText("You opened this from your kit's QR code.");
+  await offer.getByRole('button', { name: 'Make a new code' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Make a new recovery code?' });
+  await expect(sheet).toContainText('stops working');
+  await sheet.getByRole('button', { name: 'Make a new code' }).click();
+  await expect(page.getByRole('article', { name: 'Emergency kit' })).toBeVisible();
+  expect(await page.evaluate(() => window.__bbFake?.server.epoch())).toBe(2);
+});
+
+test('opened from the kit QR code, passkey skipped: the new-code offer waits, and the sheet adds a passkey first', async ({ page }) => {
+  await page.goto(`${FAKE_URL}/?fake=kit-link`);
+  await page.getByRole('button', { name: 'Restore my records' }).click();
+  await page.getByRole('button', { name: 'Not now' }).click();
+  await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await goSecurity(page);
+  await page.getByRole('button', { name: 'Make a new recovery code' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Make a new recovery code?' });
+  await expect(sheet).toContainText('This device needs a passkey before it can make a new code.');
+  await expectNoViolations(page);
+  await sheet.getByRole('button', { name: 'Add a passkey on this device' }).click();
+  await expect(sheet).toContainText('Your passkey from your other device works here too.');
+  await sheet.getByRole('button', { name: 'Make a new code' }).click();
+  await expect(page.getByRole('article', { name: 'Emergency kit' })).toBeVisible();
 });
 
 test('Settings, Security and devices: add a device QR, passkey, auto-lock, rotate, forget', async ({ page }) => {

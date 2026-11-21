@@ -1,5 +1,5 @@
 /** Public API of the vault: keys, encrypted local storage and sync. See docs/sync-protocol.md. */
-export { Vault, UNLOCK_NETWORK_MS, type CreateResult, type LockReason, type UnlockOptions, type UnlockResult, type UnlockStep, type VaultEnvironment, type VaultOptions, type VaultState, type VaultStatus } from './vault.ts';
+export { Vault, UNLOCK_NETWORK_MS, type AddPasskeyResult, type CreateResult, type LockReason, type UnlockOptions, type UnlockResult, type UnlockStep, type VaultEnvironment, type VaultOptions, type VaultState, type VaultStatus } from './vault.ts';
 export { VaultError, type VaultErrorCode } from './errors.ts';
 export { EncryptedLedgerStore, type SyncPhase, type SyncResult, type SyncStatus } from './encrypted-store.ts';
 export {

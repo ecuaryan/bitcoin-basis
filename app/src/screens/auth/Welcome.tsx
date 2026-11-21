@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
-import { explainError, wasCancelled } from '../../data/explain-error.ts';
+import { explainError, passkeyRestoreFallback, wasCancelled } from '../../data/explain-error.ts';
 import { incomingRecovery, kitHandoff } from '../../data/recovery-handoff.ts';
 import { useVault, usePendingKit, useVaultStatus } from '../../data/vault-provider.tsx';
 import { cx } from '../../lib/cx.ts';
@@ -12,6 +12,7 @@ import { RecoveryInput } from './RecoveryInput.tsx';
 import { SaveCode } from './SaveCode.tsx';
 import { matchesGroup, normalizeSetupCode } from './setup-logic.ts';
 import { useTitle } from '../../ui/use-title.ts';
+import { useToast } from '../../ui/Toast.tsx';
 
 type Mode = 'home' | 'restore' | 'code' | 'confirm' | 'done' | 'restored';
 const WELCOME_TITLES: Record<Mode, string | null> = { home: null, restore: 'Open your records', code: 'Save your recovery code', confirm: 'Check your recovery code', done: 'All set', restored: 'Records restored' };
@@ -38,6 +39,7 @@ export function Welcome() {
   const { isDemo, loadDemo } = useLedger();
   const pending = usePendingKit();
   const navigate = useNavigate();
+  const toast = useToast();
   const [mode, setMode] = useState<Mode>(() => (kitHandoff.get()?.reason === 'setup' ? 'code' : incomingRecovery.peek() !== null ? 'restore' : 'home'));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,13 +58,13 @@ export function Welcome() {
   }, [vault]);
   useTitle(WELCOME_TITLES[mode]);
 
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<void>, explain: (e: unknown) => string = (e) => (wasCancelled(e) ? 'Cancelled. Tap to try again.' : explainError(e))) => {
     setBusy(true);
     setError(null);
     try {
       await fn();
     } catch (e) {
-      setError(wasCancelled(e) ? 'Cancelled. Tap to try again.' : explainError(e));
+      setError(explain(e));
     } finally {
       setBusy(false);
     }
@@ -90,7 +92,9 @@ export function Welcome() {
       <RestoredStep
         onAdd={() =>
           void run(async () => {
-            await vault.addPasskey();
+            const r = await vault.addPasskey();
+            // Shown over Holdings; a pending "make a new recovery code" (kit QR link) opens there now that a passkey is here.
+            toast.show(r.adopted ? 'Your passkey from your other device works here too.' : 'Passkey added on this device.', { success: true });
             navigate('/', { replace: true });
           })
         }
@@ -118,7 +122,7 @@ export function Welcome() {
           void run(async () => {
             await vault.unlockWithPasskey();
             navigate('/', { replace: true });
-          })
+          }, passkeyRestoreFallback)
         }
       />
     );
@@ -432,8 +436,44 @@ function RestoreStep({
   onCode(code: string): void;
   onPasskey(): void;
 }) {
+  // Opened from the kit's QR code: the code is already filled in, so restoring with it comes first.
+  const [fromLink] = useState(() => incomingRecovery.peek() !== null);
   const [value, setValue] = useState(() => incomingRecovery.take() ?? '');
   const [valid, setValid] = useState(false);
+  const [tried, setTried] = useState<'passkey' | 'code' | null>(null);
+  const passkey = (
+    <BigButton
+      variant={fromLink ? 'secondary' : 'primary'}
+      disabled={busy}
+      onClick={() => {
+        setTried('passkey');
+        onPasskey();
+      }}
+    >
+      {busy && tried === 'passkey' ? 'Waiting for your passkey…' : 'Use my passkey'}
+    </BigButton>
+  );
+  const hint = <p className="m-0 text-center text-xs leading-[1.45] text-muted">Passkeys saved in Google Password Manager, iCloud Keychain or a password manager like 1Password usually work on your other devices too.</p>;
+  const form = (
+    <form
+      aria-label="Restore with the recovery code"
+      className="relative flex flex-col gap-3.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!valid) return;
+        setTried('code');
+        onCode(value);
+      }}
+    >
+      {/* After a passkey that found nothing, the field takes focus: it is the way on. */}
+      <RecoveryInput key={tried === 'passkey' && error !== null ? 'fallback' : 'first'} value={value} onChange={setValue} onValid={setValid} autoFocus={fromLink || (tried === 'passkey' && error !== null)} />
+      <NotSeedPhrase />
+      <ErrorLine>{error}</ErrorLine>
+      <BigButton type="submit" variant={fromLink ? 'primary' : 'secondary'} disabled={!valid || busy}>
+        {busy && tried === 'code' ? 'Restoring…' : 'Restore my records'}
+      </BigButton>
+    </form>
+  );
   return (
     <Frame glowTop={0} className="pt-5">
       <button type="button" onClick={onBack} className="flex min-h-11 w-fit items-center gap-1 bg-transparent pr-3 text-sm font-semibold text-soft hover:text-text">
@@ -441,28 +481,32 @@ function RestoreStep({
         Back
       </button>
       <h1 className="m-0 mt-3 font-display text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">Open your records</h1>
-      <p className="m-0 mt-2.5 text-[15px] leading-normal text-soft">Type the recovery code from your emergency kit, or scan the kit&apos;s square code with the camera.</p>
-      <form
-        className="relative mt-5 flex flex-col gap-3.5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (valid) onCode(value);
-        }}
-      >
-        <RecoveryInput value={value} onChange={setValue} onValid={setValid} autoFocus />
-        <NotSeedPhrase />
-        <ErrorLine>{error}</ErrorLine>
-        <BigButton type="submit" disabled={!valid || busy}>
-          {busy ? 'Restoring…' : 'Restore my records'}
-        </BigButton>
-      </form>
-      <div className="min-h-6 flex-1 lg:min-h-10 lg:flex-none" />
-      <div className="flex flex-col items-center gap-1">
-        <span className="text-xs text-muted">Have a passkey that syncs to this device?</span>
-        <TextButton onClick={onPasskey} disabled={busy}>
-          Use a passkey
-        </TextButton>
-      </div>
+      {fromLink ? (
+        <>
+          <p className="m-0 mt-2.5 text-[15px] leading-normal text-soft">Your recovery code is filled in from your emergency kit.</p>
+          <div className="mt-5">{form}</div>
+          <div className="min-h-6 flex-1 lg:min-h-10 lg:flex-none" />
+          <div className="flex flex-col gap-2">
+            {passkey}
+            {hint}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="m-0 mt-2.5 text-[15px] leading-normal text-soft">Use the passkey from your other device, or the recovery code from your emergency kit.</p>
+          <div className="mt-5 flex flex-col gap-2">
+            {passkey}
+            {hint}
+          </div>
+          <div role="separator" aria-hidden="true" className="my-5 flex items-center gap-3 text-xs text-muted">
+            <span className="h-px flex-1 bg-line" />
+            or type your recovery code
+            <span className="h-px flex-1 bg-line" />
+          </div>
+          {form}
+          <p className="m-0 mt-3 text-center text-xs text-muted">Or scan the square code on your kit with the camera.</p>
+        </>
+      )}
     </Frame>
   );
 }

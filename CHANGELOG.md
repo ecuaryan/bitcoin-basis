@@ -11,6 +11,13 @@
 - **Import and export**: rows in the coins spreadsheet whose wallet is one of your retirement wallets become retirement purchases (add the wallet first; leave tier and the loan columns empty on those rows). The spreadsheet export includes them, and the backup file carries them with their history.
 - The demo's retirement account has three made-up purchases.
 
+### Fixed
+
+- **Adding a device whose passkey already syncs there**: "Add a passkey on this device" no longer fails when the passkey from your other device is already on this one (Google Password Manager, iCloud Keychain, a password manager). The app uses that passkey instead of making a second one, after checking that it opens these records. If it can't unlock records on this device, the app says so.
+- **Make a new recovery code without a passkey on the device**: the sheet now says a passkey is needed first, offers to add one there, then makes the code. Errors show inside the sheet instead of behind it.
+- After opening your records from the kit's QR code, the offer to make a new recovery code waits until this device has a passkey.
+- "I already use Bitcoin Basis" leads with "Use my passkey"; when no passkey comes up it points to the recovery code field. Passkey errors now say what went wrong.
+
 ## v1.0.0
 
 First release. A self-hosted, end-to-end encrypted Bitcoin cost-basis app on a free Cloudflare account.

@@ -19,6 +19,8 @@ export interface FakeAuthenticatorOptions {
   readonly prfOnGet?: boolean;
   readonly origin?: string;
   readonly rpId?: string;
+  /** Refuse `create` with `InvalidStateError` when it already holds an excluded credential, as real authenticators do. Default off. */
+  readonly honorExclude?: boolean;
 }
 
 export class FakeAuthenticator implements CredentialsLike {
@@ -37,18 +39,29 @@ export class FakeAuthenticator implements CredentialsLike {
   readonly getSignals: (AbortSignal | undefined)[] = [];
   /** For discoverable prompts: which credential the "user" picks (default: the newest). */
   choose: ((creds: readonly FakeCred[]) => FakeCred | undefined) | null = null;
+  /**
+   * `create` fails with `InvalidStateError` when this authenticator already holds a credential in
+   * `excludeCredentials` (a synced passkey from another device). Off by default in unit tests.
+   */
+  honorExclude: boolean;
   private counter = 0;
 
   constructor(
     private readonly seed: string,
     private readonly options: FakeAuthenticatorOptions = {},
-  ) {}
+  ) {
+    this.honorExclude = options.honorExclude ?? false;
+  }
 
   async create(options: CredentialCreationOptions): Promise<Credential | null> {
     this.calls.create++;
     this.maybeCancel();
     const pk = options.publicKey as PublicKeyCredentialCreationOptions;
     if (pk.authenticatorSelection?.userVerification !== 'required') throw new Error('fake: user verification must be required');
+    if (this.honorExclude) {
+      const excluded = new Set((pk.excludeCredentials ?? []).map((d) => toBase64Url(toBytes(d.id as BufferSource))));
+      if (this.creds.some((c) => excluded.has(toBase64Url(c.id)))) throw Object.assign(new Error('a credential in excludeCredentials is already here'), { name: 'InvalidStateError' });
+    }
     const n = this.counter++;
     const id = (await sha256(utf8(`${this.seed}/id/${n}`))).slice(0, 16);
     const secret = await sha256(utf8(`${this.seed}/secret/${n}`));

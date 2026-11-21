@@ -9,13 +9,15 @@ import { Sheet } from './Sheet.tsx';
 /**
  * Shown once after unlocking when the page was opened from the emergency kit's QR code: the link holds the
  * recovery code and the browser may keep it in history, so offer a new code (which makes the old one useless).
+ * Making a new code needs a passkey on this device, so until there is one the question waits (it stays
+ * pending for this page) and appears the moment a passkey is added or adopted.
  */
 export function LinkHistoryPrompt() {
   const pending = useSyncExternalStore(recoveryLinkNotice.subscribe, recoveryLinkNotice.pending);
   const status = useVaultStatusOptional();
   const { isDemo } = useLedger();
   const navigate = useNavigate();
-  const open = pending && !isDemo && status?.state === 'unlocked';
+  const open = pending && !isDemo && status?.state === 'unlocked' && status.passkeyUnlock;
   return (
     <Sheet open={open} onClose={recoveryLinkNotice.dismiss} title="Make a new recovery code?">
       <div className="flex flex-col gap-3 p-1">

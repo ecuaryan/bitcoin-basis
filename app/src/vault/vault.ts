@@ -40,6 +40,7 @@ import {
   openHistory,
   openHistoryBytes,
   SALT_BYTES,
+  sameDataKey,
   sealHistory,
   unwrapCredentialKey,
   unwrapDataKey,
@@ -101,6 +102,12 @@ export interface CreateResult {
   /** Show ONCE (emergency kit), then forget. This is NOT a Bitcoin seed phrase. */
   readonly recoveryCode: string;
   readonly credentialId: string;
+}
+
+export interface AddPasskeyResult {
+  readonly credentialId: string;
+  /** A passkey synced from another device was already here and is now used on this device too (nothing was registered). */
+  readonly adopted: boolean;
 }
 
 export interface UnlockResult {
@@ -648,8 +655,14 @@ export class Vault {
   /**
    * Register another passkey (this device or a phone/key nearby) for this vault. Needs a session and
    * a fresh proof: a passkey prompt (step-up), or, when unlocked with the recovery code, that code.
+   *
+   * If the authenticator already holds one of this vault's passkeys (a passkey synced from another
+   * device, e.g. through Google Password Manager or iCloud Keychain), `create` refuses it
+   * (`excludeCredentials`). Then that passkey is adopted instead of registering a duplicate: one
+   * sign-in prompt, and it is kept for this device only once its PRF output opens this vault's key
+   * (`adopted: true`).
    */
-  addPasskey(): Promise<{ credentialId: string }> {
+  addPasskey(): Promise<AddPasskeyResult> {
     return this.exclusive(async () => {
       const session = this.requireSession();
       const creds = this.requireCredentials();
@@ -661,8 +674,11 @@ export class Vault {
       });
       const prfSalt = randomBytes(SALT_BYTES);
       const pk = await createPasskey(creds, opts.options).catch((e: unknown) => {
+        if (e instanceof PasskeyError && e.code === 'exists') return null;
         throw mapPasskey(e);
       });
+      // Already here (synced): use it, never register a second one.
+      if (pk === null) return this.adoptSyncedPasskey(session, creds);
       let prfOutput = pk.prfOutput;
       let raw: Bytes | null = null;
       try {
@@ -680,12 +696,68 @@ export class Vault {
           });
         this.sessionStarted('passkey');
         await this.updateRecord((r) => ({ ...r, credentials: upsert(r.credentials, made.stored) }));
-        return { credentialId: pk.credentialId };
+        return { credentialId: pk.credentialId, adopted: false };
       } finally {
         wipe(prfOutput);
         wipe(raw);
       }
     });
+  }
+
+  /**
+   * The authenticator already holds a passkey of this vault (synced from another device). One
+   * discoverable sign-in prompt: the server verifies it and starts a passkey session; its PRF output
+   * must unwrap the passkey's ECDH key from the server's record, and the data key delivered to it
+   * must be the one this session already holds. Only then is it stored for this device, so
+   * `passkeyUnlock` turns true. Nothing is registered.
+   */
+  private async adoptSyncedPasskey(session: Session, creds: CredentialsLike): Promise<AddPasskeyResult> {
+    const opts = await this.api.loginOptions().catch((e: unknown) => {
+      throw mapApi(e);
+    });
+    const a = await getAssertion(creds, opts.options, []).catch(rethrowPasskey);
+    let prfOutput = a.prfOutput;
+    try {
+      const login = await this.api.loginVerify({ response: a.response, challengeToken: opts.challengeToken }).catch((e: unknown) => {
+        throw e instanceof ApiError && (e.kind === 'unauthorized' || e.kind === 'not-found') ? new VaultError('passkey-rejected', undefined, { cause: e }) : mapApi(e);
+      });
+      this.sessionStarted('passkey');
+      if (login.vaultId !== session.vaultId) throw new VaultError('vault-mismatch');
+      if (prfOutput === null) throw new VaultError('synced-passkey-no-prf');
+      const local = this.record?.credentials.find((c) => c.id === a.credentialId);
+      const server = login.credential;
+      const stored: StoredCredential = {
+        id: a.credentialId,
+        prfSalt: local?.prfSalt ?? server.prfSalt,
+        wrappedPrivateKey: local?.wrappedPrivateKey ?? server.wrappedPrivateKey,
+        publicKey: local?.publicKey ?? server.publicKey,
+        delivery: newestDelivery(local?.delivery, login.keys.delivery),
+      };
+      const history = stored.delivery === local?.delivery ? (this.record?.histories[String(stored.delivery.epoch)] ?? null) : login.keys.history;
+      const out = prfOutput;
+      prfOutput = null;
+      const opened = await this.openWithPasskey(login.vaultId, stored, out, history);
+      // The key it opens must be this vault's key as this session already holds it.
+      const e = Math.min(opened.epoch, session.epoch);
+      const theirs = opened.keys.get(e);
+      const ours = session.keys.get(e);
+      if (theirs === undefined || ours === undefined || !(await sameDataKey(theirs, ours))) throw new VaultError('passkey-rejected', 'this passkey opens a different key than this session holds');
+      if (this.session !== session) throw new VaultError('locked', 'the vault was locked while adding the passkey');
+      session.credential ??= opened.credential;
+      for (const [n, k] of opened.keys) if (!session.keys.has(n)) session.keys.set(n, k);
+      if (opened.epoch > session.epoch) {
+        session.epoch = opened.epoch;
+        session.current = opened.current;
+        session.history = opened.history;
+      }
+      await this.updateRecord((r) =>
+        withEpoch({ ...r, credentials: upsert(r.credentials, stored), histories: history === null ? r.histories : { ...r.histories, [String(stored.delivery.epoch)]: history } }, login.keys.epoch, this.scheduler.now()),
+      );
+      this.store.setKeys(storeKeys(session));
+      return { credentialId: a.credentialId, adopted: true };
+    } finally {
+      wipe(prfOutput);
+    }
   }
 
   /**

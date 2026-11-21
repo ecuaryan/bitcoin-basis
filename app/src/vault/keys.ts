@@ -272,6 +272,22 @@ export async function verifyCredentialBinding(dk: CryptoKey, vaultId: string, cr
   }
 }
 
+/**
+ * True when two non-extractable data keys are the same key: an AES-GCM tag made under `a` (empty
+ * message, random IV, a fixed AAD) verifies under `b`. Local only; nothing is stored or sent.
+ */
+export async function sameDataKey(a: CryptoKey, b: CryptoKey): Promise<boolean> {
+  const iv = randomBytes(IV_BYTES);
+  const aad = utf8('bitcoin-basis/keycheck/v1');
+  const tag = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad }, a, new Uint8Array(0));
+  try {
+    await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: aad }, b, tag);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // --- Internals -----------------------------------------------------------------------------------
 
 async function importEcPublicKey(raw: Bytes): Promise<CryptoKey> {

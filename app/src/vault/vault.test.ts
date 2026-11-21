@@ -1,9 +1,9 @@
 import { replay, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, test } from 'vitest';
 import { buildDemoBook } from '../demo/demo-data.ts';
-import { fromBase64Url, toBase64Url, toHex } from './bytes.ts';
+import { fromBase64Url, randomBytes, toBase64Url, toHex } from './bytes.ts';
 import { VaultError } from './errors.ts';
-import { deriveRecoveryAuthToken } from './keys.ts';
+import { deliverDataKey, deriveRecoveryAuthToken } from './keys.ts';
 import { RECORD_KEY, parseRecord } from './record.ts';
 import { parseRecoveryCode, RecoveryCodeError } from './recovery-code.ts';
 import { FakeAuthenticator } from './test/fake-authenticator.ts';
@@ -331,6 +331,83 @@ describe('passkeys', () => {
     auth.cancelNext = true;
     await expect(a.vault.unlockWithPasskey()).rejects.toMatchObject({ code: 'cancelled' });
     expect(a.vault.status.state).toBe('locked');
+  });
+});
+
+describe('adding a passkey when a synced one is already here', () => {
+  /** Device A set up with a passkey that syncs (one authenticator shared by both devices); B restored with the code. */
+  async function syncedSetup(bAuth?: FakeAuthenticator) {
+    const server = new FakeServer(SETUP);
+    const auth = new FakeAuthenticator('synced', { honorExclude: true });
+    const a = await makeDevice(server, auth);
+    const { recoveryCode, credentialId } = await a.vault.create({ setupCode: SETUP });
+    await a.vault.store.append(BOOK.slice(0, 5));
+    await a.vault.sync();
+    const b = await makeDevice(server, bAuth ?? auth);
+    await b.vault.unlockWithRecoveryCode(recoveryCode);
+    return { server, auth, a, b, credentialId, recoveryCode };
+  }
+  const registrations = (server: FakeServer) => server.requests.filter((r) => r.path === '/api/register/verify').length;
+
+  test('create refuses it (InvalidStateError), so the synced passkey is adopted: one sign-in prompt, nothing registered', async () => {
+    const { server, auth, b, credentialId } = await syncedSetup();
+    expect(b.vault.status.passkeyUnlock).toBe(false);
+    const before = { creds: server.creds.size, registrations: registrations(server), create: auth.calls.create, get: auth.calls.get };
+    const r = await b.vault.addPasskey();
+    expect(r).toEqual({ credentialId, adopted: true });
+    expect(auth.calls.create).toBe(before.create + 1);
+    expect(auth.calls.get).toBe(before.get + 1); // the code was the step-up proof; one prompt to adopt
+    expect(server.creds.size).toBe(before.creds); // never a duplicate
+    expect(registrations(server)).toBe(before.registrations);
+    expect(b.vault.status.passkeyUnlock).toBe(true);
+    expect((await record(b))?.credentials.map((c) => c.id)).toEqual([credentialId]);
+    // The server session is a passkey session now: rotation works here (one step-up prompt).
+    const gets = auth.calls.get;
+    await b.vault.rotateRecoveryCode();
+    expect(auth.calls.get).toBe(gets + 1);
+    expect(server.epoch()).toBe(2);
+    // And the adopted passkey opens this device offline, with the newest key.
+    b.vault.lock();
+    b.client.offline = true;
+    await b.vault.unlockWithPasskey();
+    expect(await list(b)).toEqual(BOOK.slice(0, 5));
+  });
+
+  test('a synced passkey without PRF is not adopted, and nothing is registered', async () => {
+    const noPrf = new FakeAuthenticator('synced', { honorExclude: true, prfOnGet: false });
+    const { server, auth, b } = await syncedSetup(noPrf);
+    noPrf.creds.push(...auth.creds); // the same passkey, synced to a provider that gives no PRF on this device
+    const before = registrations(server);
+    await expect(b.vault.addPasskey()).rejects.toMatchObject({ code: 'synced-passkey-no-prf' });
+    expect(registrations(server)).toBe(before);
+    expect(server.creds.size).toBe(1);
+    expect(b.vault.status.passkeyUnlock).toBe(false);
+    expect((await record(b))?.credentials).toEqual([]);
+    expect(b.vault.status.state).toBe('unlocked');
+  });
+
+  test('adopted only when the key it opens is this vault\'s key', async () => {
+    const { server, b, credentialId } = await syncedSetup();
+    // A server that hands the passkey a different key than the one this device holds.
+    const vaultId = (server.claimed as { vaultId: string }).vaultId;
+    const pub = fromBase64Url((server.creds.get(credentialId) as { credentialKey: { publicKey: string } }).credentialKey.publicKey);
+    const forged = await deliverDataKey(randomBytes(32), pub, vaultId, 1, credentialId);
+    server.deliveries.set(`1/${credentialId}`, { ephemeralPublicKey: toBase64Url(forged.ephemeralPublicKey), wrappedDk: toBase64Url(forged.wrappedDk) });
+    await expect(b.vault.addPasskey()).rejects.toMatchObject({ code: 'passkey-rejected' });
+    expect(b.vault.status.passkeyUnlock).toBe(false);
+  });
+
+  test('a cancelled sign-in prompt leaves everything as it was', async () => {
+    const { server, auth, b } = await syncedSetup();
+    const create = auth.create.bind(auth);
+    auth.create = async (o) => {
+      const out = create(o);
+      auth.cancelNext = true; // the create fails (already here), then the adopt prompt is dismissed
+      return out;
+    };
+    await expect(b.vault.addPasskey()).rejects.toMatchObject({ code: 'cancelled' });
+    expect(server.creds.size).toBe(1);
+    expect(b.vault.status.passkeyUnlock).toBe(false);
   });
 });
 
