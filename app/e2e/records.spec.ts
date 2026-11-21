@@ -20,7 +20,7 @@ test('Records: entries with filters and history', async ({ page }) => {
 test('Records: import opening lots with one bad row', async ({ page }) => {
   await openDemo(page);
   await page.goto('/records?v=io');
-  await page.getByLabel('Choose a lots CSV').setInputFiles(FIXTURE);
+  await page.getByLabel('Choose a spreadsheet (CSV)').setInputFiles(FIXTURE);
   const problems = page.getByRole('list', { name: 'Problems' });
   await expect(problems).toContainText('Row 4');
   await expect(problems).toContainText('no wallet named "Nowhere"');
@@ -47,7 +47,7 @@ test('Records: giving off by default, then mark paid', async ({ page }) => {
 test('Records: changing settings changes the Sell tax', async ({ page }) => {
   await openDemo(page);
   await page.goto('/what-if');
-  const oldest = page.getByRole('region', { name: 'Oldest first' });
+  const oldest = page.getByRole('radio', { name: 'Oldest first' });
   await expect(oldest).toContainText('Tax this adds');
   const before = await oldest.innerText();
   await page.goto('/records?v=settings');
@@ -55,8 +55,8 @@ test('Records: changing settings changes the Sell tax', async ({ page }) => {
   await expectNoViolations(page);
   await page.getByLabel('Long-term loss carried in').fill('0');
   await page.getByLabel('Wages and other income (a year)').fill('300000');
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Settings saved.')).toBeVisible();
+  await page.getByLabel('Wages and other income (a year)').blur();
+  await expect(page.getByText('Saved.')).toBeVisible();
   await page.goto('/what-if');
   await expect(oldest).toContainText('Tax this adds');
   expect(await oldest.innerText()).not.toBe(before);
@@ -64,6 +64,8 @@ test('Records: changing settings changes the Sell tax', async ({ page }) => {
 });
 
 test('Records: test the emergency kit sheet, then the reminder hides', async ({ page }) => {
+  // The reminder only shows 30 days after first use, so pretend the app was first opened long ago.
+  await page.addInitScript(() => window.localStorage.setItem('bb.kit-first-seen', '2026-01-01'));
   await openDemo(page);
   await page.goto('/records');
   await page.getByRole('region', { name: 'Needs attention' }).getByRole('button', { name: 'Test' }).click();

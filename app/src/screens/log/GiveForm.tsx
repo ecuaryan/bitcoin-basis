@@ -8,7 +8,7 @@ import { CoinPicker } from './CoinPicker.tsx';
 import type { FormProps } from './draft.ts';
 import { stripSource, useAmount, useBaseState, useFormEnv, usePriceAt, useValue, withSource } from './hooks.ts';
 import { choosePicks, localInputFor, lotsAvailable, nowInstant, usableWallets, usualWallet, whenLabel, zonedInstant, type PickMode } from './model.ts';
-import { AmountInput, FormFooter, ValueField, WalletSelect, WhenField } from './parts.tsx';
+import { AmountInput, FormFooter, MoreDetails, ValueField, WalletSelect, WhenField } from './parts.tsx';
 
 type To = 'person' | 'charity';
 
@@ -30,6 +30,7 @@ export function GiveForm({ initial, preset, onReview }: FormProps) {
   const [mode, setMode] = useState<PickMode>(edit ? 'hand' : 'oldest');
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(edit ? edit.picks.map((p) => p.lotId) : []));
   const [tried, setTried] = useState(false);
+  const [more, setMore] = useState(note !== '');
 
   const w = state.wallets.find((x) => x.id === wallet);
   const available = useMemo(() => (at === null ? [] : lotsAvailable(state, entries, wallet, at)), [state, entries, wallet, at]);
@@ -59,7 +60,7 @@ export function GiveForm({ initial, preset, onReview }: FormProps) {
         { label: 'To', value: to === 'person' ? recipient.trim() : `${recipient.trim()} (charity)` },
         { label: 'Worth that day', value: <Money cents={value.cents} /> },
         { label: 'From', value: w.name },
-        { label: 'When', value: whenLabel(at, tz) },
+        { label: 'When', value: whenLabel(at, tz, nowMs) },
       ],
       coins: { picks, lots: available, onDate },
       build: () => [entry],
@@ -84,18 +85,20 @@ export function GiveForm({ initial, preset, onReview }: FormProps) {
           { value: 'charity', label: 'A charity or church' },
         ]}
       />
-      <TextField label={to === 'person' ? 'Who is it for?' : 'Charity or church'} value={recipient} onChange={(e) => setRecipient(e.target.value)} autoComplete="off" error={tried ? errors.recipient : null} />
-      <WalletSelect label="From wallet" value={wallet} onChange={(v) => { setWallet(v); setChosen(new Set()); }} wallets={usableWallets(state, edit?.wallet)} error={tried ? errors.wallet : null} />
       <AmountInput amount={amount} error={tried ? errors.amount : null} needsPrice />
-      <ValueField label="Worth that day" value={value} price={price} error={tried ? errors.value : null} />
+      <WalletSelect label="From wallet" value={wallet} onChange={(v) => { setWallet(v); setChosen(new Set()); }} wallets={usableWallets(state, edit?.wallet)} error={tried ? errors.wallet : null} />
+      <ValueField label="Worth that day" value={value} price={price} error={tried ? errors.value : null} hasAmount={sats !== null} />
       <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
-      <CoinPicker lots={available} needed={sats} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} />
+      <TextField label={to === 'person' ? 'Who is it for?' : 'Charity or church'} value={recipient} onChange={(e) => setRecipient(e.target.value)} autoComplete="off" error={tried ? errors.recipient : null} />
+      <CoinPicker lots={available} needed={sats} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} walletName={w?.name ?? 'this wallet'} />
       {tried && errors.picks ? (
         <p role="alert" className="m-0 text-xs text-loss">
           {errors.picks}
         </p>
       ) : null}
-      <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+      <MoreDetails open={more} onOpenChange={setMore}>
+        <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+      </MoreDetails>
       <FormFooter>
         <Button type="submit" variant="primary" className="min-h-14 flex-1 rounded-[18px] text-[17px] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
           Review gift

@@ -10,7 +10,7 @@ import { DownloadIcon } from '../../ui/more-icons.tsx';
 import { newIdGenerator } from '../../ui/new-entry.ts';
 import { useToast } from '../../ui/Toast.tsx';
 import { yearsAvailable } from '../tax/tax-logic.ts';
-import { previewJson, previewLots, withoutBadRows, type JsonPreview, type LotsPreview } from './io-logic.ts';
+import { lotsTemplateCsv, previewJson, previewLots, withoutBadRows, type JsonPreview, type LotsPreview } from './io-logic.ts';
 
 function FilePicker({ label, accept, onText }: { label: string; accept: string; onText(text: string, name: string): void }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -54,12 +54,25 @@ function ImportLots() {
   const sats = preview?.entries.reduce((s, e) => s + e.sats, 0) ?? 0;
   const cost = preview?.entries.reduce((s, e) => s + e.costCents, 0) ?? 0;
   return (
-    <Card as="section" aria-label="Import opening lots" className="flex flex-col gap-3 !rounded-[18px] !p-4">
-      <h3 className="m-0 text-[15px] font-semibold">Import opening lots (CSV)</h3>
-      <p className="m-0 text-[13px] leading-[1.45] text-muted">
-        One row per lot, with the columns wallet, acquired_utc, btc, sats, cost_usd, cost_per_btc, tier and origin. Wallet names must match a wallet you already have. You see a preview first; nothing is added until you say so.
-      </p>
-      <FilePicker label="Choose a lots CSV" accept=".csv,text/csv" onText={read} />
+    <Card as="section" aria-label="Bring in your coins" className="flex flex-col gap-3 !rounded-[18px] !p-4">
+      <h2 className="m-0 text-[15px] font-semibold">Bring in your coins from a spreadsheet</h2>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <FilePicker label="Choose a spreadsheet (CSV)" accept=".csv,text/csv" onText={read} />
+        <button
+          type="button"
+          className="flex min-h-11 items-center gap-1.5 bg-transparent text-sm font-semibold text-amber underline-offset-2 hover:underline"
+          onClick={() => downloadText('bitcoin-basis-template.csv', lotsTemplateCsv(state.wallets.find((w) => !w.archived)?.name ?? 'My exchange', state.settings.timeZone))}
+        >
+          <DownloadIcon size={16} /> Download a blank template
+        </button>
+      </div>
+      <p className="m-0 text-[13px] leading-[1.45] text-muted">One row per purchase. Wallet names must match yours. You&apos;ll see a preview before anything is added.</p>
+      <details className="text-[13px] text-muted">
+        <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-soft">What columns?</summary>
+        <p className="m-0 pb-1 leading-[1.5]">
+          wallet, acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked.
+        </p>
+      </details>
       {file && preview && (
         <div role="status" className="flex flex-col gap-2 rounded-2xl border border-line bg-bg p-3 text-sm">
           <span className="text-xs text-muted">{file.name}</span>
@@ -74,7 +87,7 @@ function ImportLots() {
                 </span>
               ))}
               <Button variant="primary" className="self-start" onClick={() => void add(preview)}>
-                Add {preview.entries.length} {preview.entries.length === 1 ? 'lot' : 'lots'}
+                Add {preview.entries.length} {preview.entries.length === 1 ? 'purchase' : 'purchases'}
               </Button>
             </>
           ) : (
@@ -111,11 +124,11 @@ function ImportJson() {
   const [preview, setPreview] = useState<JsonPreview | null>(null);
   const have = useMemo(() => new Set(entries.map((e) => e.id)), [entries]);
   return (
-    <Card as="section" aria-label="Import entries" className="flex flex-col gap-3 !rounded-[18px] !p-4">
-      <h3 className="m-0 text-[15px] font-semibold">Import entries (JSON)</h3>
-      <p className="m-0 text-[13px] leading-[1.45] text-muted">A backup made here. Entries you already have are skipped; the rest are added as they are.</p>
+    <Card as="section" aria-label="Restore from a backup" className="flex flex-col gap-3 !rounded-[18px] !p-4">
+      <h2 className="m-0 text-[15px] font-semibold">Restore from a backup file</h2>
+      <p className="m-0 text-[13px] leading-[1.45] text-muted">A backup made here. What you already have is skipped.</p>
       <FilePicker
-        label="Choose an entries file"
+        label="Choose a backup file"
         accept=".json,application/json"
         onText={(t, n) => {
           setName(n);
@@ -127,7 +140,7 @@ function ImportJson() {
           <span className="text-xs text-muted">{name}</span>
           {preview.problems.length > 0 ? (
             <>
-              <span className="font-semibold text-loss">This file cannot be imported. Nothing was added.</span>
+              <span className="font-semibold text-loss">This file can’t be used. Nothing was added.</span>
               <ul className="m-0 flex list-none flex-col gap-1 p-0" aria-label="Problems">
                 {preview.problems.slice(0, 20).map((p, i) => (
                   <li key={i} className="text-[13px] text-soft">
@@ -168,9 +181,12 @@ function Export() {
   const [year, setYear] = useState(yearOf(today));
   const [warn, setWarn] = useState<string[]>([]);
   return (
-    <Card as="section" aria-label="Export" className="flex flex-col gap-3 !rounded-[18px] !p-4">
-      <h3 className="m-0 text-[15px] font-semibold">Export</h3>
+    <Card as="section" aria-label="Download" className="flex flex-col gap-3 !rounded-[18px] !p-4">
+      <h2 className="m-0 text-[15px] font-semibold">Download</h2>
       <div className="flex flex-wrap gap-2">
+        <Button onClick={() => downloadText('bitcoin-basis-entries.json', exportEntriesJson(entries), 'application/json')}>
+          <DownloadIcon size={16} /> Backup file (keeps everything)
+        </Button>
         <Button
           onClick={() => {
             const out = exportOpeningLotsCsv(state);
@@ -178,26 +194,25 @@ function Export() {
             downloadText('opening-lots.csv', out.csv);
           }}
         >
-          <DownloadIcon size={16} /> Opening lots (CSV)
-        </Button>
-        <Button onClick={() => downloadText('bitcoin-basis-entries.json', exportEntriesJson(entries), 'application/json')}>
-          <DownloadIcon size={16} /> All entries (JSON)
+          <DownloadIcon size={16} /> Spreadsheet of your coins
         </Button>
       </div>
       <div className="flex items-end gap-2">
-        <SelectBox label="Tax year for Form 8949" value={String(year)} onChange={(e) => setYear(Number(e.target.value))} className="w-36">
-          {years.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </SelectBox>
+        {years.length > 1 && (
+          <SelectBox label="Tax year" value={String(year)} onChange={(e) => setYear(Number(e.target.value))} className="w-28">
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </SelectBox>
+        )}
         <Button onClick={() => downloadText(`form-8949-${year}.csv`, form8949Csv(state, year))}>
-          <DownloadIcon size={16} /> 8949 (CSV)
+          <DownloadIcon size={16} /> Form 8949 for {year}
         </Button>
       </div>
       {warn.length > 0 && (
-        <ul className="m-0 list-none p-0" aria-label="Export notes">
+        <ul className="m-0 list-none p-0" aria-label="Download notes">
           {warn.map((w) => (
             <li key={w} className="text-xs text-amber">
               {w}
@@ -205,7 +220,7 @@ function Export() {
           ))}
         </ul>
       )}
-      <p className="m-0 text-xs text-muted">The entries file keeps everything, including edit history. It is the one to keep as a backup. Files are made on this device and are not encrypted.</p>
+      <p className="m-0 text-xs text-muted">Keep the backup file somewhere safe. Files are made on this device and are not encrypted.</p>
     </Card>
   );
 }
@@ -213,7 +228,7 @@ function Export() {
 export function ImportExportView() {
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="m-0 font-display text-2xl font-semibold">Import and export</h2>
+      <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Import and export</h2>
       <ImportLots />
       <ImportJson />
       <Export />

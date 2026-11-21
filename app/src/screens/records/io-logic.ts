@@ -1,4 +1,4 @@
-import { importEntriesJson, importOpeningLotsCsv, parseCsv, toCsv, type CsvProblem, type Entry, type OpeningLotEntry, type Wallet } from '@bitcoin-basis/engine';
+import { importEntriesJson, importOpeningLotsCsv, OPENING_LOT_COLUMNS, parseCsv, toCsv, type CsvProblem, type Entry, type OpeningLotEntry, type Wallet } from '@bitcoin-basis/engine';
 
 export interface LotsPreview {
   entries: OpeningLotEntry[];
@@ -41,4 +41,10 @@ export function previewJson(text: string, have: ReadonlySet<string>): JsonPrevie
   const r = importEntriesJson(text);
   if (!r.ok) return { entries: [], fresh: [], problems: r.error };
   return { entries: r.value, fresh: r.value.filter((e) => !have.has(e.id)), problems: [] };
+}
+
+/** A blank spreadsheet with the importer's exact columns and one made-up example row to copy. */
+export function lotsTemplateCsv(walletName: string, tz: string): string {
+  const example = [walletName, '2023-01-20 14:02:11', '0.01000000', '1000000', '230.00', '23000.00', 'Documented', 'Email receipt', tz];
+  return toCsv([[...OPENING_LOT_COLUMNS, 'tz'], example]);
 }

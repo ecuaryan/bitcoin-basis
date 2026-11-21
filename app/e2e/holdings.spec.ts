@@ -21,7 +21,7 @@ test('Holdings loads with demo data and has no accessibility violations', async 
 
   await expect(page.getByText('$319,206')).toBeVisible();
   await expect(page.getByText('3.3667 2105 BTC')).toBeVisible();
-  await expect(page.getByText('186 lots · 94% documented')).toBeVisible();
+  await expect(page.getByText(/186 lots/)).toBeVisible();
 
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations, JSON.stringify(results.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target) })), null, 2)).toEqual([]);

@@ -1,10 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { click, renderApp, type Rendered } from '../../test/render.tsx';
-import { KIT_TESTED_KEY, KitCard, kitTestDue } from './records-kit.tsx';
+import { KIT_SEEN_KEY, KIT_TESTED_KEY, KitCard, kitTestDue } from './records-kit.tsx';
 
 let app: Rendered | null = null;
-beforeEach(() => window.localStorage.removeItem(KIT_TESTED_KEY));
+beforeEach(() => {
+  window.localStorage.removeItem(KIT_TESTED_KEY);
+  window.localStorage.setItem(KIT_SEEN_KEY, '2026-01-01');
+});
 afterEach(() => {
   app?.unmount();
   app = null;
@@ -13,10 +16,12 @@ afterEach(() => {
 const button = (name: string) => [...document.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement;
 
 describe('kitTestDue', () => {
-  it('is due until tested, then again a year later', () => {
-    expect(kitTestDue(null, '2026-05-01')).toBe(true);
-    expect(kitTestDue('2026-05-01', '2027-04-30')).toBe(false);
-    expect(kitTestDue('2026-05-01', '2027-05-01')).toBe(true);
+  it('waits 30 days after first use, then again a year after each test', () => {
+    expect(kitTestDue(null, '2026-01-20', '2026-01-01')).toBe(false);
+    expect(kitTestDue(null, '2026-01-31', '2026-01-01')).toBe(true);
+    expect(kitTestDue(null, '2026-05-01', null)).toBe(false);
+    expect(kitTestDue('2026-05-01', '2027-04-30', null)).toBe(false);
+    expect(kitTestDue('2026-05-01', '2027-05-01', null)).toBe(true);
   });
 });
 

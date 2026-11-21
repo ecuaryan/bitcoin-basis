@@ -45,6 +45,8 @@ export interface Draft {
   extra?: ReactNode;
   /** Past tense for the toast: "Purchase saved." */
   savedMessage: string;
+  /** Save straight from the form (no review step) when nothing blocks it. Used for a purchase and a move. */
+  direct?: boolean;
 }
 
 export interface FormProps {

@@ -13,10 +13,14 @@ export async function setUp(page: Page, { finish = true }: { finish?: boolean } 
   await expect(page.getByRole('heading', { name: 'Save your recovery code' })).toBeVisible();
   const code = await readCode(page);
   if (finish) {
-    await page.getByRole('button', { name: 'I wrote it down' }).click();
+    await page.getByRole('button', { name: "I've saved it" }).click();
     await page.getByLabel('Group 4 of your recovery code').fill(code.split('-')[3] as string);
     await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByRole('button', { name: 'Go to my records' }).click();
+    // "Add my first wallet" opens the Add-a-wallet sheet over Holdings; close it so tests start on the page.
+    await page.getByRole('button', { name: 'Add my first wallet' }).click();
+    await expect(page.getByRole('dialog', { name: 'Add a wallet' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
   }
   return code;

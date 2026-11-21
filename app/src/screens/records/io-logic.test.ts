@@ -1,7 +1,7 @@
 import { exportEntriesJson, exportOpeningLotsCsv, replay, createUuidV7 } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook } from '../../demo/demo-data.ts';
-import { previewJson, previewLots, withoutBadRows } from './io-logic.ts';
+import { lotsTemplateCsv, previewJson, previewLots, withoutBadRows } from './io-logic.ts';
 
 const state = replay(buildDemoBook().entries);
 const newId = createUuidV7();
@@ -51,5 +51,15 @@ describe('previewJson', () => {
   it('explains a file that is not ours', () => {
     expect(previewJson('{"a":1}', new Set()).problems[0]?.message).toMatch(/not a Bitcoin Basis/);
     expect(previewJson('nope', new Set()).problems[0]?.index).toBeNull();
+  });
+});
+
+describe('lotsTemplateCsv', () => {
+  it('has the importer columns and an example row that imports cleanly', () => {
+    const csv = lotsTemplateCsv('Strike', 'America/Boise');
+    expect(csv.split(/\r?\n/)[0]).toBe(`${HEAD},tz`);
+    const p = previewLots(csv, state.wallets, 'America/Boise', newId);
+    expect(p.problems).toEqual([]);
+    expect(p.entries).toHaveLength(1);
   });
 });

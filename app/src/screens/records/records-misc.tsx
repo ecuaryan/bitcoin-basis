@@ -16,7 +16,7 @@ export function ClosedYearsView() {
   const history = yearLockHistory(entries);
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="m-0 font-display text-2xl font-semibold">Closed years</h2>
+      <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Closed years</h2>
       <Card className="flex flex-col gap-2 !rounded-[18px] !p-4">
         {state.closedYears.length === 0 ? (
           <p className="m-0 text-[15px] text-muted">No year is closed. Close a year in Tax season once it is filed, so its numbers cannot drift.</p>
@@ -36,7 +36,7 @@ export function ClosedYearsView() {
       </Card>
       {history.length > 0 && (
         <Card as="section" aria-label="Closing history" className="flex flex-col gap-1 !rounded-[18px] !p-4">
-          <h3 className="m-0 mb-1 text-[15px] font-semibold">History</h3>
+          <h2 className="m-0 mb-1 text-[15px] font-semibold">History</h2>
           {history.map((h) => (
             <div key={h.id} className="flex flex-col border-t border-line-soft py-2 text-sm">
               <span className="font-semibold">
@@ -56,27 +56,39 @@ export function ClosedYearsView() {
 export function WalletsView() {
   const { state, holdings } = useLedger();
   const sats = new Map(holdings.wallets.map((w) => [w.wallet, w.sats]));
+  const live = state.wallets.filter((w) => !w.frozen && !w.archived);
+  const apart = state.wallets.filter((w) => w.frozen || w.archived);
+  const row = (w: (typeof state.wallets)[number]) => {
+    const n = sats.get(w.id) ?? 0;
+    return (
+      <Link key={w.id} to={`/wallet/${w.id}`} className="flex min-h-14 items-center justify-between gap-3 rounded-xl px-3 text-text no-underline hover:bg-surface-2">
+        <span className="flex flex-col">
+          <span className="text-[15px] font-semibold">{w.name}</span>
+          <span className="text-xs text-muted">
+            {w.type === 'self-custody' ? 'Self-custody' : w.type === 'retirement' ? 'Retirement' : 'Exchange'}
+            {w.frozen ? ' · frozen' : w.archived ? ' · archived' : ''}
+          </span>
+        </span>
+        <span className="text-sm font-semibold">{w.type === 'retirement' && n === 0 ? <span className="font-normal text-muted">View only</span> : <Amount sats={n} short interactive={false} />}</span>
+      </Link>
+    );
+  };
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="m-0 font-display text-2xl font-semibold">Wallets</h2>
-      <Card as="section" aria-label="Wallets" className="flex flex-col !rounded-[18px] !p-2">
-        {state.wallets.map((w) => (
-          <Link key={w.id} to={`/wallet/${w.id}`} className="flex min-h-14 items-center justify-between gap-3 rounded-xl px-3 text-text no-underline hover:bg-surface-2">
-            <span className="flex flex-col">
-              <span className="text-[15px] font-semibold">{w.name}</span>
-              <span className="text-xs text-muted">
-                {w.type === 'self-custody' ? 'Self-custody' : w.type === 'retirement' ? 'Retirement' : 'Exchange'}
-                {w.frozen ? ' · frozen' : w.archived ? ' · archived' : ''}
-              </span>
-            </span>
-            {w.type !== 'retirement' && (
-              <span className="text-sm font-semibold">
-                <Amount sats={sats.get(w.id) ?? 0} short interactive={false} />
-              </span>
-            )}
-          </Link>
-        ))}
-      </Card>
+      <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Wallets</h2>
+      {live.length > 0 ? (
+        <Card as="section" aria-label="Wallets" className="flex flex-col !rounded-[18px] !p-2">
+          {live.map(row)}
+        </Card>
+      ) : apart.length === 0 ? (
+        <p className="m-0 text-[15px] text-muted">No wallets yet.</p>
+      ) : null}
+      {apart.length > 0 && (
+        <Card as="section" aria-label="Frozen and archived" className="flex flex-col !rounded-[18px] !p-2">
+          <h2 className="m-0 px-3 pb-1 pt-2 text-xs font-semibold text-muted">Frozen and archived</h2>
+          {apart.map(row)}
+        </Card>
+      )}
       <AddWalletButton className="self-start" />
     </div>
   );

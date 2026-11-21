@@ -40,7 +40,7 @@ test('axe: the gift note page', async ({ page }) => {
   await openDemo(page);
   await page.goto('/wallet/wallet-strike');
   await expect(page.getByRole('region', { name: 'Entries' })).toBeVisible();
-  const showMore = page.getByRole('button', { name: 'Show more' });
+  const showMore = page.getByRole('button', { name: /^Show all \d+ entries/ });
   const gave = page.getByRole('button', { name: /Gave to Sam/ });
   while ((await gave.count()) === 0 && (await showMore.count()) > 0) await showMore.click();
   await gave.first().click();
@@ -93,8 +93,8 @@ test('axe: Sell sheets (pick coins, review)', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: 'Pick coins' })).toBeVisible();
   await expectNoViolations(page);
   await page.getByRole('button', { name: 'Use these coins' }).click();
-  await page.getByRole('button', { name: 'Log this sale' }).click();
-  await expect(page.getByRole('dialog', { name: 'Review this sale' })).toBeVisible();
+  await page.getByRole('button', { name: 'I sold it, log it' }).click();
+  await expect(page.getByRole('dialog', { name: 'Log your sale' })).toBeVisible();
   await expectNoViolations(page);
 });
 
@@ -159,9 +159,6 @@ test('keyboard only: log a purchase, Esc closes, focus returns', async ({ page, 
   await page.keyboard.press('Tab');
   await tabTo(page, /Total paid/);
   await page.keyboard.type('750');
-  await tabTo(page, 'Review purchase');
-  await page.keyboard.press('Enter');
-  await expect(dialog.getByText('No tax', { exact: true })).toBeVisible();
   await tabTo(page, 'Save purchase');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog')).toHaveCount(0);

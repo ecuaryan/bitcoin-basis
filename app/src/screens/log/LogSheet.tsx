@@ -1,5 +1,5 @@
 import { uuidv7, type Entry } from '@bitcoin-basis/engine';
-import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { Button } from '../../ui/Button.tsx';
@@ -9,14 +9,15 @@ import { BuyForm } from './BuyForm.tsx';
 import type { Draft, FormProps, LogKind, LogPreset } from './draft.ts';
 import { GiftNoteActions, GiftNoteCard } from './GiftNote.tsx';
 import { GiveForm } from './GiveForm.tsx';
-import { useNowMs } from './hooks.ts';
+import { resetScroll, useNowMs } from './hooks.ts';
 import { describeEntry } from '../../lib/describe-entry.ts';
-import { lockedYear } from './model.ts';
+import { lockedYear, trialReplay } from './model.ts';
 import { MoveForm } from './MoveForm.tsx';
 import { ReceiveForm } from './ReceiveForm.tsx';
 import { Review } from './Review.tsx';
 import { SellForm } from './SellForm.tsx';
 import { Amount, Money } from '../../ui/Amount.tsx';
+import { useToast } from '../../ui/Toast.tsx';
 
 const TABS: { kind: LogKind; label: string; name: string }[] = [
   { kind: 'buy', label: 'Bought', name: 'Bought' },
@@ -67,8 +68,9 @@ function KindTabs({ kind, onPick, panelId }: { kind: LogKind; onPick(k: LogKind)
   );
 }
 
-function LogBody({ preset: startPreset, onClose }: { preset: LogPreset; onClose(): void }) {
-  const { entries, state } = useLedger();
+function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; onClose(): void; onStep(step: { title: string; back: (() => void) | null } | null): void }) {
+  const { entries, state, append } = useLedger();
+  const toast = useToast();
   const panelId = useId();
   const nowMs = useNowMs();
   const targetId = startPreset.edit ?? startPreset.remove;
@@ -118,6 +120,59 @@ function LogBody({ preset: startPreset, onClose }: { preset: LogPreset; onClose(
     };
   }, [removing, head, walletsById, removeId, nowMs, state.settings.timeZone]);
 
+  const reviewing = draft !== null;
+  const sheetTitle = removeDraft?.title ?? draft?.title ?? null;
+  useEffect(() => {
+    onStep(sheetTitle === null ? null : { title: sheetTitle, back: removeDraft === null ? () => setDraft(null) : null });
+    return () => onStep(null);
+  }, [sheetTitle, removeDraft, onStep]);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const wasReviewing = useRef(false);
+  useEffect(() => {
+    // Back from the review: top of the form, focus on the tab that was open.
+    if (wasReviewing.current && !reviewing) {
+      resetScroll(tabsRef.current);
+      tabsRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus({ preventScroll: true });
+    }
+    wasReviewing.current = reviewing;
+  }, [reviewing]);
+
+  const saving = useRef(false);
+
+  /** Take back what was just saved: the same kind of entry a removal makes. */
+  async function undo(made: readonly Entry[]) {
+    const gone: Entry[] = made.map((e) => ({ id: uuidv7(), kind: 'delete', at: new Date(nowMs).toISOString().slice(0, 19) + 'Z', tz: state.settings.timeZone, replaces: e.id, reason: 'Undone right after saving' }));
+    const t = trialReplay(entries, state, [...made, ...gone]);
+    if (t.problems.length > 0) {
+      toast.show('That cannot be undone now. Remove it from the wallet history instead.');
+      return;
+    }
+    await append(gone);
+    toast.show('Undone.');
+  }
+
+  /** A purchase or a move saves straight from its form. If something blocks it, the review screen explains. */
+  async function onReview(d: Draft) {
+    const wrapped = wrap(d);
+    if (d.direct !== true || editing) {
+      setDraft(wrapped);
+      return;
+    }
+    const made = d.build('');
+    if (trialReplay(entries, state, made).problems.length > 0) {
+      setDraft(wrapped);
+      return;
+    }
+    if (saving.current) return;
+    saving.current = true;
+    await append(made);
+    saving.current = false;
+    const next = d.afterSave?.(made) ?? null;
+    if (next !== null && 'next' in next) toast.show(d.savedMessage);
+    else toast.show(d.savedMessage, { action: { label: 'Undo', onClick: () => void undo(made) } });
+    saved(d, made);
+  }
+
   function saved(d: Draft, entriesSaved: Entry[]) {
     const after = d.afterSave?.(entriesSaved) ?? null;
     if (after !== null && 'next' in after) switchTo(after.next.kind, after.next.preset);
@@ -151,29 +206,29 @@ function LogBody({ preset: startPreset, onClose }: { preset: LogPreset; onClose(
     );
   }
 
-  if (removeDraft !== null) return <Review draft={removeDraft} onBack={onClose} onSaved={(s) => saved(removeDraft, s)} />;
+  if (removeDraft !== null) return <Review draft={removeDraft} showTitle={false} onBack={onClose} onSaved={(s) => saved(removeDraft, s)} />;
 
   const Form = FORMS[kind];
-  const reviewing = draft !== null;
   return (
     <div className="flex flex-col gap-4">
-      <div hidden={reviewing} className="flex flex-col gap-4">
+      <div ref={tabsRef} hidden={reviewing} className="flex flex-col gap-4">
         {editing ? <h3 className="m-0 font-display text-lg font-semibold tracking-tight">Change this entry</h3> : <KindTabs kind={kind} onPick={(k) => switchTo(k)} panelId={panelId} />}
         <div role={editing ? undefined : 'tabpanel'} id={panelId} aria-labelledby={editing ? undefined : `${panelId}-tab-${kind}`} className="flex flex-col gap-4">
-          <Form key={`${kind}-${formKey}`} initial={editing ? head : null} preset={preset} onReview={(d) => setDraft(wrap(d))} onSwitch={switchTo} />
+          <Form key={`${kind}-${formKey}`} initial={editing ? head : null} preset={preset} onReview={(d) => void onReview(d)} onSwitch={switchTo} />
         </div>
       </div>
-      {draft ? <Review draft={draft} onBack={() => setDraft(null)} onSaved={(s) => saved(draft, s)} /> : null}
+      {draft ? <Review draft={draft} showTitle={false} onBack={() => setDraft(null)} onSaved={(s) => saved(draft, s)} /> : null}
     </div>
   );
 }
 
 /** The Log sheet: five tabs (Bought, Received, Moved, Sold, Gave), each ending on a review screen. Also edits and removals. */
 export function LogSheet({ open, onClose, preset }: { open: boolean; onClose(): void; preset: LogPreset }) {
-  const title = preset.edit !== undefined ? 'Edit entry' : preset.remove !== undefined ? 'Remove entry' : 'Log';
+  const [step, setStep] = useState<{ title: string; back: (() => void) | null } | null>(null);
+  const title = step?.title ?? (preset.edit !== undefined ? 'Edit entry' : preset.remove !== undefined ? 'Remove entry' : 'Log');
   return (
-    <Sheet open={open} onClose={onClose} title={title} className="sm:max-w-xl">
-      <LogBody preset={preset} onClose={onClose} />
+    <Sheet open={open} onClose={onClose} title={title} onBack={step?.back ?? undefined} className="sm:max-w-xl">
+      <LogBody preset={preset} onClose={onClose} onStep={setStep} />
     </Sheet>
   );
 }

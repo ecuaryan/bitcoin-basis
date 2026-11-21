@@ -100,3 +100,11 @@ export function patchFrom(current: Settings, d: SettingsDraft): DraftResult {
   }
   return { ok: true, patch: patch as SettingsPatch };
 }
+
+/** Time zone names for the picker: the device's own and the saved one are always in the list. */
+export function timeZoneChoices(current: string): string[] {
+  const names = (Intl as unknown as { supportedValuesOf?(k: string): string[] }).supportedValuesOf;
+  const all = names ? names.call(Intl, 'timeZone') : [];
+  const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return [...new Set([current, device, ...all].filter((z) => z !== ''))].sort((a, b) => a.localeCompare(b));
+}

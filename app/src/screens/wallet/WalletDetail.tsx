@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { satsToCents, shortDate } from '../../lib/format.ts';
+import { countOf, satsToCents, shortDate } from '../../lib/format.ts';
 import { describeOrigin, TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
@@ -12,7 +12,7 @@ import { Button, buttonClasses } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { Callout, TextField } from '../../ui/form-fields.tsx';
 import { ChevronRightIcon } from '../../ui/icons.tsx';
-import { Segmented } from '../../ui/Segmented.tsx';
+import { BtcInput } from '../../ui/formatted-inputs.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { GainText, TIER_BG } from '../holdings-parts.tsx';
 import { useAmount } from '../log/hooks.ts';
@@ -23,7 +23,6 @@ import { lastConfirmed, walletEntries, walletLots } from './model.ts';
 import { WalletMenu } from './WalletMenu.tsx';
 
 const TYPE_LABEL = { exchange: 'Exchange', 'self-custody': 'Self-custody', retirement: 'Retirement' } as const;
-const MORE_STEP = 25;
 
 function DotsIcon() {
   return (
@@ -63,7 +62,7 @@ function Balance({ wallet, sats, costCents, avg, lotCount, priceCents }: { walle
   return (
     <section aria-label="Balance" className="flex flex-col gap-1.5">
       <span className="text-xs tracking-[0.06em] text-muted">
-        {TYPE_LABEL[wallet.type].toUpperCase()} · {lotCount} {lotCount === 1 ? 'LOT' : 'LOTS'}
+        {TYPE_LABEL[wallet.type].toUpperCase()} · {countOf(lotCount, 'lot').toUpperCase()}
         {wallet.archived ? ' · ARCHIVED' : ''}
       </span>
       <span className="font-display text-[34px] font-semibold leading-none tracking-[-0.02em] lg:text-5xl">
@@ -108,7 +107,7 @@ function ConfirmBalance({ wallet, inputRef }: { wallet: Wallet; inputRef: React.
     setPending(null);
     const reported = amount.unit === 'usd' ? null : amount.sats;
     if (reported === null || amount.text.trim() === '') {
-      setError('Enter the balance shown by ' + wallet.name + '.');
+      setError('Enter the balance you see.');
       return;
     }
     const entry: BalanceConfirmEntry = { id: uuidv7(), kind: 'balance-confirm', wallet: wallet.id, sats: reported, at: nowInstant(Date.now()), tz: state.settings.timeZone };
@@ -131,7 +130,7 @@ function ConfirmBalance({ wallet, inputRef }: { wallet: Wallet; inputRef: React.
   return (
     <Card as="section" aria-label="Confirm balance" className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="m-0 text-[15px] font-semibold">Does {wallet.name} match?</h2>
+        <h2 className="m-0 text-[15px] font-semibold">Does the balance match?</h2>
         <span className="text-xs text-muted" role="status">
           {confirmed === null ? 'Not confirmed yet' : confirmed === today ? 'Confirmed today' : `Last confirmed ${shortDate(confirmed, today)}`}
         </span>
@@ -144,38 +143,34 @@ function ConfirmBalance({ wallet, inputRef }: { wallet: Wallet; inputRef: React.
         }}
       >
         <div className="flex items-end gap-2">
-          <TextField
-            ref={inputRef}
-            label={`What ${wallet.name} shows`}
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder={unit === 'btc' ? '0.00000000' : '0'}
-            value={amount.text}
-            onChange={(e) => {
-              amount.setText(e.target.value);
+          {(() => {
+            const unitPicker = (
+              <select
+                aria-label="Unit of the balance"
+                value={unit}
+                onChange={(e) => {
+                  const u = e.target.value as Unit2;
+                  setUnit(u);
+                  amount.setUnit(u);
+                  amount.setText('');
+                }}
+                className="cursor-pointer appearance-none rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-soft"
+              >
+                <option value="btc">BTC ▾</option>
+                <option value="sats">sats ▾</option>
+              </select>
+            );
+            const common = { ref: inputRef, label: 'What the app or device shows', frameClassName: 'flex-1', error, trailing: unitPicker } as const;
+            const changed = (t: string) => {
+              amount.setText(t);
               setPending(null);
-            }}
-            frameClassName="flex-1"
-            error={error}
-          />
+            };
+            return unit === 'btc' ? <BtcInput {...common} value={amount.text} onChange={changed} /> : <TextField {...common} inputMode="numeric" autoComplete="off" placeholder="0" value={amount.text} onChange={(e) => changed(e.target.value.replace(/\D/g, ''))} />;
+          })()}
           <Button type="submit" variant="secondary" className="mb-0 h-[52px]">
             Check
           </Button>
         </div>
-        <Segmented<Unit2>
-          label="Unit of the balance"
-          value={unit}
-          onChange={(u) => {
-            setUnit(u);
-            amount.setUnit(u);
-            amount.setText('');
-          }}
-          options={[
-            { value: 'btc', label: 'BTC' },
-            { value: 'sats', label: 'sats' },
-          ]}
-          className="max-w-44"
-        />
       </form>
       {pending === null && lastCheck !== undefined && !lastCheck.matches ? <p className="m-0 text-xs text-amber">The last check did not match. Enter the balance again after you have logged what is missing.</p> : null}
       {pending !== null ? (
@@ -233,7 +228,7 @@ function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; toda
   const [all, setAll] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const sorted = useMemo(() => [...lots].sort((a, b) => (a.acquiredAt < b.acquiredAt ? -1 : a.acquiredAt > b.acquiredAt ? 1 : 0)), [lots]);
-  const shown = all ? sorted : sorted.slice(0, 12);
+  const shown = all ? sorted : sorted.slice(0, 5);
   return (
     <Card as="section" aria-label="Coins in this wallet" className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
@@ -294,7 +289,7 @@ function CoinsSection({ lots, today, entries, walletsById }: { lots: Lot[]; toda
 function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
   const { state, today } = useLedger();
   const { open } = useLogSheet();
-  const [count, setCount] = useState(MORE_STEP);
+  const [count, setCount] = useState(5);
   const [openId, setOpenId] = useState<string | null>(null);
   const wallets = useMemo(() => new Map(state.wallets.map((w) => [w.id, w])), [state.wallets]);
   return (
@@ -324,7 +319,7 @@ function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
                   {line.sats !== null ? <Amount sats={line.sats} interactive={false} short /> : null}
                   {line.cents !== null ? (
                     <span className="text-xs font-normal text-muted">
-                      <Money cents={line.cents} precision="dollars" /> {line.centsLabel}
+                      <Money cents={line.cents} /> {line.centsLabel}
                     </span>
                   ) : null}
                 </span>
@@ -365,8 +360,8 @@ function History({ wallet, rows }: { wallet: Wallet; rows: Entry[] }) {
       </ul>
       {rows.length === 0 ? <p className="m-0 py-2 text-sm text-muted">Nothing logged for {wallet.name} yet.</p> : null}
       {rows.length > count ? (
-        <Button variant="ghost" onClick={() => setCount((c) => c + MORE_STEP)} className="self-start">
-          Show more
+        <Button variant="ghost" onClick={() => setCount(rows.length)} className="self-start">
+          Show all {rows.length} entries
         </Button>
       ) : null}
     </Card>
@@ -434,7 +429,7 @@ function FrozenSections({ wallet, sats, costCents, rows, onCloseOut }: { wallet:
           <span className="text-xs tracking-[0.06em] text-muted">IF YOU CLOSE IT OUT</span>
           <div className="flex items-baseline justify-between">
             <span className="text-sm text-soft">Loss recorded</span>
-            <span className="font-display text-2xl font-semibold text-accent">
+            <span className="font-display text-2xl font-semibold">
               <Money cents={Math.max(0, costCents - wallet.recoveredCents)} />
             </span>
           </div>
@@ -449,7 +444,7 @@ function FrozenSections({ wallet, sats, costCents, rows, onCloseOut }: { wallet:
               Review and close out
             </Button>
           </div>
-          <span className="text-xs text-muted">As of {today}. Not tax advice. Confirm with your CPA.</span>
+          <span className="text-xs text-muted">As of {longDate(today)}. Not tax advice. Confirm with your CPA.</span>
         </Card>
       ) : null}
     </>
@@ -496,7 +491,7 @@ function RetirementDetail({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): 
             Save
           </Button>
         </form>
-        <span className="text-xs text-muted">Today is {today}.</span>
+        <span className="text-xs text-muted">Today is {longDate(today)}.</span>
       </Card>
     </div>
   );
@@ -539,13 +534,6 @@ export function WalletDetail() {
         onClose={() => setMenu(false)}
         wallet={wallet}
         holdingSats={holdingSats}
-        onCheckBalance={() => {
-          // After the sheet closes, bring the confirm box into view and focus it.
-          setTimeout(() => {
-            confirmRef.current?.scrollIntoView({ block: 'center' });
-            confirmRef.current?.focus();
-          }, 50);
-        }}
         onCloseOut={() => setCloseOut(true)}
       />
       <CloseOutSheet open={closeOut} onClose={() => setCloseOut(false)} wallet={wallet} />

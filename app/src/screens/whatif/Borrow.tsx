@@ -5,10 +5,11 @@ import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { formatMoney } from '../../lib/format.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
-import { useIsWide } from '../../ui/AppShell.tsx';
+import { useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
-import { Field, SelectBox } from '../../ui/Field.tsx';
+import { BtcInput, MoneyInput, PercentInput } from '../../ui/formatted-inputs.tsx';
+import { SelectBox } from '../../ui/Field.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { loadScenarios, parsePercentBp, priceScale, roomPercent, saveScenarios, type SavedScenario } from './borrow-logic.ts';
 import { Note } from './sell-parts.tsx';
@@ -47,6 +48,7 @@ const DEFAULTS = { loan: '25000', pledge: '1', rate: '11.5', marginCall: '70', l
 
 export function Borrow() {
   const wide = useIsWide();
+  const { open: openLog } = useLogSheet();
   const toast = useToast();
   const { state, holdings, today } = useLedger();
   const { quote, status } = usePrice();
@@ -76,7 +78,7 @@ export function Borrow() {
     if (pledgedSats === null || pledgedSats <= 0) return { kind: 'bad' as const, message: 'Enter how much BTC you would put up.' };
     if (pledgedSats > wallet.sats) return { kind: 'bad' as const, message: `${wallet.name} does not hold that much. Lower the BTC you put up, or pick another wallet.` };
     if (rateBp === null || mcBp === null || liqBp === null) return { kind: 'bad' as const, message: 'Interest and the two limits are percentages, like 11.5 and 70.' };
-    if (mcBp > liqBp) return { kind: 'bad' as const, message: 'The margin call limit must be at or below the liquidation limit.' };
+    if (mcBp > liqBp) return { kind: 'bad' as const, message: 'Margin call must be at or below where the lender sells.' };
     const r = planBorrow({
       ...taxContext(state, state.settings, year, today),
       loanCents,
@@ -114,26 +116,27 @@ export function Borrow() {
     saveScenarios(next);
   }
 
-  if (wallet === null) return <Card className="text-[15px] text-muted">Nothing to put up yet. Log a purchase first, or load the demo book from Holdings.</Card>;
+  if (wallet === null) {
+    return (
+      <Card className="flex flex-col items-start gap-3 text-[15px] text-muted">
+        <p className="m-0">Nothing to borrow against yet. Log a purchase first.</p>
+        <Button variant="primary" onClick={() => openLog({ kind: 'buy' })}>
+          Log a purchase
+        </Button>
+      </Card>
+    );
+  }
 
   const inputs = (
     <section aria-label="Loan" className="flex flex-col gap-2.5">
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Borrow" inputMode="decimal" value={loan} onChange={(e) => setLoan(e.target.value)} suffix="USD" />
-        <Field label="Put up" inputMode="decimal" value={pledge} onChange={(e) => setPledge(e.target.value)} suffix="BTC" />
-        <Field label="Interest" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} suffix="% a year" inputClassName="pr-20" />
-        <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0">
-          <legend className="mb-1.5 p-0 text-xs text-muted">Margin call / liquidation</legend>
-          <div className="flex min-h-12 items-center gap-1 rounded-[14px] border border-line bg-bg px-3 text-base font-semibold">
-            <input aria-label="Margin call LTV percent" inputMode="decimal" value={marginCall} onChange={(e) => setMarginCall(e.target.value)} className="w-9 bg-transparent p-0 text-right font-semibold text-text" />
-            <span aria-hidden="true">% ·</span>
-            <input aria-label="Liquidation LTV percent" inputMode="decimal" value={liquidation} onChange={(e) => setLiquidation(e.target.value)} className="w-9 bg-transparent p-0 text-right font-semibold text-text" />
-            <span aria-hidden="true">%</span>
-            <span className="ml-auto text-xs font-medium text-muted">LTV</span>
-          </div>
-        </fieldset>
+        <MoneyInput label="Borrow" value={loan} onChange={setLoan} trailing="USD" />
+        <BtcInput label="Put up" value={pledge} onChange={setPledge} trailing="BTC" />
+        <PercentInput label="Interest" value={rate} onChange={setRate} trailing="% a year" frameClassName="col-span-2" />
+        <PercentInput label="Margin call at" value={marginCall} onChange={setMarginCall} />
+        <PercentInput label="Lender sells at" value={liquidation} onChange={setLiquidation} />
       </div>
-      <p className="m-0 text-xs text-muted">The two limits are loan-to-value (LTV) percentages your lender sets.</p>
+      <p className="m-0 text-xs text-muted">Your lender's limits, as a % of the loan to the coins' value.</p>
       <SelectBox label="Coins put up from" value={wallet.wallet} onChange={(e) => setWalletId(e.target.value)}>
         {wallets.map((w) => (
           <option key={w.wallet} value={w.wallet}>
@@ -175,10 +178,10 @@ export function Borrow() {
     ];
     results = (
       <>
-        <section aria-label="Loan-to-value" className="flex flex-col gap-3.5 rounded-[18px] border-[1.5px] border-accent bg-[linear-gradient(180deg,rgb(247_147_26/0.16),rgb(247_147_26/0.04))] p-4">
+        <section aria-label="Loan vs. coin value" className="flex flex-col gap-3.5 rounded-[18px] border-[1.5px] border-accent bg-[linear-gradient(180deg,rgb(247_147_26/0.16),rgb(247_147_26/0.04))] p-4">
           <div className="flex items-end justify-between">
             <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-semibold tracking-[0.02em] text-amber">LOAN-TO-VALUE TODAY</span>
+              <span className="text-xs font-semibold tracking-[0.02em] text-amber">LOAN VS. COIN VALUE TODAY</span>
               <span className="font-display text-[34px] font-semibold leading-[1.1]">{percentFromBp(plan.ltvBp)}</span>
             </div>
             <div className="flex flex-col items-end gap-0.5">

@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { appAddress, shortAddress } from '../../data/app-url.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { kitHandoff } from '../../data/recovery-handoff.ts';
@@ -20,6 +20,8 @@ export function Kit() {
   const pending = usePendingKit();
   const nameId = useId();
   const [name, setName] = useState('');
+  const [leaving, setLeaving] = useState(false);
+  const navigate = useNavigate();
   const address = appAddress();
   const code = pending?.code ?? null;
   const wallets = kitWalletRows(state.wallets);
@@ -30,10 +32,17 @@ export function Kit() {
     <main className="kit-print min-h-dvh bg-bg print:bg-white">
       <div className="mx-auto flex max-w-[816px] flex-col gap-3 px-5 pb-4 pt-5 text-text print:hidden">
         <div className="flex items-center justify-between gap-3">
-          <Link to={pending?.reason === 'setup' ? '/welcome' : '/records?v=security'} className="flex min-h-11 items-center gap-1 text-sm font-semibold text-soft no-underline hover:text-text">
-            <ChevronLeftIcon size={16} />
-            Back
-          </Link>
+          {pending?.reason === 'rotate' ? (
+            <button type="button" onClick={() => setLeaving(true)} className="flex min-h-11 items-center gap-1 bg-transparent text-sm font-semibold text-soft hover:text-text">
+              <ChevronLeftIcon size={16} />
+              Back
+            </button>
+          ) : (
+            <Link to={pending?.reason === 'setup' ? '/welcome' : '/records?v=security'} className="flex min-h-11 items-center gap-1 text-sm font-semibold text-soft no-underline hover:text-text">
+              <ChevronLeftIcon size={16} />
+              Back
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => window.print()}
@@ -56,18 +65,34 @@ export function Kit() {
             placeholder="First and last name"
           />
         </div>
+        {leaving && (
+          <div role="alertdialog" aria-label="Leave without saving" className="flex flex-col gap-2 rounded-xl border border-accent bg-surface px-3.5 py-3 text-[13px] leading-[1.45] text-soft">
+            <span>Leave without saving the new code? Your old kit no longer works.</span>
+            <div className="flex gap-2">
+              <button type="button" autoFocus onClick={() => setLeaving(false)} className="min-h-11 rounded-xl bg-accent px-4 text-sm font-bold text-bg hover:bg-amber">
+                Stay
+              </button>
+              <button type="button" onClick={() => navigate('/records?v=security')} className="min-h-11 rounded-xl border border-line bg-surface-2 px-4 text-sm font-semibold text-text hover:bg-line">
+                Leave
+              </button>
+            </div>
+          </div>
+        )}
         {code === null ? (
           <p role="note" className="m-0 rounded-xl border border-line bg-surface px-3.5 py-3 text-[13px] leading-[1.45] text-soft">
             The recovery code is only shown once, right after setup or when you make a new one, so this kit has no code on it. To print a kit with a code, make a new one in{' '}
-            <Link to="/records?v=security" className="underline">
+            <Link to="/records?v=security" className="inline-flex min-h-11 items-center underline">
               Records → Security
             </Link>. The old code stops working when you do.
           </p>
         ) : (
           <div className="flex flex-col gap-2 rounded-xl border border-accent bg-surface px-3.5 py-3 text-[13px] leading-[1.45] text-soft">
             <span>
-              This page has your recovery code. Print it now and keep it somewhere safe. When you leave this screen, the code is gone for good.
+              {pending?.reason === 'setup'
+                ? 'Print this page or save it as a PDF, then tap Back to finish setup.'
+                : 'This page has your recovery code. Print it now and keep it somewhere safe. When you leave this screen, the code is gone for good.'}
             </span>
+            {pending?.reason !== 'setup' && (
             <button
               type="button"
               onClick={() => kitHandoff.clear()}
@@ -75,6 +100,7 @@ export function Kit() {
             >
               I saved it. Remove the code from this screen
             </button>
+            )}
           </div>
         )}
       </div>
@@ -164,7 +190,7 @@ export function Kit() {
             </span>
           </div>
           <p className="m-0 text-[13px] leading-normal sm:col-span-2">
-            <strong>Test it once a year.</strong> Open a private window, follow the steps above, and check the records open. Then write the date here: ______________
+            <strong>Test it once a year.</strong> Open a private window (Incognito in Chrome), follow the steps above, and check the records open. Then write the date here: ______________
           </p>
         </section>
 

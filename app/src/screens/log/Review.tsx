@@ -1,5 +1,5 @@
 import { type Entry } from '@bitcoin-basis/engine';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { shortDate } from '../../lib/format.ts';
@@ -12,6 +12,7 @@ import { TIER_BG } from '../holdings-parts.tsx';
 import type { Draft } from './draft.ts';
 import { computeEffect, trialReplay, type Effect } from './model.ts';
 import { GiftNoteCard } from './GiftNote.tsx';
+import { resetScroll } from './hooks.ts';
 import { FormFooter } from './parts.tsx';
 
 function CoinsUsed({ coins }: { coins: NonNullable<Draft['coins']> }) {
@@ -21,9 +22,9 @@ function CoinsUsed({ coins }: { coins: NonNullable<Draft['coins']> }) {
   const more = coins.picks.length - rows.length;
   return (
     <section aria-label="Coins used" className="flex flex-col gap-1.5 rounded-2xl border border-line bg-bg px-3.5 py-3">
-      <h4 className="m-0 text-xs font-normal text-muted">
+      <h3 className="m-0 text-xs font-normal text-muted">
         Coins used, saved with this entry ({coins.picks.length})
-      </h4>
+      </h3>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {rows.map((p) => {
           const lot = byId.get(p.lotId);
@@ -81,7 +82,13 @@ function EffectCard({ effect }: { effect: Effect }) {
 }
 
 /** The last screen before saving: what will be recorded and what it does to taxes. Nothing is saved until the button. */
-export function Review({ draft, onBack, onSaved }: { draft: Draft; onBack(): void; onSaved(saved: Entry[]): void }) {
+export function Review({ draft, onBack, onSaved, showTitle = true }: { draft: Draft; onBack(): void; onSaved(saved: Entry[]): void; showTitle?: boolean }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  // A new step starts at the top, with focus on it, so a screen reader reads the title first.
+  useEffect(() => {
+    resetScroll(formRef.current);
+    formRef.current?.focus({ preventScroll: true });
+  }, []);
   const { entries, state, append } = useLedger();
   const toast = useToast();
   const [reason, setReason] = useState('');
@@ -110,14 +117,16 @@ export function Review({ draft, onBack, onSaved }: { draft: Draft; onBack(): voi
 
   return (
     <form
+      ref={formRef}
+      tabIndex={-1}
       aria-label={draft.title}
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-4 outline-none"
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <h3 className="m-0 font-display text-lg font-semibold tracking-tight">{draft.title}</h3>
+      {showTitle ? <h3 className="m-0 font-display text-lg font-semibold tracking-tight">{draft.title}</h3> : null}
       <dl className="m-0 rounded-2xl border border-line bg-bg px-3.5 py-1">
         {draft.rows.map((r) => (
           <SummaryRow key={r.label} label={r.label}>

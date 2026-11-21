@@ -1,7 +1,7 @@
 import { createUuidV7, replay, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_TODAY } from '../../demo/demo-data.ts';
-import { answerReason, flagsForYear, form1099Rows, joinWords, overExclusion, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory } from './tax-logic.ts';
+import { answerReason, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, joinWords, overExclusion, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory } from './tax-logic.ts';
 import { yearSummary } from '@bitcoin-basis/engine';
 
 const state = replay(buildDemoBook().entries);
@@ -82,5 +82,18 @@ describe('yearLockHistory', () => {
       { id: b, kind: 'unlock-year', at: '2026-01-02T00:00:00Z', tz: 'America/Boise', year: 2025, reason: 'Late 1099' },
     ];
     expect(yearLockHistory(list).map((h) => h.kind)).toEqual(['unlock-year', 'close-year']);
+  });
+});
+
+describe('defaultTaxYear', () => {
+  it('opens last year until Apr 15, this year after', () => {
+    expect(defaultTaxYear([2026, 2025], '2026-03-01')).toBe(2025);
+    expect(defaultTaxYear([2026, 2025], '2026-04-15')).toBe(2025);
+    expect(defaultTaxYear([2026, 2025], '2026-04-16')).toBe(2026);
+    expect(defaultTaxYear([2026], '2026-02-01')).toBe(2026);
+  });
+  it('a year is over only after it ends', () => {
+    expect(yearIsOver(2026, '2026-12-31')).toBe(false);
+    expect(yearIsOver(2025, '2026-01-01')).toBe(true);
   });
 });

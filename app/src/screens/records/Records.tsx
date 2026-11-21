@@ -21,6 +21,11 @@ import { useState } from 'react';
 type View = 'entries' | 'giving' | 'closed' | 'wallets' | 'io' | 'settings' | 'security';
 const VIEWS: readonly View[] = ['entries', 'giving', 'closed', 'wallets', 'io', 'settings', 'security'];
 
+function viewTitle(view: View, givingName: string): string {
+  const titles: Record<View, string> = { entries: 'All entries', giving: givingName, closed: 'Closed years', wallets: 'Wallets', io: 'Import and export', settings: 'Settings', security: 'Security' };
+  return titles[view];
+}
+
 function Tile({ to, title, sub, hot, active, className }: { to: string; title: string; sub: string; hot?: boolean; active?: boolean; className?: string }) {
   return (
     <Link
@@ -56,13 +61,13 @@ export function Records() {
   const vaultStatus = useVaultStatusOptional();
 
   const tiles: ReactNode = (
-    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? 'grid-cols-7' : 'grid-cols-3')}>
+    <section aria-label="Sections" className={cx('grid gap-2.5', wide ? (state.settings.givingEnabled ? 'grid-cols-7' : 'grid-cols-6') : 'grid-cols-3')}>
       <Tile to="/tax" title="Tax season" sub={`${year} · Answer: ${answer === 'yes' ? 'Yes' : 'No'}`} hot className="lg:hidden" />
-      <Tile to="/records?v=giving" title={state.settings.givingName} sub={due === null ? 'Off' : `${formatMoney(Math.max(0, due.owedCents))} due`} hot={due !== null && due.owedCents > 0} active={view === 'giving'} />
+      {due !== null && <Tile to="/records?v=giving" title={state.settings.givingName} sub={`${formatMoney(Math.max(0, due.owedCents))} due`} hot={due.owedCents > 0} active={view === 'giving'} />}
       <Tile to="/records?v=closed" title="Closed years" sub={state.closedYears.length === 0 ? 'None yet' : `${Math.min(...state.closedYears)} to ${Math.max(...state.closedYears)}`} active={view === 'closed'} />
       <Tile to="/records?v=wallets" title="Wallets" sub={`${active} active`} active={view === 'wallets'} />
       <Tile to="/records?v=io" title="Import and export" sub="CSV · backup" active={view === 'io'} />
-      <Tile to="/records?v=settings" title="Settings" sub="Taxes · giving" active={view === 'settings'} />
+      <Tile to="/records?v=settings" title="Settings" sub="Taxes · time zone" active={view === 'settings'} />
       <Tile to="/records?v=security" title="Security" sub={isDemo || vaultStatus === null ? 'Demo' : vaultStatus.autoLockMinutes === 0 ? 'Never locks' : `Locks after ${vaultStatus.autoLockMinutes} min`} active={view === 'security'} />
       <Tile to="/records?v=entries" title="All entries" sub={`${items.length} in total`} active={view === 'entries'} className="hidden lg:order-first lg:flex" />
     </section>
@@ -72,7 +77,7 @@ export function Records() {
     <section aria-label="Recent entries" className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between px-0.5 pb-1.5 pt-1">
         <h2 className="m-0 text-[15px] font-semibold">Recent entries</h2>
-        <Link to="/records?v=entries" className="text-[13px] font-semibold no-underline">
+        <Link to="/records?v=entries" className="flex min-h-11 items-center text-[13px] font-semibold no-underline">
           All {items.length}
         </Link>
       </div>
@@ -113,7 +118,7 @@ export function Records() {
           <Link to="/records" aria-label="Back to Records" className="flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-soft hover:text-text">
             <ChevronLeftIcon size={18} />
           </Link>
-          <h1 className="m-0 font-display text-xl font-semibold">Records</h1>
+          <h1 className="m-0 font-display text-xl font-semibold">{viewTitle(view, state.settings.givingName)}</h1>
         </div>
       )}
       {(wide || view === null) && <KitCard today={today} />}

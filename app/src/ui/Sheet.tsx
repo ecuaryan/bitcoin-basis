@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 're
 import { createPortal } from 'react-dom';
 import { cx } from '../lib/cx.ts';
 import { CloseIcon } from './icons.tsx';
+import { ChevronLeftIcon } from './more-icons.tsx';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -14,7 +15,22 @@ function focusables(root: HTMLElement): HTMLElement[] {
  * stays inside (Tab wraps), Esc or the close button or the backdrop closes it,
  * and focus goes back to whatever opened it. The rest of the page is inert while it is open.
  */
-export function Sheet({ open, onClose, title, children, className }: { open: boolean; onClose(): void; title: string; children: ReactNode; className?: string }) {
+export function Sheet({
+  open,
+  onClose,
+  title,
+  children,
+  className,
+  onBack,
+}: {
+  open: boolean;
+  onClose(): void;
+  title: string;
+  children: ReactNode;
+  className?: string;
+  /** For a sheet with steps: a back chevron before the title that goes to the step before. */
+  onBack?: (() => void) | undefined;
+}) {
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const onCloseRef = useRef(onClose);
@@ -79,7 +95,12 @@ export function Sheet({ open, onClose, title, children, className }: { open: boo
       >
         <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-line sm:hidden" aria-hidden="true" />
         <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-3">
-          <h2 id={titleId} className="font-display text-xl font-semibold tracking-tight">
+          {onBack ? (
+            <button type="button" onClick={onBack} aria-label="Back" className="-ml-2 flex size-11 flex-none items-center justify-center rounded-xl text-soft hover:text-text">
+              <ChevronLeftIcon size={20} />
+            </button>
+          ) : null}
+          <h2 id={titleId} className="min-w-0 flex-1 font-display text-xl font-semibold tracking-tight">
             {title}
           </h2>
           <button type="button" onClick={onClose} aria-label="Close" className="flex size-11 items-center justify-center rounded-xl border border-line bg-bg text-soft hover:text-text">

@@ -1,14 +1,14 @@
 import { canSellFrom, localDate, uuidv7, type SellEntry } from '@bitcoin-basis/engine';
 import { useMemo, useState } from 'react';
-import { Amount, Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Callout, TextField } from '../../ui/form-fields.tsx';
 import { Segmented } from '../../ui/Segmented.tsx';
 import { CoinPicker } from './CoinPicker.tsx';
 import type { FormProps } from './draft.ts';
 import { stripSource, useAmount, useBaseState, useFormEnv, usePriceAt, useValue, withSource } from './hooks.ts';
-import { choosePicks, localInputFor, lotsAvailable, nowInstant, usableWallets, usualWallet, whenLabel, zonedInstant, type PickMode } from './model.ts';
-import { AmountInput, FormFooter, ValueField, WalletSelect, WhenField } from './parts.tsx';
+import { choosePicks, localInputFor, lotsAvailable, nowInstant, usableWallets, usualWallet, zonedInstant, type PickMode } from './model.ts';
+import { saleDraft } from './sale-review.tsx';
+import { AmountInput, FormFooter, MoreDetails, ValueField, WalletSelect, WhenField } from './parts.tsx';
 
 type How = 'sold' | 'spent';
 
@@ -30,6 +30,7 @@ export function SellForm({ initial, preset, onReview, onSwitch }: FormProps) {
   const [mode, setMode] = useState<PickMode>(edit || preset.sell ? 'hand' : 'oldest');
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(edit ? edit.picks.map((p) => p.lotId) : (preset.sell?.lotIds ?? [])));
   const [tried, setTried] = useState(false);
+  const [more, setMore] = useState(note !== '');
 
   const w = state.wallets.find((x) => x.id === wallet);
   const available = useMemo(() => (at === null ? [] : lotsAvailable(state, entries, wallet, at)), [state, entries, wallet, at]);
@@ -73,20 +74,7 @@ export function SellForm({ initial, preset, onReview, onSwitch }: FormProps) {
       ...(spent ? { description: description.trim() } : {}),
       note: withSource(note, value.sourceNote),
     };
-    onReview({
-      title: spent ? 'Review spending' : 'Review sale',
-      saveLabel: spent ? 'Save spending' : 'Save sale',
-      savedMessage: spent ? 'Spending saved.' : 'Sale saved.',
-      rows: [
-        { label: spent ? 'Spent' : 'Sold', value: <Amount sats={sats} interactive={false} showUnit /> },
-        { label: spent ? 'Worth' : 'Dollars received', value: <Money cents={value.cents} /> },
-        ...(spent ? [{ label: 'What it bought', value: description.trim() }] : []),
-        { label: 'From', value: w.name },
-        { label: 'When', value: whenLabel(at, tz) },
-      ],
-      coins: { picks, lots: available, onDate },
-      build: () => [entry],
-    });
+    onReview(saleDraft({ entry, walletName: w.name, lots: available, onDate, nowMs }));
   }
 
   return (
@@ -106,11 +94,11 @@ export function SellForm({ initial, preset, onReview, onSwitch }: FormProps) {
           { value: 'spent', label: 'Spent on something' },
         ]}
       />
-      <WalletSelect label="From wallet" value={wallet} onChange={(v) => { setWallet(v); setChosen(new Set()); }} wallets={usableWallets(state, edit?.wallet)} error={tried ? errors.wallet : null} />
       <AmountInput amount={amount} error={tried ? errors.amount : null} needsPrice />
-      {how === 'spent' ? <TextField label="What did it buy?" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Groceries, a laptop, a donation receipt" autoComplete="off" error={tried ? errors.what : null} /> : null}
-      <ValueField label={how === 'sold' ? 'Dollars you received' : 'Worth in dollars when spent'} value={value} price={price} error={tried ? errors.value : null} />
+      <WalletSelect label="From wallet" value={wallet} onChange={(v) => { setWallet(v); setChosen(new Set()); }} wallets={usableWallets(state, edit?.wallet)} error={tried ? errors.wallet : null} />
+      <ValueField label={how === 'sold' ? 'Dollars you received' : 'Worth in dollars when spent'} value={value} price={price} error={tried ? errors.value : null} hasAmount={sats !== null} />
       <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
+      {how === 'spent' ? <TextField label="What did it buy?" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Groceries, a laptop, a donation receipt" autoComplete="off" error={tried ? errors.what : null} /> : null}
       {mustPrepare ? (
         <Callout tone="warn" title="Coins in self-custody cannot be sold directly">
           <p className="m-0 mb-2">Move exactly the coins you want to sell to an exchange first. Then sell them there. This keeps your records straight.</p>
@@ -119,13 +107,15 @@ export function SellForm({ initial, preset, onReview, onSwitch }: FormProps) {
           </Button>
         </Callout>
       ) : null}
-      <CoinPicker lots={available} needed={sats} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} />
+      <CoinPicker lots={available} needed={sats} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} walletName={w?.name ?? 'this wallet'} />
       {tried && errors.picks ? (
         <p role="alert" className="m-0 text-xs text-loss">
           {errors.picks}
         </p>
       ) : null}
-      <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+      <MoreDetails open={more} onOpenChange={setMore}>
+        <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+      </MoreDetails>
       <FormFooter>
         <Button type="submit" variant="primary" disabled={mustPrepare} className="min-h-14 flex-1 rounded-[18px] text-[17px] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
           {how === 'sold' ? 'Review sale' : 'Review spending'}

@@ -2,7 +2,7 @@ import { localDate, type Entry, type LedgerState, type Wallet } from '@bitcoin-b
 import { useDeferredValue, useMemo, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { shortDate } from '../../lib/format.ts';
+import { countOf, shortDate } from '../../lib/format.ts';
 import { TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
@@ -63,11 +63,11 @@ function facts(e: Entry, name: (id: string) => string): [string, ReactNode][] {
     case 'receive':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['Source', e.source.type]];
     case 'move':
-      return [['From', name(e.from)], ['To', name(e.to)], coins('Coins arriving', e.sats), coins('Network fee', e.feeSats), ['Coins used', `${e.picks.length} lots`]];
+      return [['From', name(e.from)], ['To', name(e.to)], coins('Coins arriving', e.sats), coins('Network fee', e.feeSats), ['Coins used', countOf(e.picks.length, 'lot')]];
     case 'sell':
-      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash(e.spent ? 'Value spent' : 'Proceeds', e.proceedsCents), ['Coins used', `${e.picks.length} lots`], ...(e.description ? ([['What for', e.description]] as [string, ReactNode][]) : [])];
+      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash(e.spent ? 'Value spent' : 'Proceeds', e.proceedsCents), ['Coins used', countOf(e.picks.length, 'lot')], ...(e.description ? ([['What for', e.description]] as [string, ReactNode][]) : [])];
     case 'give':
-      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['To', `${e.recipient} (${e.to})`], ['Coins used', `${e.picks.length} lots`]];
+      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['To', `${e.recipient} (${e.to})`], ['Coins used', countOf(e.picks.length, 'lot')]];
     case 'lost':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), ['Cause', e.cause.replace('-', ' ')]];
     case 'opening-lot':
@@ -118,7 +118,7 @@ export function EntrySheet({ item, state, today, onClose }: { item: EntryItem; s
           ))}
         </dl>
         <section aria-label="History" className="flex flex-col gap-2">
-          <h3 className="m-0 text-[15px] font-semibold">History</h3>
+          <h2 className="m-0 text-[15px] font-semibold">History</h2>
           <ol className="m-0 flex list-none flex-col gap-2 p-0">
             {history.map((v, i) => {
               const l = describeEntry(v, wallets);

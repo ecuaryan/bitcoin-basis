@@ -2,10 +2,14 @@ import { formatCents, oldestFirstOrder, parseDollars, planPrepareSale, type LotP
 import { useMemo, useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { satsToCents, shortDate } from '../../lib/format.ts';
+import { countOf, satsToCents, shortDate } from '../../lib/format.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Field, SelectBox } from '../../ui/Field.tsx';
+import { MoneyInput } from '../../ui/formatted-inputs.tsx';
+import type { Draft } from '../log/draft.ts';
+import { Review } from '../log/Review.tsx';
+import { saleDraft } from '../log/sale-review.tsx';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import { Sheet } from '../../ui/Sheet.tsx';
 import { useToast } from '../../ui/Toast.tsx';
@@ -56,6 +60,7 @@ export function PickCoinsSheet({
   wallet,
   sats,
   initial,
+  label,
   today,
   onUse,
 }: {
@@ -66,23 +71,43 @@ export function PickCoinsSheet({
   sats: number;
   /** Lot ids to start from (the plan on screen). */
   initial: readonly string[];
+  /** Name of the plan those coins came from, such as "Lowest tax". */
+  label?: string;
   today: string;
   onUse(order: string[]): void;
 }) {
   const lots = useMemo(() => oldestFirstOrder(state.lots, wallet), [state.lots, wallet]);
   const [order, setOrder] = useState<string[]>([...initial]);
+  const [changed, setChanged] = useState(false);
+  // Ticked coins first, so they are in view when the sheet opens. The order stays put while ticking.
+  const [listed] = useState(() => {
+    const start = new Set(initial);
+    return [...lots.filter((l) => start.has(l.id)), ...lots.filter((l) => !start.has(l.id))];
+  });
   const { picks, short } = useMemo(() => picksFromSelection(lots, order, sats), [lots, order, sats]);
   const used = new Map(picks.map((p) => [p.lotId, p.sats]));
-  const toggle = (id: string) => setOrder((o) => (o.includes(id) ? o.filter((x) => x !== id) : [...o, id]));
+  function toggle(id: string) {
+    setChanged(true);
+    setOrder((o) => {
+      if (o.includes(id)) return o.filter((x) => x !== id);
+      // Already covered: the new coin goes in ahead of the newest one, which is trimmed (or dropped) to make room.
+      const covered = picksFromSelection(lots, o, sats).short === 0;
+      const lastUsed = covered ? o.findLastIndex((x) => used.has(x)) : -1;
+      const next = lastUsed < 0 ? [...o, id] : [...o.slice(0, lastUsed), id, ...o.slice(lastUsed)];
+      const r = picksFromSelection(lots, next, sats);
+      const kept = new Set(r.picks.map((p) => p.lotId));
+      return next.filter((x) => kept.has(x));
+    });
+  }
   return (
     <Sheet open={open} onClose={onClose} title="Pick coins">
       <div className="flex flex-col gap-3 pb-3">
-        <p className="m-0 text-[13px] text-muted">
-          Tick the coins to sell. Each one gives what is still needed; the last is trimmed to fit.
-        </p>
+        <p className="m-0 text-[13px] text-muted">Tick the coins to sell. The last one is trimmed to fit.</p>
         <div role="status" className={cx('rounded-xl border px-3 py-2 text-sm font-semibold', short === 0 ? 'border-accent text-amber' : 'border-line text-soft')}>
           {short === 0 ? (
-            'The coins you ticked cover the amount.'
+            <>
+              {countOf(picks.length, 'coin')} ticked{label !== undefined && !changed ? ` (${label})` : ''}. They cover <Amount sats={sats} showUnit interactive={false} />.
+            </>
           ) : (
             <>
               Still needed: <Amount sats={short} showUnit interactive={false} />
@@ -90,14 +115,13 @@ export function PickCoinsSheet({
           )}
         </div>
         <ul className="m-0 flex max-h-[44dvh] list-none flex-col overflow-y-auto p-0">
-          {lots.map((l) => {
+          {listed.map((l) => {
             const taken = used.get(l.id);
             const on = order.includes(l.id);
-            const blocked = !on && short === 0;
             return (
               <li key={l.id} className="flex min-h-12 items-center justify-between gap-3 border-b border-line-soft py-1.5">
-                <label className={cx('flex min-h-11 flex-1 cursor-pointer items-center gap-3', blocked && 'opacity-50')}>
-                  <input type="checkbox" checked={on} disabled={blocked} onChange={() => toggle(l.id)} className="size-5 flex-none accent-accent" />
+                <label className="flex min-h-11 flex-1 cursor-pointer items-center gap-3">
+                  <input type="checkbox" checked={on} onChange={() => toggle(l.id)} className="size-5 flex-none accent-accent" />
                   <span className="flex flex-col">
                     <span className="text-sm font-semibold">Bought {shortDate(l.acquiredDate, today)}</span>
                     <TierChip tier={l.tier} />
@@ -109,7 +133,7 @@ export function PickCoinsSheet({
                   </span>
                   <span className="text-xs text-muted">
                     {taken !== undefined && taken < l.sats ? 'part of ' : ''}
-                    cost <Money cents={l.costCents} precision="dollars" />
+                    cost <Money cents={l.costCents} />
                   </span>
                 </span>
               </li>
@@ -117,7 +141,13 @@ export function PickCoinsSheet({
           })}
         </ul>
         <div className="flex gap-2.5">
-          <Button className="flex-1" onClick={() => setOrder([])}>
+          <Button
+            className="flex-1"
+            onClick={() => {
+              setChanged(true);
+              setOrder([]);
+            }}
+          >
             Clear
           </Button>
           <Button
@@ -144,7 +174,7 @@ function useSaveContext() {
   return { entries, state, isDemo, today, append };
 }
 
-/** The review screen every sale ends on: tax effect first, then Save. */
+/** The review a sale ends on: the same one the Log sheet shows, with the sale price on top. */
 export function SaleReviewSheet({
   open,
   onClose,
@@ -166,8 +196,7 @@ export function SaleReviewSheet({
   year: number;
   onSaved(): void;
 }) {
-  const { entries, state, isDemo, today, append } = useSaveContext();
-  const toast = useToast();
+  const { entries, state, isDemo, today } = useSaveContext();
   const [priceText, setPriceText] = useState(() => formatCents(priceCents));
   const price = parseDollars(priceText);
   const wallet = state.wallets.find((w) => w.id === walletId);
@@ -178,13 +207,13 @@ export function SaleReviewSheet({
   }, [state, walletId, sats, price, today, year, handPicks]);
   const plan = planned ? planFor(planned, strategy) : null;
   const closed = state.closedYears.includes(year);
-  const [saving, setSaving] = useState(false);
+  const nowMs = Date.parse(entryInstant(isDemo, today));
+  const [entryId] = useState(() => newIdGenerator(entries)());
 
-  async function save() {
-    if (plan === null || wallet === undefined) return;
-    setSaving(true);
+  const draft: Draft | null = useMemo(() => {
+    if (plan === null || wallet === undefined) return null;
     const entry: SellEntry = {
-      id: newIdGenerator(entries)(),
+      id: entryId,
       kind: 'sell',
       at: entryInstant(isDemo, today),
       tz: state.settings.timeZone,
@@ -196,58 +225,34 @@ export function SaleReviewSheet({
       proof: wallet.defaultProof,
       note: 'Logged from What if',
     };
-    await append([entry]);
-    setSaving(false);
-    toast.show('Sale logged.');
-    onSaved();
-    onClose();
-  }
+    const lots = oldestFirstOrder(state.lots, walletId);
+    const extra = (
+      <>
+        {needsBrokerInstruction(plan) && <Note tone="warn">Tell {wallet.name} which coins to sell before you sell. Without instructions it may use its own order.</Note>}
+        {plan.estimatedShareBp > 0 && <Note>Some of these coins have an Estimated or Unknown cost. Confirm how to report that with your CPA.</Note>}
+        {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
+      </>
+    );
+    return saleDraft({ entry, walletName: wallet.name, lots, onDate: today, nowMs, extra });
+  }, [plan, wallet, entryId, isDemo, today, state.settings.timeZone, state.lots, walletId, sats, closed, year, nowMs]);
 
   return (
-    <Sheet open={open} onClose={onClose} title="Review this sale">
+    <Sheet open={open} onClose={onClose} title="Log your sale">
       <div className="flex flex-col gap-3.5 pb-3">
-        <Field label="Sale price per BTC" inputMode="decimal" value={priceText} onChange={(e) => setPriceText(e.target.value)} suffix="USD" hint="What your exchange paid. Change it if the fill differed." />
-        {plan === null || wallet === undefined ? (
-          <p className="m-0 text-sm text-loss">Enter a price above zero.</p>
+        <MoneyInput label="Sale price per BTC" value={priceText} onChange={setPriceText} trailing="USD" hint="What your exchange paid. Change it if the fill differed." />
+        {draft === null || closed ? (
+          <p className="m-0 text-sm text-loss">{closed ? `${year} is closed. Unlock it in Tax season before logging a sale in it.` : 'Enter a price above zero.'}</p>
         ) : (
-          <>
-            <dl className="m-0 flex flex-col rounded-2xl border border-line bg-bg px-4 py-1">
-              {[
-                ['Selling from', wallet.name],
-                ['Amount', <Amount key="a" sats={sats} showUnit interactive={false} />],
-                ['Proceeds', <Money key="p" cents={plan.proceedsCents} />],
-                ['Coins used', `${rangeLabel(plan.coinsFrom, plan.coinsTo)} · ${plan.picks.length} ${plan.picks.length === 1 ? 'coin' : 'coins'}`],
-                ['Cost of those coins', <Money key="c" cents={plan.costCents} />],
-                ...(plan.stGainCents !== 0 ? [[`Short-term ${plan.stGainCents < 0 ? 'loss' : 'gain'}`, <Money key="s" cents={plan.stGainCents} signed />]] : []),
-                ...(plan.ltGainCents !== 0 ? [[`Long-term ${plan.ltGainCents < 0 ? 'loss' : 'gain'}`, <Money key="l" cents={plan.ltGainCents} signed />]] : []),
-                ['Tax this adds (estimate)', <strong key="t"><Money cents={plan.totalTaxCents} /></strong>],
-                [`Carryforward into ${year + 1}`, <Money key="f" cents={plan.carryforwardOut.st + plan.carryforwardOut.lt} precision="dollars" />],
-                ...(plan.givingCents !== null ? [[`${state.settings.givingName} on this sale`, <Money key="g" cents={plan.givingCents} />]] : []),
-                ['Proof', wallet.defaultProof],
-                ['Date', shortDate(today, today) + ' (now)'],
-              ].map(([k, v], i, all) => (
-                <div key={String(k)} className={cx('flex min-h-11 items-center justify-between gap-4 text-sm', i < all.length - 1 && 'border-b border-line')}>
-                  <dt className="text-soft">{k}</dt>
-                  <dd className="m-0 text-right font-semibold">{v}</dd>
-                </div>
-              ))}
-            </dl>
-            {needsBrokerInstruction(plan) && (
-              <Note tone="warn">Tell {wallet.name} which coins to sell before you sell. Without instructions it may use its own order.</Note>
-            )}
-            {plan.estimatedShareBp > 0 && <Note>Some of these coins have an Estimated or Unknown cost. Confirm how to report that with your CPA.</Note>}
-            {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
-            <Note>An estimate, not tax advice. Saving adds a sale entry with these exact coins; you can correct it later, and the old version is kept.</Note>
-          </>
+          <Review
+            draft={draft}
+            showTitle={false}
+            onBack={onClose}
+            onSaved={() => {
+              onSaved();
+              onClose();
+            }}
+          />
         )}
-        <div className="flex gap-2.5">
-          <Button className="flex-1" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" className="flex-[1.6]" disabled={plan === null || closed || saving} onClick={() => void save()}>
-            Save this sale
-          </Button>
-        </div>
       </div>
     </Sheet>
   );

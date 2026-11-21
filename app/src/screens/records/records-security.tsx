@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+import { cx } from '../../lib/cx.ts';
 import { appAddress, shortAddress } from '../../data/app-url.ts';
 import { explainError, wasCancelled } from '../../data/explain-error.ts';
 import { installPrompt, isStandalone } from '../../data/install.ts';
@@ -8,7 +9,8 @@ import { currentPlatform, isIos } from '../../data/platform.ts';
 import { kitHandoff } from '../../data/recovery-handoff.ts';
 import { describeSync } from '../../data/sync-view.ts';
 import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
-import { Button } from '../../ui/Button.tsx';
+import { ExitDemoButton } from '../../ui/AppShell.tsx';
+import { Button, buttonClasses } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { SelectBox } from '../../ui/Field.tsx';
 import { QrCode } from '../../ui/QrCode.tsx';
@@ -20,7 +22,7 @@ const LOCK_CHOICES = [1, 5, 15, 30, 0] as const;
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Card as="section" aria-label={title} className="flex flex-col gap-3 !rounded-[18px] !p-4">
-      <h3 className="m-0 text-[15px] font-semibold">{title}</h3>
+      <h2 className="m-0 text-[15px] font-semibold">{title}</h2>
       {children}
     </Card>
   );
@@ -30,16 +32,14 @@ const P = 'm-0 text-[13px] leading-[1.45] text-soft';
 
 /** Records → Security: sync, this device, adding another device, the recovery code and locking. */
 export function SecurityView() {
-  const { isDemo, clearAll } = useLedger();
+  const { isDemo } = useLedger();
   if (isDemo) {
     return (
       <div className="flex flex-col gap-3">
-        <h2 className="m-0 font-display text-2xl font-semibold">Security</h2>
+        <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Security</h2>
         <Card className="flex flex-col items-start gap-3">
           <p className={P}>You are looking at the demo, so there is nothing to protect yet. Exit the demo and set up your own records to get a passkey, a recovery code and syncing.</p>
-          <Button variant="primary" onClick={() => void clearAll()}>
-            Exit demo
-          </Button>
+          <ExitDemoButton variant="primary" />
         </Card>
         <InstallGroup />
       </div>
@@ -60,6 +60,7 @@ function RealSecurity() {
   const [now] = useState(() => Date.now());
   const sync = describeSync(status.sync, now);
   const s = status.sync;
+  const unsynced = s.pending > 0 || s.phase === 'syncing';
 
   const run = async (name: string, fn: () => Promise<void>) => {
     setBusy(name);
@@ -67,15 +68,23 @@ function RealSecurity() {
     try {
       await fn();
     } catch (e) {
-      if (!wasCancelled(e)) setError(explainError(e));
+      setError(wasCancelled(e) ? 'Cancelled. Tap to try again.' : explainError(e));
     } finally {
       setBusy(null);
     }
   };
 
+  const forget = () =>
+    run('forget', async () => {
+      await vault.forgetDevice();
+      kitHandoff.clear();
+      setForgetOpen(false);
+      navigate('/welcome', { replace: true });
+    });
+
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="m-0 font-display text-2xl font-semibold">Security</h2>
+      <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Security</h2>
       {error !== null && (
         <p role="alert" className="m-0 rounded-xl border border-loss/40 bg-loss/10 px-3.5 py-2.5 text-[13px] leading-[1.45] text-loss">
           {error}
@@ -126,20 +135,26 @@ function RealSecurity() {
       </Group>
 
       <Group title="This device">
-        <p className={P}>{status.passkeyUnlock ? 'This device unlocks with a passkey.' : 'This device has no passkey yet. It unlocks with the recovery code.'}</p>
-        <div>
-          <Button
-            disabled={busy !== null}
-            onClick={() =>
-              void run('passkey', async () => {
-                await vault.addPasskey();
-                toast.show('Passkey added on this device.');
-              })
-            }
-          >
-            {busy === 'passkey' ? 'Waiting for your passkey...' : 'Add a passkey on this device'}
-          </Button>
-        </div>
+        {status.passkeyUnlock ? (
+          <p className={P}>Passkey on this device ✓</p>
+        ) : (
+          <>
+            <p className={P}>No passkey on this device yet.</p>
+            <div>
+              <Button
+                disabled={busy !== null}
+                onClick={() =>
+                  void run('passkey', async () => {
+                    await vault.addPasskey();
+                    toast.show('Passkey added on this device.');
+                  })
+                }
+              >
+                {busy === 'passkey' ? 'Waiting for your passkey...' : 'Add a passkey on this device'}
+              </Button>
+            </div>
+          </>
+        )}
         <SelectBox
           label="Lock after"
           value={String(status.autoLockMinutes)}
@@ -156,18 +171,22 @@ function RealSecurity() {
       <AddDeviceGroup />
 
       <Group title="Recovery code">
-        <p className={P}>
-          The recovery code on your printed kit opens your records if every device is lost. This is NOT a Bitcoin seed phrase. Make a new one if the kit is lost or someone else saw it. The old kit stops working.
-        </p>
-        <div>
+        <p className={P}>Opens your records if every device is lost. It is not a Bitcoin seed phrase.</p>
+        <div className="flex flex-wrap gap-2.5">
           <Button onClick={() => setRotateOpen(true)}>Make a new recovery code</Button>
+          <Link to="/kit" className={buttonClasses('secondary', 'text-text no-underline')}>
+            Emergency kit
+          </Link>
         </div>
+        <Disclosure label="More">
+          <p className={P}>Make a new one if the kit is lost or someone else saw it. The old kit stops working.</p>
+        </Disclosure>
       </Group>
 
       <InstallGroup />
 
       <Group title="Forget this device">
-        <p className={P}>Removes the records and keys stored on this device. Your server keeps its encrypted copy, and you can restore here again with the recovery code.</p>
+        <p className={P}>Removes this device&apos;s copy. Your server keeps the encrypted one.</p>
         <div>
           <Button onClick={() => setForgetOpen(true)}>Forget this device</Button>
         </div>
@@ -198,23 +217,22 @@ function RealSecurity() {
 
       <Sheet open={forgetOpen} onClose={() => setForgetOpen(false)} title="Forget this device?">
         <div className="flex flex-col gap-3 p-1">
-          <p className={P}>This removes everything stored on this device. Anything not yet synced is lost, so check that Syncing says Synced first. You&apos;ll need your recovery code or a passkey to open your records again.</p>
+          <p className={P}>This removes everything stored on this device. You&apos;ll need your recovery code or a passkey to open your records again.</p>
+          <p className={cx(P, unsynced && 'text-amber')} role="status">
+            {unsynced ? 'Not synced yet. Wait for it before you forget this device. ' : ''}
+            {sync.detail}
+          </p>
+          {unsynced && <p className="m-0 text-[13px] font-semibold leading-[1.45] text-loss">Changes not yet synced from this device will be lost.</p>}
           <div className="flex flex-wrap gap-2.5">
-            <Button
-              variant="primary"
-              disabled={busy !== null}
-              onClick={() =>
-                void run('forget', async () => {
-                  await vault.forgetDevice();
-                  kitHandoff.clear();
-                  setForgetOpen(false);
-                  navigate('/welcome', { replace: true });
-                })
-              }
-            >
+            <Button variant="primary" disabled={busy !== null || unsynced} onClick={() => void forget()}>
               Forget this device
             </Button>
             <Button onClick={() => setForgetOpen(false)}>Cancel</Button>
+            {unsynced && (
+              <Button variant="ghost" disabled={busy !== null} onClick={() => void forget()}>
+                Forget anyway
+              </Button>
+            )}
           </div>
         </div>
       </Sheet>
@@ -226,16 +244,28 @@ function AddDeviceGroup() {
   const address = appAddress();
   return (
     <Group title="Add another device">
-      <p className={P}>On the new device, open this address, choose Restore on this device, and type your recovery code (or scan the square code on your kit). Then add a passkey there when it asks.</p>
-      <div className="flex items-center gap-4">
-        <QrCode text={address} size={132} label={`QR code for ${shortAddress(address)}`} className="flex-none rounded-xl" />
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className="text-xs text-muted">App address</span>
-          <span className="break-all text-[15px] font-semibold">{shortAddress(address)}</span>
-          <span className="text-xs text-muted">Point the new device&apos;s camera at the square.</span>
+      <p className={P}>Open this address on the new device and choose “I already use Bitcoin Basis”. Then type your recovery code.</p>
+      <Disclosure label="Show the address and square code">
+        <div className="flex items-center gap-4">
+          <QrCode text={address} size={132} label={`QR code for ${shortAddress(address)}`} className="flex-none rounded-xl" />
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="text-xs text-muted">App address</span>
+            <span className="break-all text-[15px] font-semibold">{shortAddress(address)}</span>
+            <span className="text-xs text-muted">Point the new device&apos;s camera at the square.</span>
+          </div>
         </div>
-      </div>
+      </Disclosure>
     </Group>
+  );
+}
+
+/** A quiet "more" disclosure with a 44px tap target. */
+function Disclosure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <details className="text-[13px]">
+      <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-amber">{label}</summary>
+      <div className="pb-1 pt-1">{children}</div>
+    </details>
   );
 }
 
@@ -248,7 +278,7 @@ function InstallGroup() {
   return (
     <Group title="Install the app">
       {isIos(platform) ? (
-        <p className={P}>In Safari, tap the Share button, then Add to Home Screen. It then opens like any other app.</p>
+        <p className={P}>Tap the Share button, then Add to Home Screen. It then opens like any other app.</p>
       ) : (
         <>
           <p className={P}>Put Bitcoin Basis on your home screen or dock so it opens like an app, and works offline.</p>

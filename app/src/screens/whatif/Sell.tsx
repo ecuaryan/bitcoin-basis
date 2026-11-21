@@ -1,25 +1,24 @@
-import { parseBtc, yearOf } from '@bitcoin-basis/engine';
+import { formatBtc, oldestFirstOrder, parseBtc, yearOf } from '@bitcoin-basis/engine';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { formatMoney, satsToCents } from '../../lib/format.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
-import { useIsWide } from '../../ui/AppShell.tsx';
+import { useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
-import { Field } from '../../ui/Field.tsx';
+import { BtcInput } from '../../ui/formatted-inputs.tsx';
 import { ChevronDownIcon } from '../../ui/more-icons.tsx';
-import { Segmented } from '../../ui/Segmented.tsx';
-import { Note, PlanCard, Sentence } from './sell-parts.tsx';
+import { Note, PlanCard, PlanChoice, Sentence } from './sell-parts.tsx';
 import { PickCoinsSheet, PrepareSaleSheet, SaleReviewSheet, WalletSheet } from './sell-sheets.tsx';
-import { carriedOut, needsBrokerInstruction, picksFromSelection, planFor, planForWallet, satsForSlider, sliderForSats, SLIDER_MAX, summarize, type PlanKey } from './sell-logic.ts';
-import { oldestFirstOrder } from '@bitcoin-basis/engine';
+import { carriedOut, defaultSats, documentationNote, needsBrokerInstruction, picksFromSelection, planFor, planForWallet, stepFor, summarize, type PlanKey } from './sell-logic.ts';
 
-const START_POSITION = 400;
+export const PLAN_LABEL: Record<PlanKey, string> = { 'oldest-first': 'Oldest first', 'lowest-tax': 'Lowest tax', 'hand-picked': 'Your picks' };
 
 export function Sell() {
   const wide = useIsWide();
+  const { open: openLog } = useLogSheet();
   const { state, holdings, today } = useLedger();
   const { quote, status } = usePrice();
   const price = quote?.usdCents ?? null;
@@ -31,9 +30,12 @@ export function Sell() {
   const wallet = wallets.find((w) => w.wallet === chosen) ?? [...exchanges].sort((a, b) => b.sats - a.sats)[0] ?? wallets[0] ?? null;
 
   const [sats, setSats] = useState<number | null>(null);
-  const [typed, setTyped] = useState('');
+  /** What is being typed in the amount box; null while the box just follows the slider. */
+  const [typed, setTyped] = useState<string | null>(null);
   const balance = wallet?.sats ?? 0;
-  const amount = Math.min(balance, sats ?? satsForSlider(balance, START_POSITION));
+  const amount = Math.min(balance, sats ?? defaultSats(balance));
+  const step = stepFor(balance);
+  const stepsMax = Math.max(1, Math.ceil(balance / step));
   const deferred = useDeferredValue(amount);
 
   const [handOrder, setHandOrder] = useState<string[] | null>(null);
@@ -58,23 +60,30 @@ export function Sell() {
   function pickWallet(id: string) {
     setChosen(id);
     setSats(null);
-    setTyped('');
+    setTyped(null);
     setHandOrder(null);
     setPlanKey('lowest-tax');
   }
   function onSlide(position: number) {
-    setSats(satsForSlider(balance, position));
-    setTyped('');
+    setSats(position >= stepsMax ? balance : Math.min(balance, position * step));
+    setTyped(null);
   }
   function onType(text: string) {
     setTyped(text);
     const parsed = parseBtc(text);
     if (parsed !== null && parsed > 0 && parsed <= balance) setSats(parsed);
   }
-  const typedBad = typed !== '' && (parseBtc(typed) === null || (parseBtc(typed) ?? 0) > balance || parseBtc(typed) === 0);
+  const typedBad = typed !== null && typed !== '' && (parseBtc(typed) === null || (parseBtc(typed) ?? 0) > balance || parseBtc(typed) === 0);
 
   if (wallet === null) {
-    return <Card className="text-[15px] text-muted">Nothing to sell yet. Log a purchase first, or load the demo book from Holdings.</Card>;
+    return (
+      <Card className="flex flex-col items-start gap-3 text-[15px] text-muted">
+        <p className="m-0">Nothing to sell yet. Log a purchase and your options show up here.</p>
+        <Button variant="primary" onClick={() => openLog({ kind: 'buy' })}>
+          Log a purchase
+        </Button>
+      </Card>
+    );
   }
 
   const controls = (
@@ -108,27 +117,27 @@ export function Sell() {
         <input
           type="range"
           aria-label="Amount to sell"
-          aria-valuetext={`${Math.round(sliderForSats(balance, amount) / 10)} percent of this wallet`}
+          aria-valuetext={`${balance === 0 ? 0 : Math.round((amount * 100) / balance)} percent of this wallet`}
           min={0}
-          max={SLIDER_MAX}
+          max={stepsMax}
           step={1}
-          value={sliderForSats(balance, amount)}
+          value={Math.min(stepsMax, Math.round(amount / step))}
           onChange={(e) => onSlide(Number(e.target.value))}
           className="mt-3 h-7 w-full accent-accent"
         />
         <div className="mt-1 flex w-full items-start gap-3">
-          <Field
+          <BtcInput
             label="Or type an amount"
-            inputMode="decimal"
-            placeholder="0.0000"
-            suffix="BTC"
-            value={typed}
-            onChange={(e) => onType(e.target.value)}
-            aria-invalid={typedBad}
-            hint={typedBad ? 'Use a number of BTC up to what this wallet holds.' : undefined}
-            className="flex-1"
+            value={typed ?? formatBtc(amount)}
+            onChange={onType}
+            onBlur={() => {
+              if (!typedBad) setTyped(null);
+            }}
+            trailing="BTC"
+            error={typedBad ? 'Use a number of BTC up to what this wallet holds.' : null}
+            frameClassName="flex-1"
           />
-          <Button className="mt-[22px]" onClick={() => onSlide(SLIDER_MAX)}>
+          <Button className="mt-[22px] min-h-[52px]" onClick={() => onSlide(stepsMax)}>
             All
           </Button>
         </div>
@@ -145,31 +154,31 @@ export function Sell() {
     body = <Card className="text-[15px] text-loss">{planned.plans.error.message}</Card>;
   } else if (plans && active) {
     const summary = summarize(plans.oldestFirst, plans.lowestTax);
-    const options = [
-      { value: 'oldest-first' as const, label: 'Oldest first' },
-      { value: 'lowest-tax' as const, label: 'Lowest tax' },
-      ...(plans.handPicked ? [{ value: 'hand-picked' as const, label: 'Your picks' }] : []),
-    ];
     body = (
       <>
-        <div className={cx('grid gap-2.5', plans.handPicked ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2')}>
-          <PlanCard title="Oldest first" plan={plans.oldestFirst} year={year} active={activeKey === 'oldest-first'} carryBest={carriedOut(plans.oldestFirst) > carriedOut(plans.lowestTax)} />
-          <PlanCard title="Lowest tax" plan={plans.lowestTax} year={year} active={activeKey === 'lowest-tax'} carryBest={carriedOut(plans.lowestTax) > carriedOut(plans.oldestFirst)} />
-          {plans.handPicked && <PlanCard title="Your picks" plan={plans.handPicked} year={year} active={activeKey === 'hand-picked'} className="col-span-2 lg:col-span-1" />}
-        </div>
+        <PlanChoice label="Coins to use" className={cx('grid gap-2.5', plans.handPicked ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2')}>
+          <PlanCard title="Oldest first" plan={plans.oldestFirst} year={year} active={activeKey === 'oldest-first'} onSelect={() => setPlanKey('oldest-first')} carryBest={carriedOut(plans.oldestFirst) > carriedOut(plans.lowestTax)} />
+          <PlanCard title="Lowest tax" plan={plans.lowestTax} year={year} active={activeKey === 'lowest-tax'} onSelect={() => setPlanKey('lowest-tax')} carryBest={carriedOut(plans.lowestTax) > carriedOut(plans.oldestFirst)} />
+          {plans.handPicked && <PlanCard title="Your picks" plan={plans.handPicked} year={year} active={activeKey === 'hand-picked'} onSelect={() => setPlanKey('hand-picked')} className="col-span-2 lg:col-span-1" />}
+        </PlanChoice>
         <Card as="section" aria-label="What this means" className="flex flex-col gap-3 !rounded-2xl !p-3.5">
           <Note tone="warn">
             <Sentence parts={summary} />
           </Note>
-          {plans.lowestTax.deferredNote !== null && needsBrokerInstruction(plans.lowestTax) && <Note>{plans.lowestTax.deferredNote}</Note>}
-          {plans.lowestTax.note !== null && <Note>{plans.lowestTax.note}</Note>}
           {active.headsUp && <Note tone="warn">This sale adds more than $1,000 of estimated tax. You may need to make an estimated payment before filing.</Note>}
-          {needsBrokerInstruction(active) && !selfCustody && <Note>Tell {wallet.name} which coins to sell before you sell. Otherwise it may use its own order.</Note>}
           {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
-          <p className="m-0 text-xs text-muted">Estimates, not tax advice. Based on your settings in Records.</p>
+          <details className="group">
+            <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-soft">Why?</summary>
+            <div className="flex flex-col gap-3 pb-1">
+              <Note>{documentationNote(plans.oldestFirst, plans.lowestTax)}</Note>
+              {plans.lowestTax.deferredNote !== null && needsBrokerInstruction(plans.lowestTax) && <Note>{plans.lowestTax.deferredNote}</Note>}
+              {plans.lowestTax.note !== null && <Note>{plans.lowestTax.note}</Note>}
+              {needsBrokerInstruction(active) && !selfCustody && <Note>Tell {wallet.name} which coins to sell before you sell. Otherwise it may use its own order.</Note>}
+              <p className="m-0 text-xs text-muted">Estimates, not tax advice. Based on your settings in Records.</p>
+            </div>
+          </details>
         </Card>
         <div className="flex flex-col gap-2.5">
-          <Segmented<PlanKey> label="Coins to use" value={activeKey} onChange={setPlanKey} options={options} />
           <div className="flex gap-2.5">
             <Button className="min-h-[52px] flex-1 !rounded-2xl" onClick={() => setSheet('pick')}>
               Pick coins
@@ -180,7 +189,7 @@ export function Sell() {
               </Button>
             ) : (
               <Button variant="primary" className="min-h-[52px] flex-[1.6] !rounded-2xl" onClick={() => setSheet('review')} disabled={closed}>
-                Log this sale
+                I sold it, log it
               </Button>
             )}
           </div>
@@ -204,6 +213,7 @@ export function Sell() {
           wallet={wallet.wallet}
           sats={amount}
           today={today}
+          label={PLAN_LABEL[activeKey]}
           initial={handOrder ?? (plans ? planFor(plans, activeKey).picks.map((p) => p.lotId) : [])}
           onUse={(order) => {
             setHandOrder(order);

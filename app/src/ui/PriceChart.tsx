@@ -14,6 +14,8 @@ export function PriceChart({
   label,
   className,
   strokeWidth = 2.2,
+  status = 'ready',
+  young = false,
 }: {
   points: readonly PricePoint[];
   averageCostCents: number | null;
@@ -23,12 +25,17 @@ export function PriceChart({
   label: string;
   className?: string;
   strokeWidth?: number;
+  /** `loading` shows a quiet placeholder instead of an error while the history is on its way. */
+  status?: 'loading' | 'ready';
+  /** The records are new, so a short chart is expected rather than broken. */
+  young?: boolean;
 }) {
   const id = useId();
   if (points.length < 2) {
+    const text = status === 'loading' ? 'Loading price history…' : young ? 'Your chart fills in as time passes.' : 'Price history is not available right now';
     return (
-      <div className={cx('flex items-center justify-center rounded-xl bg-surface-2 text-xs text-muted', className)} style={{ height }} role="img" aria-label="Price history is not available right now">
-        Price history is not available right now
+      <div className={cx('flex items-center justify-center rounded-xl bg-surface-2 text-xs text-muted', status === 'loading' && 'animate-pulse', className)} style={{ height }} role="img" aria-label={text}>
+        {text}
       </div>
     );
   }

@@ -34,12 +34,15 @@ test.describe('@visual first run, unlock, kit', () => {
 
   test('@visual Unlock', async ({ page }) => {
     await claim(page);
-    await page.getByRole('button', { name: 'I wrote it down' }).click();
-    await page.getByLabel(/I've written it down/).check();
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await page.getByRole('button', { name: 'Go to my records' }).click();
+    await page.getByRole('button', { name: "I've saved it" }).click();
+    await page.getByRole('button', { name: 'Skip this check' }).click();
+    await page.getByRole('button', { name: 'Skip anyway' }).click();
+    await page.getByRole('button', { name: 'Add my first wallet' }).click();
+    await expect(page.getByRole('dialog', { name: 'Add a wallet' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByRole('button', { name: 'Lock', exact: true }).click();
-    await expect(page.getByRole('button', { name: /^Unlock with/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible();
     await settle(page);
     await expect(page).toHaveScreenshot('unlock.png', opts);
   });

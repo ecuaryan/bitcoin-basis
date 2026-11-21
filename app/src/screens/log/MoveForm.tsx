@@ -7,7 +7,7 @@ import { CoinPicker } from './CoinPicker.tsx';
 import type { FormProps } from './draft.ts';
 import { stripSource, useAmount, useBaseState, useFormEnv, usePriceAt, useValue, withSource } from './hooks.ts';
 import { choosePicks, cleanNumber, localInputFor, lotsAvailable, nowInstant, usableWallets, usualWallet, whenLabel, zonedInstant, type PickMode } from './model.ts';
-import { AmountInput, FormFooter, ValueField, WalletSelect, WhenField } from './parts.tsx';
+import { AmountInput, FormFooter, MoreDetails, ValueField, WalletSelect, WhenField } from './parts.tsx';
 
 export function MoveForm({ initial, preset, onReview }: FormProps) {
   const { entries, state: ledgerState, today, nowMs, tz } = useFormEnv();
@@ -30,6 +30,7 @@ export function MoveForm({ initial, preset, onReview }: FormProps) {
   const [mode, setMode] = useState<PickMode>(edit || preset.move ? 'hand' : 'oldest');
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(edit ? edit.picks.map((p) => p.lotId) : (preset.move?.lotIds ?? [])));
   const [tried, setTried] = useState(false);
+  const [more, setMore] = useState(edit !== null || preset.move !== undefined);
 
   const fromW = state.wallets.find((x) => x.id === from);
   const toW = state.wallets.find((x) => x.id === to);
@@ -51,6 +52,7 @@ export function MoveForm({ initial, preset, onReview }: FormProps) {
 
   function review() {
     setTried(true);
+    if (errors.picks !== null) setMore(true);
     if (!valid || at === null || sats === null || feeSats === null || feeValue === null || picks === null || fromW === undefined || toW === undefined) return;
     const entry: MoveEntry = {
       id,
@@ -69,12 +71,13 @@ export function MoveForm({ initial, preset, onReview }: FormProps) {
       title: 'Review move',
       saveLabel: thenSell ? 'Save move, then sell' : 'Save move',
       savedMessage: 'Move saved.',
+      direct: edit === null,
       rows: [
         { label: 'Arrives', value: <Amount sats={sats} interactive={false} showUnit /> },
         { label: 'From', value: fromW.name },
         { label: 'To', value: toW.name },
         { label: 'Network fee', value: feeSats === 0 ? 'None' : <><Amount sats={feeSats} interactive={false} showUnit /> (<Money cents={feeValue} />)</> },
-        { label: 'When', value: whenLabel(at, tz) },
+        { label: 'When', value: whenLabel(at, tz, nowMs) },
       ],
       coins: { picks, lots: available, onDate },
       build: () => [entry],
@@ -99,6 +102,7 @@ export function MoveForm({ initial, preset, onReview }: FormProps) {
       }}
     >
       {thenSell ? <Callout title="Preparing a sale">Coins in a self-custody wallet cannot be sold directly. Move exactly these coins to an exchange first. Then you will log the sale from there.</Callout> : null}
+      <AmountInput amount={amount} label="Amount that arrives" error={tried ? errors.amount : null} />
       <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
         <WalletSelect
           label="From"
@@ -114,20 +118,21 @@ export function MoveForm({ initial, preset, onReview }: FormProps) {
         <WalletSelect label={thenSell ? 'To (an exchange)' : 'To'} value={to} onChange={setTo} wallets={destinations} error={tried ? errors.to : null} />
       </div>
       {noDestination ? <Callout>You need a second wallet to move coins to. Choose &ldquo;Add a wallet&rdquo; in the To list.</Callout> : null}
-      <AmountInput amount={amount} label="Amount that arrives" error={tried ? errors.amount : null} />
+      <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
       <TextField label="Network fee in sats (optional)" inputMode="numeric" autoComplete="off" placeholder="0" value={feeText} onChange={(e) => setFeeText(e.target.value)} error={tried ? errors.fee : null} hint="Taken from the same wallet, on top of the amount." />
       {feeSats !== null && feeSats > 0 ? <ValueField label="Fee worth in dollars" value={fee} price={price} error={tried && errors.fee ? errors.fee : null} /> : null}
-      <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
-      <CoinPicker lots={available} needed={total} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} />
-      {tried && errors.picks ? (
-        <p role="alert" className="m-0 text-xs text-loss">
-          {errors.picks}
-        </p>
-      ) : null}
-      <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+      <MoreDetails open={more} onOpenChange={setMore}>
+        <CoinPicker lots={available} needed={total} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} walletName={fromW?.name ?? 'this wallet'} />
+        {tried && errors.picks ? (
+          <p role="alert" className="m-0 text-xs text-loss">
+            {errors.picks}
+          </p>
+        ) : null}
+        <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+      </MoreDetails>
       <FormFooter>
         <Button type="submit" variant="primary" className="min-h-14 flex-1 rounded-[18px] text-[17px] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
-          Review move
+          {edit === null ? (thenSell ? 'Save move, then sell' : 'Save move') : 'Review change'}
         </Button>
       </FormFooter>
     </form>

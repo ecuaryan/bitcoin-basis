@@ -132,3 +132,12 @@ export function useBaseState(editing: Entry | null) {
     return replay(entries.filter((e) => !chain.has(e.id)));
   }, [editing, entries, state]);
 }
+
+/** Scroll every scrollable parent of `el` back to the top (a new step of a sheet should start at its top). */
+export function resetScroll(el: HTMLElement | null): void {
+  let p = el?.parentElement ?? null;
+  while (p !== null) {
+    p.scrollTop = 0;
+    p = p.parentElement;
+  }
+}

@@ -3,11 +3,12 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { dayChangeTenthsPercent, type PriceQuote } from '../data/price.ts';
 import { cx } from '../lib/cx.ts';
-import { formatMoney, satsToCents } from '../lib/format.ts';
+import { formatDay, formatMoney, longDate, satsToCents } from '../lib/format.ts';
 import type { HoldingsView, StackYear, WalletCard } from '../lib/holdings-view.ts';
 import { describeOrigin, TIER_HELP, TIER_LABEL } from '../lib/origin.ts';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { Amount, Money } from '../ui/Amount.tsx';
+import { PlainMoney } from '../ui/plain-money.tsx';
 import { Card } from '../ui/Card.tsx';
 import { Sheet } from '../ui/Sheet.tsx';
 import { ChevronRightIcon } from '../ui/icons.tsx';
@@ -109,13 +110,16 @@ export function StackColumns({ stack, onPick }: { stack: StackYear[]; onPick(yea
   );
 }
 
-export function TierLegend({ tiers, className }: { tiers: Tier[]; className?: string }) {
+/** What the colours mean. With `mix` it also says how much of your stack each one is (so there is no separate card for it on a phone). */
+export function TierLegend({ tiers, mix, className }: { tiers: Tier[]; mix?: Record<Tier, number>; className?: string }) {
+  const total = mix ? Math.max(1, TIER_ORDER.reduce((n, t) => n + mix[t], 0)) : 1;
   return (
     <div className={cx('flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-muted lg:text-xs lg:gap-x-4', className)}>
       {tiers.map((t) => (
         <span key={t} className="flex items-center gap-1.5">
           <span className={cx('size-2.5 rounded-[3px]', TIER_BG[t])} aria-hidden="true" />
           {TIER_LABEL[t]}
+          {mix ? ` ${Math.round((mix[t] * 100) / total)}%` : ''}
         </span>
       ))}
     </div>
@@ -146,7 +150,7 @@ function CoinRow({ lot }: { lot: Lot }) {
             <Amount sats={lot.sats} interactive={false} />
           </span>
           <span className="truncate text-xs text-muted">
-            {lot.acquiredDate} · {wallet?.name ?? 'Wallet'}
+            {longDate(lot.acquiredDate)} · {wallet?.name ?? 'Wallet'}
           </span>
         </span>
         <span className="text-xs text-muted">{TIER_LABEL[lot.tier]}</span>
@@ -173,7 +177,7 @@ function CoinRow({ lot }: { lot: Lot }) {
             {TIER_LABEL[lot.tier]}. {TIER_HELP[lot.tier]}
           </dd>
           <dt className="text-muted">Bought</dt>
-          <dd>{lot.acquiredDate === today ? 'today' : lot.acquiredDate}</dd>
+          <dd>{formatDay(lot.acquiredDate, today)}</dd>
         </dl>
       )}
     </li>
@@ -268,9 +272,21 @@ export function DocumentationCard({ view }: { view: HoldingsView }) {
 }
 
 export function MoneyCard({ view }: { view: HoldingsView }) {
+  const [help, setHelp] = useState(false);
   return (
     <Card as="section" aria-label="Money in and out" className="flex flex-col gap-3">
-      <h2 className="m-0 text-[15px] font-semibold">Money in and out</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="m-0 text-[15px] font-semibold">Money in and out</h2>
+        <button
+          type="button"
+          aria-expanded={help}
+          aria-label="What do these mean?"
+          onClick={() => setHelp((h) => !h)}
+          className="-my-2 -mr-2 flex size-11 items-center justify-center rounded-full bg-transparent text-sm font-semibold text-muted hover:text-text"
+        >
+          <span aria-hidden="true">?</span>
+        </button>
+      </div>
       <dl className="m-0 grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-0.5">
           <dt className="text-xs text-muted">Put in</dt>
@@ -285,7 +301,7 @@ export function MoneyCard({ view }: { view: HoldingsView }) {
           </dd>
         </div>
       </dl>
-      <p className="m-0 text-xs text-muted">In is what you paid for coins. Out is what sales, spending and fees paid in BTC brought in.</p>
+      {help && <p className="m-0 text-xs text-muted">In is what you paid for coins. Out is what sales, spending and fees paid in BTC brought in.</p>}
     </Card>
   );
 }
@@ -298,14 +314,16 @@ export function RetirementCard({ view, priceCents }: { view: HoldingsView; price
       <p className="m-0 text-xs text-muted">Not counted in what your Bitcoin is worth or in your average cost.</p>
       <ul className="m-0 flex list-none flex-col p-0">
         {view.retirement.map((r) => (
-          <li key={r.id} className="flex items-center justify-between border-b border-line py-2.5 last:border-b-0">
-            <span className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold">{r.name}</span>
-              <span className="text-xs text-muted">Retirement · view only{priceCents !== null && <> · worth <Money cents={satsToCents(r.sats, priceCents)} precision="dollars" /></>}</span>
-            </span>
-            <span className="text-sm font-semibold">
-              <Amount sats={r.sats} interactive={false} />
-            </span>
+          <li key={r.id}>
+            <Link to={`/wallet/${r.id}`} className="flex items-center justify-between border-b border-line py-2.5 text-text no-underline last:border-b-0 hover:text-text">
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-semibold">{r.name}</span>
+                <span className="text-xs text-muted">Retirement · view only{priceCents !== null && <> · worth <PlainMoney cents={satsToCents(r.sats, priceCents)} precision="dollars" /></>}</span>
+              </span>
+              <span className="text-sm font-semibold">
+                <Amount sats={r.sats} interactive={false} />
+              </span>
+            </Link>
           </li>
         ))}
         {view.frozen.map((w) => (
@@ -313,7 +331,7 @@ export function RetirementCard({ view, priceCents }: { view: HoldingsView; price
             <Link to={`/wallet/${w.id}`} className="flex items-center justify-between border-b border-line py-2.5 text-text no-underline last:border-b-0 hover:text-text">
               <span className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold">{w.name}</span>
-                <span className="text-xs text-muted">Frozen platform · cost {formatMoney(w.costCents, { precision: 'dollars' })}</span>
+                <span className="text-xs text-muted">Frozen platform · cost <PlainMoney cents={w.costCents} precision="dollars" /></span>
               </span>
               <span className="text-sm font-semibold">
                 <Amount sats={w.sats} interactive={false} />

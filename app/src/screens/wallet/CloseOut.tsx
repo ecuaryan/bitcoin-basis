@@ -24,10 +24,15 @@ function CloseOutBody({ wallet, onClose }: { wallet: Wallet; onClose(): void }) 
   const { entries, state } = useLedger();
   const { tz, nowMs, today } = useFormEnv();
   const [id] = useState(() => uuidv7());
-  const [lossDate, setLossDate] = useState(today);
+  // Today, unless that year is already closed: then the last day of the latest year that is still open.
+  const [lossDate, setLossDate] = useState(() => {
+    let y = Number(today.slice(0, 4));
+    if (!state.closedYears.includes(y)) return today;
+    while (state.closedYears.includes(y)) y -= 1;
+    return `${y}-12-31`;
+  });
   const [reason, setReason] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [tried, setTried] = useState(false);
 
   const entry: WalletCloseOutEntry = useMemo(
     () => ({ id, kind: 'wallet-close-out', wallet: wallet.id, at: nowInstant(nowMs), tz, ...(lossDate === '' ? {} : { lossDate }), reason: reason.trim() === '' ? 'Closing out' : reason.trim() }),
@@ -39,11 +44,9 @@ function CloseOutBody({ wallet, onClose }: { wallet: Wallet; onClose(): void }) 
   }, [entries, state, entry, id]);
   const c = preview.closeOut;
   const termText = c === undefined ? '' : c.ltGainCents !== 0 && c.stGainCents !== 0 ? 'part long-term, part short-term' : c.ltGainCents !== 0 ? 'long-term' : 'short-term';
-  const error = tried && reason.trim() === '' ? 'Say why you are closing it out. It is kept with the entry.' : null;
-
+  
   function review() {
-    setTried(true);
-    if (reason.trim() === '' || lossDate === '' || c === undefined) return;
+    if (lossDate === '' || c === undefined) return;
     setDraft({
       title: 'Review close-out',
       saveLabel: 'Close out wallet',
@@ -53,7 +56,7 @@ function CloseOutBody({ wallet, onClose }: { wallet: Wallet; onClose(): void }) 
         { label: 'Loss date', value: longDate(lossDate) },
         { label: 'Cost of the coins', value: <Money cents={c.costCents} /> },
         { label: 'Paid back to you', value: <Money cents={c.recoveredCents} /> },
-        { label: 'Reason', value: reason.trim() },
+        ...(reason.trim() === '' ? [] : [{ label: 'Reason', value: reason.trim() }]),
       ],
       build: () => [entry],
     });
@@ -76,7 +79,7 @@ function CloseOutBody({ wallet, onClose }: { wallet: Wallet; onClose(): void }) 
           <>
             <div className="flex items-baseline justify-between">
               <span className="text-sm text-soft">{c.gainCents < 0 ? 'Loss recorded' : 'Gain recorded'}</span>
-              <span className="font-display text-2xl font-semibold tracking-tight text-accent">
+              <span className="font-display text-2xl font-semibold tracking-tight">
                 <Money cents={Math.abs(c.gainCents)} />
               </span>
             </div>
@@ -87,7 +90,7 @@ function CloseOutBody({ wallet, onClose }: { wallet: Wallet; onClose(): void }) 
         )}
       </section>
       <TextField label="Loss date" type="date" value={lossDate} onChange={(e) => setLossDate(e.target.value)} hint="The tax date of the loss. Often the day recovery became certain, such as when a bankruptcy plan took effect. Change it if yours is different." />
-      <TextAreaField label="Why are you closing it out?" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: the platform's plan took effect and no more payouts are expected" error={error} />
+      <TextAreaField label="Why are you closing it out? (optional)" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="For example: the platform's plan took effect and no more payouts are expected" />
       <Callout tone="cpa" title="Confirm with your CPA">
         The right loss date and treatment depend on your situation. Later payouts after a close-out count as gains.
       </Callout>

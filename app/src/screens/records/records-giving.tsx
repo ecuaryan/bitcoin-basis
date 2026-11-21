@@ -6,7 +6,8 @@ import { shortDate } from '../../lib/format.ts';
 import { Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
-import { Field, SelectBox } from '../../ui/Field.tsx';
+import { SelectBox } from '../../ui/Field.tsx';
+import { MoneyInput } from '../../ui/formatted-inputs.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { useWriter } from '../../ui/use-writer.ts';
 import { yearsAvailable } from '../tax/tax-logic.ts';
@@ -20,7 +21,6 @@ export function GivingView() {
   const [year, setYear] = useState(yearOf(today));
   const due = useMemo(() => givingDue(state, state.settings, year), [state, year]);
   const [amount, setAmount] = useState<string | null>(null);
-  const [name, setName] = useState<string | null>(null);
   const s = state.settings;
   const owed = Math.max(0, due.owedCents);
   const amountText = amount ?? formatCents(owed);
@@ -31,7 +31,7 @@ export function GivingView() {
       <Card className="flex flex-col items-start gap-3">
         <h2 className="m-0 font-display text-xl font-semibold">{s.givingName} is off</h2>
         <p className="m-0 text-[15px] leading-relaxed text-muted">
-          Turn this on to set aside a share of what your sales gain, and track what you have paid. It is off until you want it. The share and its name are yours to choose in Settings.
+          Turn this on to set aside a share of what your sales gain, and track what you have paid. It is off until you want it. Choose the share and its name in Settings.
         </p>
         <Button
           variant="primary"
@@ -51,18 +51,10 @@ export function GivingView() {
     setAmount(null);
     toast.show(`Marked as paid for ${year}.`);
   }
-  async function rename() {
-    const next = (name ?? '').trim();
-    if (next === '' || next === s.givingName) return;
-    await write({ kind: 'settings', patch: { givingName: next } });
-    setName(null);
-    toast.show('Renamed.');
-  }
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-end justify-between gap-3">
-        <h2 className="m-0 font-display text-2xl font-semibold">{s.givingName}</h2>
+        <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">{s.givingName}</h2>
         <SelectBox label="Year" value={String(year)} onChange={(e) => setYear(Number(e.target.value))} className="w-28">
           {years.map((y) => (
             <option key={y} value={y}>
@@ -94,9 +86,9 @@ export function GivingView() {
         </p>
       </section>
 
-      <Card as="section" aria-label="Mark as paid" className="flex flex-col gap-3 !rounded-[18px] !p-4">
-        <h3 className="m-0 text-[15px] font-semibold">Mark as paid</h3>
-        <Field label="Amount paid" inputMode="decimal" value={amountText} onChange={(e) => setAmount(e.target.value)} suffix="USD" aria-invalid={cents === null} />
+      <Card as="section" aria-label="Record a payment" className="flex flex-col gap-3 !rounded-[18px] !p-4">
+        <h2 className="m-0 text-[15px] font-semibold">Record a payment</h2>
+        <MoneyInput label="Amount paid" value={amountText} onChange={setAmount} error={cents === null ? 'Use a dollar amount.' : null} />
         <Button variant="primary" className="self-start" disabled={cents === null || cents <= 0} onClick={() => void markPaid()}>
           Mark as paid
         </Button>
@@ -113,7 +105,7 @@ export function GivingView() {
       </Card>
 
       <Card as="section" aria-label="Sales behind it" className="flex flex-col gap-1 !rounded-[18px] !p-4">
-        <h3 className="m-0 mb-1 text-[15px] font-semibold">From sales and spending</h3>
+        <h2 className="m-0 mb-1 text-[15px] font-semibold">From sales and spending</h2>
         {due.sales.length === 0 ? (
           <p className="m-0 text-[13px] text-muted">No sales or spending logged in {year}.</p>
         ) : (
@@ -133,7 +125,7 @@ export function GivingView() {
 
       <Card as="section" aria-label="Income received" className="flex flex-col gap-1 !rounded-[18px] !p-4">
         <div className="flex items-baseline justify-between">
-          <h3 className="m-0 text-[15px] font-semibold">Income received in {year}</h3>
+          <h2 className="m-0 text-[15px] font-semibold">Income received in {year}</h2>
           <Money cents={due.incomeCents} />
         </div>
         <p className="m-0 text-xs text-muted">Promos, rewards and mining are listed here but never counted toward {s.givingName}.</p>
@@ -145,13 +137,6 @@ export function GivingView() {
             <Money cents={i.valueCents} />
           </div>
         ))}
-      </Card>
-
-      <Card as="section" aria-label="Name" className="flex flex-col gap-2 !rounded-[18px] !p-4">
-        <Field label="What to call it" value={name ?? s.givingName} onChange={(e) => setName(e.target.value)} />
-        <Button className="self-start" disabled={(name ?? '').trim() === '' || name === s.givingName} onClick={() => void rename()}>
-          Rename
-        </Button>
       </Card>
     </div>
   );

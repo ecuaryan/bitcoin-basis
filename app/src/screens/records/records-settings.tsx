@@ -1,20 +1,19 @@
 import { FILING_STATUSES, STATE_RATES } from '@bitcoin-basis/engine';
-import { useState, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
-import { Button, buttonClasses } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
+import { MoneyInput, PercentInput } from '../../ui/formatted-inputs.tsx';
 import { Field, SelectBox, Toggle } from '../../ui/Field.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { useWriter } from '../../ui/use-writer.ts';
-import { draftFrom, FILING_LABELS, patchFrom, type SettingsDraft } from './settings-logic.ts';
+import { draftFrom, FILING_LABELS, patchFrom, timeZoneChoices, type SettingsDraft } from './settings-logic.ts';
 
 const STATES = Object.values(STATE_RATES).sort((a, b) => a.name.localeCompare(b.name));
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Card as="section" aria-label={title} className="flex flex-col gap-3 !rounded-[18px] !p-4">
-      <h3 className="m-0 text-[15px] font-semibold">{title}</h3>
+      <h2 className="m-0 text-[15px] font-semibold">{title}</h2>
       {children}
     </Card>
   );
@@ -28,43 +27,56 @@ export function SettingsView() {
   const s = state.settings;
   const [draft, setDraft] = useState<SettingsDraft>(() => draftFrom(s));
   const [errors, setErrors] = useState<Partial<Record<keyof SettingsDraft, string>>>({});
-  const set = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const err = (k: keyof SettingsDraft) => errors[k];
 
-  async function save() {
-    const r = patchFrom(s, draft);
+  /** Changes save as you go: choices at once, typed fields when you leave them. Nothing to forget to press. */
+  async function save(d: SettingsDraft) {
+    const r = patchFrom(s, d);
     if (!r.ok) {
       setErrors(r.errors);
       return;
     }
     setErrors({});
-    if (Object.keys(r.patch).length === 0) {
-      toast.show('Nothing changed.');
-      return;
-    }
+    if (Object.keys(r.patch).length === 0) return;
     await write({ kind: 'settings', patch: r.patch });
-    toast.show('Settings saved.');
+    toast.show('Saved.');
   }
+  /** A choice (select or switch): set it and save it. */
+  const pick = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => {
+    const next = { ...draft, [key]: value };
+    setDraft(next);
+    void save(next);
+  };
+  /** A typed field: update while typing, save on leaving the field. */
+  const type = <K extends keyof SettingsDraft>(key: K) => ({
+    onChange: (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [key]: e.target.value })),
+    onBlur: () => void save(draft),
+  });
+  const num = <K extends keyof SettingsDraft>(key: K) => ({
+    onChange: (v: string) => setDraft((d) => ({ ...d, [key]: v })),
+    onBlur: () => void save(draft),
+  });
+  const zones = useMemo(() => timeZoneChoices(draft.timeZone), [draft.timeZone]);
 
   return (
-    <div className="flex flex-col gap-3">
-      <h2 className="m-0 font-display text-2xl font-semibold">Settings</h2>
+    <div className="flex max-w-[640px] flex-col gap-3">
+      <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Settings</h2>
       <Group title="Your taxes">
-        <SelectBox label="Filing status" value={draft.filingStatus} onChange={(e) => set('filingStatus', e.target.value as SettingsDraft['filingStatus'])}>
+        <SelectBox label="Filing status" value={draft.filingStatus} onChange={(e) => pick('filingStatus', e.target.value as SettingsDraft['filingStatus'])}>
           {FILING_STATUSES.map((f) => (
             <option key={f} value={f}>
               {FILING_LABELS[f]}
             </option>
           ))}
         </SelectBox>
-        <Field label="Wages and other income (a year)" inputMode="decimal" value={draft.wages} onChange={(e) => set('wages', e.target.value)} suffix="USD" aria-invalid={err('wages') !== undefined} hint={err('wages')} />
-        <SelectBox label="State income tax" value={draft.stateKind} onChange={(e) => set('stateKind', e.target.value as SettingsDraft['stateKind'])}>
+        <MoneyInput label="Wages and other income (a year)" value={draft.wages} {...num('wages')} error={err('wages')} />
+        <SelectBox label="State income tax" value={draft.stateKind} onChange={(e) => pick('stateKind', e.target.value as SettingsDraft['stateKind'])}>
           <option value="none">None</option>
           <option value="flat">A state with one rate</option>
           <option value="custom">My own rate</option>
         </SelectBox>
         {draft.stateKind === 'flat' && (
-          <SelectBox label="State" value={draft.stateCode} onChange={(e) => set('stateCode', e.target.value)}>
+          <SelectBox label="State" value={draft.stateCode} onChange={(e) => pick('stateCode', e.target.value)}>
             {STATES.map((st) => (
               <option key={st.code} value={st.code}>
                 {st.name} ({st.kind === 'none' ? 'no tax' : `${st.rate / 100}%`})
@@ -72,22 +84,22 @@ export function SettingsView() {
             ))}
           </SelectBox>
         )}
-        {draft.stateKind === 'custom' && <Field label="Your state rate" inputMode="decimal" value={draft.stateRate} onChange={(e) => set('stateRate', e.target.value)} suffix="%" hint={err('stateRate')} />}
+        {draft.stateKind === 'custom' && <PercentInput label="Your state rate" value={draft.stateRate} {...num('stateRate')} error={err('stateRate')} />}
         <div className="grid grid-cols-2 gap-2.5">
-          <Field label="Short-term loss carried in" inputMode="decimal" value={draft.carryforwardSt} onChange={(e) => set('carryforwardSt', e.target.value)} suffix="USD" hint={err('carryforwardSt')} />
-          <Field label="Long-term loss carried in" inputMode="decimal" value={draft.carryforwardLt} onChange={(e) => set('carryforwardLt', e.target.value)} suffix="USD" hint={err('carryforwardLt')} />
+          <MoneyInput label="Short-term loss carried in" value={draft.carryforwardSt} {...num('carryforwardSt')} error={err('carryforwardSt')} />
+          <MoneyInput label="Long-term loss carried in" value={draft.carryforwardLt} {...num('carryforwardLt')} error={err('carryforwardLt')} />
         </div>
         <p className="m-0 text-xs text-muted">Losses from earlier years that you carry into this one. Find them on last year&apos;s return.</p>
       </Group>
 
       <Group title="Giving">
-        <Toggle label="Set aside a share of gains" hint="Off unless you want it" checked={draft.givingEnabled} onChange={(v) => set('givingEnabled', v)} />
+        <Toggle label="Set aside a share of gains" hint="Off unless you want it" checked={draft.givingEnabled} onChange={(v) => pick('givingEnabled', v)} />
         {draft.givingEnabled && (
           <>
-            <Field label="What to call it" value={draft.givingName} onChange={(e) => set('givingName', e.target.value)} hint={err('givingName')} />
+            <Field label="What to call it" value={draft.givingName} {...type('givingName')} hint={err('givingName')} />
             <div className="grid grid-cols-2 gap-2.5">
-              <Field label="Share of gains" inputMode="decimal" value={draft.givingPercent} onChange={(e) => set('givingPercent', e.target.value)} suffix="%" hint={err('givingPercent')} />
-              <SelectBox label="Counted" value={draft.givingMode} onChange={(e) => set('givingMode', e.target.value as SettingsDraft['givingMode'])}>
+              <PercentInput label="Share of gains" value={draft.givingPercent} {...num('givingPercent')} error={err('givingPercent')} />
+              <SelectBox label="Counted" value={draft.givingMode} onChange={(e) => pick('givingMode', e.target.value as SettingsDraft['givingMode'])}>
                 <option value="before-tax">Before tax</option>
                 <option value="after-tax">After tax</option>
               </SelectBox>
@@ -97,18 +109,16 @@ export function SettingsView() {
       </Group>
 
       <Group title="Your records">
-        <Field label="Money put in before this app" inputMode="decimal" value={draft.earlierMoneyIn} onChange={(e) => set('earlierMoneyIn', e.target.value)} suffix="USD" hint={err('earlierMoneyIn') ?? 'Shown in Holdings. Never used in tax math.'} />
-        <Field label="Time zone" value={draft.timeZone} onChange={(e) => set('timeZone', e.target.value)} hint={err('timeZone') ?? 'Decides the date, and so the tax year, of each entry.'} />
+        <MoneyInput label="Dollars you put in before using this app" value={draft.earlierMoneyIn} {...num('earlierMoneyIn')} error={err('earlierMoneyIn')} hint="Shown in Holdings. Never used in tax math." />
+        <SelectBox label="Time zone" value={draft.timeZone} onChange={(e) => pick('timeZone', e.target.value)}>
+          {zones.map((z) => (
+            <option key={z} value={z}>
+              {z.replaceAll('_', ' ')}
+            </option>
+          ))}
+        </SelectBox>
+        <span className="-mt-1 text-xs text-muted">{err('timeZone') ?? 'Decides the date, and so the tax year, of each entry.'}</span>
       </Group>
-
-      <div className="flex flex-wrap gap-2.5">
-        <Button variant="primary" className="min-h-[52px] flex-1 !rounded-2xl" onClick={() => void save()}>
-          Save settings
-        </Button>
-        <Link to="/kit" className={buttonClasses('secondary', 'min-h-[52px] !rounded-2xl text-text no-underline')}>
-          Emergency kit
-        </Link>
-      </div>
     </div>
   );
 }

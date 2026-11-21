@@ -36,13 +36,13 @@ test.describe('@visual snapshots', () => {
 
   test('@visual Sell', async ({ page }) => {
     await page.goto('/what-if');
-    await expect(page.getByRole('region', { name: 'Oldest first' })).toContainText('Tax this adds');
+    await expect(page.getByRole('radio', { name: 'Oldest first' })).toContainText('Tax this adds');
     await shot(page, 'sell');
   });
 
   test('@visual Borrow', async ({ page }) => {
     await page.goto('/what-if?mode=borrow');
-    await expect(page.getByRole('region', { name: 'Loan-to-value' })).toContainText('26.4%');
+    await expect(page.getByRole('region', { name: 'Loan vs. coin value' })).toContainText('26.4%');
     await shot(page, 'borrow');
   });
 

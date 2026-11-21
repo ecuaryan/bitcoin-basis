@@ -25,6 +25,7 @@ import {
   type LotPick,
   type Wallet,
 } from '@bitcoin-basis/engine';
+import { formatWhen } from '../../lib/format.ts';
 
 // ---- Amounts ---------------------------------------------------------------------------
 
@@ -312,12 +313,13 @@ export function computeEffect(entry: Entry, before: LedgerState, after: LedgerSt
       if (d === undefined) return NONE('No tax');
       const tax = capitalTax(before, d.year, d.date, d.stGainCents, d.ltGainCents);
       const head = d.gainCents < 0 ? 'Taxable loss' : 'Taxable gain';
+      const covered = tax === 0 && d.gainCents > 0 && before.settings.carryforwardStCents + before.settings.carryforwardLtCents > 0;
       return {
         tone: 'taxable',
         headline: entry.spent ? `${head} (spent)` : head,
         lines: [{ label: entry.spent ? 'Worth when spent' : 'Dollars received', cents: d.proceedsCents }, { label: 'Cost of these coins', cents: d.costCents }, ...gainLines(d.stGainCents, d.ltGainCents)],
         taxCents: tax,
-        notes: [],
+        notes: covered ? ['Covered by losses from earlier years.'] : [],
         cpa: [],
       };
     }
@@ -370,8 +372,7 @@ export function lockedYear(e: Entry, state: LedgerState): number | null {
   return state.closedYears.includes(y) ? y : null;
 }
 
-/** `Nov 20, 2026 · 12:00` on the clock in `tz`. */
-export function whenLabel(at: string, tz: string): string {
-  const local = localInputFor(at, tz);
-  return `${longDate(local.slice(0, 10))} · ${local.slice(11)}`;
+/** `Today, 5:55 PM` or `Nov 20, 2025 · 5:55 PM` on the clock in `tz`. */
+export function whenLabel(at: string, tz: string, nowMs: number = Date.now()): string {
+  return formatWhen(at, nowMs, tz);
 }

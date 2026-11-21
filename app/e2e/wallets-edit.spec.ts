@@ -26,12 +26,12 @@ test('The oldest Strike buy can be edited even though sales picked its coins', a
   await openDemo(page);
   await page.goto('/wallet/wallet-strike');
   await expect(page.getByRole('region', { name: 'Entries' })).toBeVisible();
-  const more = page.getByRole('button', { name: 'Show more' });
+  const more = page.getByRole('button', { name: /^Show all \d+ entries/ });
   while ((await more.count()) > 0) await more.click();
   await page.getByRole('region', { name: 'Entries' }).getByRole('button', { name: /^Bought/ }).last().click();
   await page.getByRole('button', { name: 'Edit' }).click();
   const d = page.getByRole('dialog').last();
-  await d.getByRole('button', { name: 'Review purchase' }).click();
+  await d.getByRole('button', { name: 'Review change' }).click();
   await expect(d.getByText('This cannot be saved yet')).toHaveCount(0);
   await d.getByLabel('Why are you changing it?').fill('Checked the receipt');
   await d.getByRole('button', { name: 'Save change' }).or(d.getByRole('button', { name: /^Save/ })).first().click();

@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { cleanRecoveryCodeInput, formatRecoveryCode } from '../../vault/index.ts';
 import { cx } from '../../lib/cx.ts';
 import { checkCompleteCode, describeRecoveryInput, type RecoveryInputView } from './recovery-input-logic.ts';
 
@@ -50,7 +51,12 @@ export function RecoveryInput({
       <input
         id={id}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          const raw = e.target.value;
+          const { chars, problem } = cleanRecoveryCodeInput(raw);
+          // Dashes appear as you type; anything odd (a pasted link, a wrong character) is left alone to be explained.
+          onChange(raw.includes('#') || (problem !== null && problem !== 'too-short' && problem !== 'empty') ? raw : formatRecoveryCode(chars));
+        }}
         autoFocus={autoFocus}
         autoCapitalize="characters"
         autoComplete="off"
@@ -68,11 +74,6 @@ export function RecoveryInput({
       <p id={`${id}-status`} role="status" aria-live="polite" className={cx('m-0 min-h-5 text-xs', tone)}>
         {view.message}
       </p>
-      {view.state !== 'empty' && view.state !== 'bad' && view.count > 5 && (
-        <p className="m-0 text-center font-display text-sm tracking-[0.1em] text-soft">
-          {view.grouped}
-        </p>
-      )}
     </div>
   );
 }

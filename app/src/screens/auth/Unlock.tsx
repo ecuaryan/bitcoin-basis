@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { explainError, wasCancelled } from '../../data/explain-error.ts';
 import { incomingRecovery } from '../../data/recovery-handoff.ts';
-import { currentPlatform, unlockButtonLabel, type Platform } from '../../data/platform.ts';
+import { currentPlatform, type Platform } from '../../data/platform.ts';
 import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
 import type { LockReason } from '../../vault/index.ts';
 import { FaceIdIcon, FingerprintIcon, KeyIcon } from '../../ui/auth-icons.tsx';
@@ -20,6 +20,20 @@ function UnlockIcon({ platform }: { platform: Platform }) {
   if (platform === 'ios') return <FaceIdIcon size={22} />;
   if (platform === 'android' || platform === 'macos') return <FingerprintIcon size={22} />;
   return <KeyIcon size={22} />;
+}
+
+/** The line under the Unlock button: what the person will be asked to do. Never names Face ID on Android. */
+export function unlockCaption(platform: Platform): string {
+  switch (platform) {
+    case 'android':
+      return 'Fingerprint or screen lock';
+    case 'ios':
+      return 'Face ID or passcode';
+    case 'macos':
+      return 'Touch ID or password';
+    default:
+      return 'Passkey on this device';
+  }
 }
 
 /** Shown in place of the app while the vault is locked. */
@@ -41,7 +55,7 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
     try {
       await fn();
     } catch (e) {
-      if (!wasCancelled(e)) setError(explainError(e));
+      setError(wasCancelled(e) ? 'Cancelled. Tap to try again.' : explainError(e));
     } finally {
       setBusy(false);
     }
@@ -92,15 +106,16 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
             <ErrorLine>{error}</ErrorLine>
             <BigButton onClick={() => void run(() => vault.unlockWithPasskey())} disabled={busy}>
               <UnlockIcon platform={detected} />
-              {busy ? 'Waiting for you...' : unlockButtonLabel(detected)}
+              {busy ? 'Waiting for you...' : 'Unlock'}
             </BigButton>
+            <p className="m-0 text-center text-xs text-muted">{unlockCaption(detected)}</p>
             <TextButton
               onClick={() => {
                 setUseCode(true);
                 setError(null);
               }}
             >
-              Use recovery code
+              Use my recovery code instead
             </TextButton>
           </>
         )}

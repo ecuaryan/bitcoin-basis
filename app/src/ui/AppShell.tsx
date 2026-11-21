@@ -110,17 +110,44 @@ export function Brand({ size = 32, className }: { size?: number; className?: str
   );
 }
 
+/** Leaves the demo and clears its made-up records. Always at least 44px tall. */
+export function ExitDemoButton({ variant = 'link', className }: { variant?: 'link' | 'primary'; className?: string }) {
+  const { clearAll } = useLedger();
+  return (
+    <button
+      type="button"
+      onClick={() => void clearAll()}
+      className={cx(
+        variant === 'primary' ? 'min-h-11 rounded-xl bg-accent px-4 text-[15px] font-bold text-bg hover:bg-amber' : 'min-h-11 bg-transparent px-3 text-xs font-semibold text-amber underline-offset-2 hover:underline',
+        className,
+      )}
+    >
+      Exit demo
+    </button>
+  );
+}
+
 /** Always visible in demo mode: nothing here is real, and nothing leaves this browser. */
 export function DemoBanner({ className }: { className?: string }) {
-  const { isDemo, clearAll } = useLedger();
+  const { isDemo } = useLedger();
   if (!isDemo) return null;
   return (
-    <section aria-label="Demo mode" className={cx('flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent/50 bg-surface px-3.5 py-2 text-xs text-soft', className)}>
-      <span>Demo — nothing is saved to your server</span>
-      <button type="button" onClick={() => void clearAll()} className="min-h-8 bg-transparent px-1 text-xs font-semibold text-amber underline-offset-2 hover:underline">
-        Exit demo
-      </button>
+    <section aria-label="Demo mode" className={cx('flex flex-wrap items-center justify-between gap-x-2 rounded-xl border border-accent/50 bg-surface py-0.5 pl-3.5 pr-1 text-xs text-soft', className)}>
+      <span className="py-2">Demo — nothing is saved to your server</span>
+      <ExitDemoButton />
     </section>
+  );
+}
+
+/**
+ * Centers its content on the screen from 1024px up (first-run screens look lost when pinned to the top
+ * of a wide window) and caps its width. On a phone it is just a column.
+ */
+export function DesktopCenter({ children, maxWidth = 'lg:max-w-[560px]', className }: { children: ReactNode; maxWidth?: string; className?: string }) {
+  return (
+    <div className={cx('flex flex-col lg:min-h-[calc(100dvh-8rem)] lg:items-center lg:justify-center', className)}>
+      <div className={cx('flex w-full flex-col gap-6', maxWidth)}>{children}</div>
+    </div>
   );
 }
 

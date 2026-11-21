@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 import { cx } from '../../lib/cx.ts';
-import { formatMoney } from '../../lib/format.ts';
+import { cleanDecimal, formatMoney, prettyBtc, prettyDollars } from '../../lib/format.ts';
+import { MoneyInput } from '../../ui/formatted-inputs.tsx';
 import { SelectField, TextField, type SelectOption } from '../../ui/form-fields.tsx';
 import { AddWalletSheet } from '../wallet/AddWallet.tsx';
 import type { AmountState, PriceAt, ValueState } from './hooks.ts';
@@ -15,7 +16,10 @@ const UNITS: readonly { value: AmountUnit; label: string }[] = [
 /** The big amount box with a BTC / sats / USD switch (one field, one unit at a time). */
 export function AmountInput({ amount, label = 'Amount', error, needsPrice }: { amount: AmountState; label?: string; error?: string | null | undefined; needsPrice?: boolean }) {
   const id = useId();
-  const placeholder = amount.unit === 'usd' ? '0.00' : amount.unit === 'sats' ? '0' : '0.00000000';
+  const [focused, setFocused] = useState(false);
+  const placeholder = amount.unit === 'usd' ? '0.00' : amount.unit === 'sats' ? '0' : '0.0000 0000';
+  const clean = (t: string): string => (amount.unit === 'btc' ? cleanDecimal(t, 8) : amount.unit === 'usd' ? cleanDecimal(t, 2) : t.replace(/\D/g, ''));
+  const pretty = (t: string): string => (amount.unit === 'btc' ? prettyBtc(t) : amount.unit === 'usd' ? prettyDollars(t) : t.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
   return (
     <div className="flex flex-col items-center gap-1 py-1">
       <label htmlFor={id} className="text-xs text-muted">
@@ -26,11 +30,13 @@ export function AmountInput({ amount, label = 'Amount', error, needsPrice }: { a
         inputMode="decimal"
         autoComplete="off"
         spellCheck={false}
-        value={amount.text}
+        value={focused ? amount.text : pretty(amount.text)}
         placeholder={placeholder}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-err` : undefined}
-        onChange={(e) => amount.setText(e.target.value)}
+        onChange={(e) => amount.setText(clean(e.target.value))}
         className="w-full rounded-xl border-0 bg-transparent py-1 text-center font-display text-[40px] font-semibold tracking-[-0.02em] text-text placeholder:text-muted/40 sm:text-[44px]"
       />
       <div role="group" aria-label="Unit for the amount" className="flex gap-1">
@@ -53,8 +59,8 @@ export function AmountInput({ amount, label = 'Amount', error, needsPrice }: { a
   );
 }
 
-/** A dollar value that starts from the market price. Typing in it overrides the price. */
-export function ValueField({ label, value, price, error }: { label: string; value: ValueState; price: PriceAt; error?: string | null | undefined }) {
+/** A dollar value that starts from the market price. Typing in it overrides the price. The price hint shows only once there is an amount. */
+export function ValueField({ label, value, price, error, hasAmount = true }: { label: string; value: ValueState; price: PriceAt; error?: string | null | undefined; hasAmount?: boolean }) {
   const hint: ReactNode = value.overridden ? (
     <span>
       You entered this value.{' '}
@@ -62,18 +68,28 @@ export function ValueField({ label, value, price, error }: { label: string; valu
         Use the price service instead
       </button>
     </span>
-  ) : price.status === 'loading' ? (
+  ) : !hasAmount ? undefined : price.status === 'loading' ? (
     'Getting the price for that time…'
   ) : price.cents === null ? (
     'No price for that time. Type the value you know.'
   ) : (
     `From ${price.source} at ${formatMoney(price.cents)} per BTC at that time. Change it if you know better.`
   );
-  return <TextField label={label} inputMode="decimal" autoComplete="off" value={value.text} onChange={(e) => value.setText(e.target.value)} hint={hint} error={error} placeholder="$0.00" />;
+  return <MoneyInput label={label} value={value.text} onChange={value.setText} hint={hint} error={error} />;
 }
 
 export function WhenField({ value, onChange, error, label = 'When' }: { value: string; onChange(v: string): void; error?: string | null | undefined; label?: string }) {
   return <TextField label={label} type="datetime-local" value={value} onChange={(e) => onChange(e.target.value)} error={error} />;
+}
+
+/** "More details": the rarely needed fields. Opens by itself when something inside needs attention. */
+export function MoreDetails({ open, onOpenChange, children }: { open: boolean; onOpenChange(open: boolean): void; children: ReactNode }) {
+  return (
+    <details open={open} onToggle={(e) => onOpenChange(e.currentTarget.open)} className="rounded-2xl border border-line px-3.5 py-1">
+      <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-soft">More details</summary>
+      <div className="flex flex-col gap-3 pb-3">{children}</div>
+    </details>
+  );
 }
 
 /** The pinned button row at the bottom of a form. */

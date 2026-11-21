@@ -13,7 +13,7 @@ import { matchesGroup, normalizeSetupCode } from './setup-logic.ts';
 
 type Mode = 'home' | 'restore' | 'code' | 'confirm' | 'done' | 'restored';
 
-const STEPS = ['Claim this app with your setup code', 'Create a passkey on this device', 'Save your recovery code and print the kit', 'Add wallets, or import your history'];
+const STEPS = ['Claim this app with your setup code', 'Create a passkey on this device', 'Save your recovery code', 'Check your recovery code'];
 
 function Progress({ step }: { step: number }) {
   return (
@@ -45,7 +45,7 @@ export function Welcome() {
     try {
       await fn();
     } catch (e) {
-      if (!wasCancelled(e)) setError(explainError(e));
+      setError(wasCancelled(e) ? 'Cancelled. Tap to try again.' : explainError(e));
     } finally {
       setBusy(false);
     }
@@ -62,11 +62,11 @@ export function Welcome() {
   };
   const finish = () => {
     kitHandoff.clear();
-    navigate('/', { replace: true });
+    navigate('/?add=wallet', { replace: true });
   };
 
   if (mode === 'code' && pending !== null) return <CodeStep code={pending.code} onNext={() => setMode('confirm')} />;
-  if (mode === 'confirm' && pending !== null) return <ConfirmStep code={pending.code} onDone={() => setMode('done')} onBack={() => setMode('code')} />;
+  if (mode === 'confirm' && pending !== null) return <ConfirmStep code={pending.code} onDone={() => setMode('done')} />;
   if (mode === 'done') return <DoneStep onFinish={finish} />;
   if (mode === 'restored') {
     return (
@@ -145,7 +145,7 @@ export function Welcome() {
       />
 
       <div className="relative mt-2 flex items-center justify-center gap-1 text-sm">
-        <TextButton onClick={() => setMode('restore')}>Restore on this device</TextButton>
+        <TextButton onClick={() => setMode('restore')}>I already use Bitcoin Basis</TextButton>
         <span aria-hidden="true" className="text-muted">
           ·
         </span>
@@ -223,21 +223,21 @@ function CodeStep({ code, onNext }: { code: string; onNext(): void }) {
           Print the emergency kit
         </BigLink>
         <BigButton variant="secondary" onClick={onNext}>
-          I wrote it down
+          I&apos;ve saved it
         </BigButton>
-        <span className="text-center text-xs text-muted">Next, you&apos;ll type group 4 to make sure it&apos;s right.</span>
+        <span className="text-center text-xs text-muted">Next, you&apos;ll type group&nbsp;4 to make sure it&apos;s right.</span>
       </div>
     </Frame>
   );
 }
 
 /** Step 4: prove the code was copied correctly (type group 4), or tick the box after looking once more. */
-function ConfirmStep({ code, onDone, onBack }: { code: string; onDone(): void; onBack(): void }) {
+function ConfirmStep({ code, onDone }: { code: string; onDone(): void }) {
   const id = useId();
   const [typed, setTyped] = useState('');
-  const [ticked, setTicked] = useState(false);
+  const [skipping, setSkipping] = useState(false);
   const [shown, setShown] = useState(false);
-  const ok = matchesGroup(code, 4, typed) || ticked;
+  const ok = matchesGroup(code, 4, typed);
   const wrong = typed.trim() !== '' && !matchesGroup(code, 4, typed) && typed.replace(/[\s-]/g, '').length >= 5;
   useEffect(() => {
     document.title = 'Check your recovery code';
@@ -246,7 +246,7 @@ function ConfirmStep({ code, onDone, onBack }: { code: string; onDone(): void; o
     <Frame glowTop={0} className="pt-5">
       <Progress step={4} />
       <h1 className="m-0 mt-[18px] font-display text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">Check your recovery code</h1>
-      <p className="m-0 mt-2.5 text-[15px] leading-normal text-soft">Look at the paper, not the screen, and type group 4. That proves you copied it right.</p>
+      <p className="m-0 mt-2.5 text-[15px] leading-normal text-soft">Look at the paper, not the screen, and type group&nbsp;4. That proves you copied it right.</p>
       <form
         className="relative mt-5 flex flex-col gap-4"
         onSubmit={(e) => {
@@ -256,7 +256,7 @@ function ConfirmStep({ code, onDone, onBack }: { code: string; onDone(): void; o
       >
         <div className="flex flex-col gap-1.5">
           <label htmlFor={id} className="text-[13px] text-soft">
-            Group 4 of your recovery code
+            Group&nbsp;4 of your recovery code
           </label>
           <input
             id={id}
@@ -279,11 +279,6 @@ function ConfirmStep({ code, onDone, onBack }: { code: string; onDone(): void; o
           </p>
         </div>
 
-        <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-soft">
-          <input type="checkbox" checked={ticked} onChange={(e) => setTicked(e.target.checked)} className="mt-0.5 size-5 flex-none accent-[#F7931A]" />
-          <span>I&apos;ve written it down and checked it against this screen.</span>
-        </label>
-
         {shown ? (
           <section aria-label="Recovery code again" className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-4">
             <CodeGroups code={code} />
@@ -297,7 +292,23 @@ function ConfirmStep({ code, onDone, onBack }: { code: string; onDone(): void; o
         <BigButton type="submit" disabled={!ok}>
           Continue
         </BigButton>
-        <TextButton onClick={onBack}>Back to the code</TextButton>
+        {skipping ? (
+          <div role="group" aria-label="Skip the check" className="flex flex-col gap-2 rounded-[14px] border border-line bg-surface p-3.5">
+            <p className="m-0 text-[13px] leading-[1.45] text-soft">If the code is copied wrong, it won&apos;t open your records.</p>
+            <div className="flex gap-2">
+              <BigButton variant="secondary" className="min-h-11 flex-1 rounded-xl" onClick={() => setSkipping(false)}>
+                Check it
+              </BigButton>
+              <BigButton variant="secondary" className="min-h-11 flex-1 rounded-xl" onClick={onDone}>
+                Skip anyway
+              </BigButton>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setSkipping(true)} className="min-h-11 bg-transparent text-xs text-muted underline-offset-2 hover:text-soft hover:underline">
+            Skip this check
+          </button>
+        )}
       </form>
     </Frame>
   );
@@ -309,10 +320,10 @@ function DoneStep({ onFinish }: { onFinish(): void }) {
       <section className="relative flex flex-1 flex-col items-center justify-center gap-4 text-center">
         <LogoMark size={72} />
         <h1 className="m-0 font-display text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">You&apos;re all set</h1>
-        <p className="m-0 max-w-[300px] text-[15px] leading-normal text-soft">Your records are encrypted and synced. Next: add your wallets, or import your history.</p>
+        <p className="m-0 max-w-[300px] text-[15px] leading-normal text-soft">Your records are encrypted and synced. Start with the wallet or exchange you use most.</p>
       </section>
       <div className="relative flex flex-col gap-2.5">
-        <BigButton onClick={onFinish}>Go to my records</BigButton>
+        <BigButton onClick={onFinish}>Add my first wallet</BigButton>
         <BigLink to="/kit" variant="secondary">
           <PrinterIcon size={18} />
           Print the emergency kit
@@ -363,7 +374,7 @@ function RestoreStep({
         <ChevronLeftIcon size={16} />
         Back
       </button>
-      <h1 className="m-0 mt-3 font-display text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">Restore on this device</h1>
+      <h1 className="m-0 mt-3 font-display text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">Open your records</h1>
       <p className="m-0 mt-2.5 text-[15px] leading-normal text-soft">Type the recovery code from your emergency kit, or scan the kit&apos;s square code with the camera.</p>
       <form
         className="relative mt-5 flex flex-col gap-3.5"

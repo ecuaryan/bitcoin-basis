@@ -18,8 +18,10 @@ const TYPE_OPTIONS: readonly { value: WalletType; label: string }[] = [
 export const DEFAULT_PROOF: Record<WalletType, string> = {
   exchange: 'Email receipt',
   'self-custody': 'Wallet export',
-  retirement: 'Account statement',
+  retirement: 'Bank statement',
 };
+
+const PROOF_CHIPS = ['Email receipt', 'Exchange export', 'Bank statement'] as const;
 
 function slug(name: string): string {
   return name
@@ -43,10 +45,15 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
   const toast = useToast();
   const [name, setName] = useState('');
   const [type, setType] = useState<WalletType>('exchange');
-  const [proof, setProof] = useState<string | null>(null);
+  const [chip, setChip] = useState<string | null>(null);
+  const [other, setOther] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
   const trimmed = name.trim();
+  const fallback = DEFAULT_PROOF[type];
+  const picked = chip ?? ((PROOF_CHIPS as readonly string[]).includes(fallback) ? fallback : 'Other');
+  const otherText = other ?? (picked === 'Other' && !(PROOF_CHIPS as readonly string[]).includes(fallback) ? fallback : '');
+  const proof = picked === 'Other' ? otherText.trim() : picked;
   const duplicate = state.wallets.some((w) => w.name.trim().toLowerCase() === trimmed.toLowerCase());
   const error = !tried ? null : trimmed === '' ? 'Give the wallet a name.' : duplicate ? 'You already have a wallet with that name.' : null;
 
@@ -55,7 +62,7 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
     if (trimmed === '' || duplicate) return;
     setBusy(true);
     const id = `${slug(trimmed) || 'wallet'}-${uuidv7().slice(-6)}`;
-    const entry: WalletEntry = { id: uuidv7(), kind: 'wallet', wallet: id, name: trimmed, type, defaultProof: proof ?? DEFAULT_PROOF[type], at: nowInstant(Date.now()), tz: state.settings.timeZone };
+    const entry: WalletEntry = { id: uuidv7(), kind: 'wallet', wallet: id, name: trimmed, type, defaultProof: proof, at: nowInstant(Date.now()), tz: state.settings.timeZone };
     await append([entry]);
     toast.show(`${trimmed} added.`);
     onAdded?.(id);
@@ -76,7 +83,25 @@ function AddWalletForm({ onClose, onAdded }: { onClose(): void; onAdded?(id: str
         <Segmented<WalletType> label="What kind of wallet" value={type} onChange={setType} options={TYPE_OPTIONS} />
         {type === 'retirement' ? <span className="text-xs text-muted">Retirement wallets only keep a balance note. They are never part of tax math.</span> : null}
       </div>
-      <TextField label="Where the proof usually is" value={proof ?? DEFAULT_PROOF[type]} onChange={(e) => setProof(e.target.value)} hint="New purchases here will start with this." autoComplete="off" />
+      <div role="group" aria-labelledby="proof-q" className="flex flex-col gap-1.5">
+        <span id="proof-q" className="text-xs text-muted">
+          Where are the receipts for this wallet?
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {[...PROOF_CHIPS, 'Other'].map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-pressed={picked === c}
+              onClick={() => setChip(c)}
+              className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${picked === c ? 'border-accent bg-accent/12 text-amber' : 'border-line bg-bg text-soft hover:text-text'}`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        {picked === 'Other' ? <TextField label="Where" value={otherText} onChange={(e) => setOther(e.target.value)} autoComplete="off" hint="New purchases here will start with this." /> : null}
+      </div>
       <Button type="submit" variant="primary" disabled={busy} className="min-h-14 rounded-[18px] text-[17px]">
         Add wallet
       </Button>

@@ -28,8 +28,6 @@ test('log a buy: review shows no tax, saving raises the total', async ({ page })
   const d = dialog(page);
   await d.getByLabel('Amount', { exact: true }).fill('0.01');
   await d.getByLabel('Total paid, including fees').fill('750');
-  await d.getByRole('button', { name: 'Review purchase' }).click();
-  await expect(d.getByText('No tax', { exact: true })).toBeVisible();
   await axeClean(page);
   await d.getByRole('button', { name: 'Save purchase' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -44,9 +42,6 @@ test('log a move with a network fee', async ({ page }) => {
   await d.getByLabel('To', { exact: true }).selectOption({ label: 'River' });
   await d.getByLabel('Amount that arrives').fill('0.01');
   await d.getByLabel('Network fee in sats (optional)').fill('1500');
-  await d.getByRole('button', { name: 'Review move' }).click();
-  await expect(d.getByText('Tiny taxable gain from the fee')).toBeVisible();
-  await expect(d.getByText('Coins used', { exact: false }).first()).toBeVisible();
   await axeClean(page);
   await d.getByRole('button', { name: 'Save move' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -78,11 +73,10 @@ test('selling from self-custody is refused and offers a prepare-a-sale move', as
   await d.getByRole('button', { name: 'Prepare a sale' }).click();
   await expect(d.getByText('Preparing a sale')).toBeVisible();
   await d.getByLabel('To (an exchange)').selectOption({ label: 'Strike' });
-  await d.getByRole('button', { name: 'Review move' }).click();
   await d.getByRole('button', { name: 'Save move, then sell' }).click();
   // Now on the sale form for the moved coins.
   await expect(d.getByLabel('From wallet')).toHaveValue('wallet-strike');
-  await expect(d.getByLabel('Amount', { exact: true })).toHaveValue('0.00100000');
+  await expect(d.getByLabel('Amount', { exact: true })).toHaveValue('0.0010 0000');
 });
 
 test('gift to a person shows the gift note; charity gift shows the CPA note', async ({ page }) => {
@@ -118,7 +112,7 @@ test('confirm a balance: match, then mismatch', async ({ page }) => {
   await page.goto('/wallet/wallet-strike');
   await expect(page.getByRole('heading', { name: 'Strike', level: 1 })).toBeVisible();
   await expect(page.getByText('0.6188 2140 BTC')).toBeVisible();
-  const box = page.getByLabel('What Strike shows');
+  const box = page.getByLabel('What the app or device shows');
   await box.fill('0.6188214');
   await page.getByRole('button', { name: 'Check', exact: true }).click();
   await expect(page.getByText('Strike matches. Confirmed today.')).toBeVisible();
@@ -180,7 +174,6 @@ test('edit an entry needs a reason; closed years are locked', async ({ page }) =
   let d = dialog(page);
   await d.getByLabel('Amount', { exact: true }).fill('0.002');
   await d.getByLabel('Total paid, including fees').fill('150');
-  await d.getByRole('button', { name: 'Review purchase' }).click();
   await d.getByRole('button', { name: 'Save purchase' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -190,7 +183,7 @@ test('edit an entry needs a reason; closed years are locked', async ({ page }) =
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   d = dialog(page);
   await d.getByLabel('Amount', { exact: true }).fill('0.003');
-  await d.getByRole('button', { name: 'Review purchase' }).click();
+  await d.getByRole('button', { name: 'Review change' }).click();
   await d.getByRole('button', { name: 'Save purchase' }).click();
   await expect(d.getByText('Say why you are changing this.')).toBeVisible();
   await d.getByLabel('Why are you changing it?').fill('Typo in the amount');
@@ -206,7 +199,7 @@ test('edit an entry needs a reason; closed years are locked', async ({ page }) =
     window.localStorage.setItem(key, JSON.stringify(list));
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Show more' }).click({ clickCount: 1 }).catch(() => undefined);
+  await page.getByRole('button', { name: /^Show all \d+ entries/ }).click({ clickCount: 1 }).catch(() => undefined);
   await expect(page.getByRole('region', { name: 'Entries' }).getByText(/locked, 2025 is closed/).first()).toBeVisible();
 });
 

@@ -1,5 +1,5 @@
 import { localDate, uuidv7, type Entry, type LostCause, type LostEntry, type Wallet, type WalletEntry, type WalletFreezeEntry, type WalletUpdateEntry } from '@bitcoin-basis/engine';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { Amount } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
@@ -11,7 +11,7 @@ import { CoinPicker } from '../log/CoinPicker.tsx';
 import type { Draft } from '../log/draft.ts';
 import { useAmount, useFormEnv } from '../log/hooks.ts';
 import { choosePicks, localInputFor, longDate, lotsAvailable, noonOn, nowInstant, whenLabel, zonedInstant, type PickMode } from '../log/model.ts';
-import { AmountInput, FormFooter, WhenField } from '../log/parts.tsx';
+import { AmountInput, FormFooter, MoreDetails, WhenField } from '../log/parts.tsx';
 import { Review } from '../log/Review.tsx';
 
 type View = 'menu' | 'rename' | 'proof' | 'freeze' | 'lost' | 'archive';
@@ -23,9 +23,9 @@ const CAUSES: { value: LostCause; label: string }[] = [
   { value: 'scam', label: 'Scam' },
 ];
 
-function MenuRow({ title, sub, onClick, icon, last }: { title: string; sub: string; onClick(): void; icon: ReactNode; last?: boolean }) {
+function MenuRow({ title, sub, onClick, icon, last, id }: { title: string; sub: string; onClick(): void; icon: ReactNode; last?: boolean; id?: string }) {
   return (
-    <button type="button" onClick={onClick} className={`flex min-h-[60px] w-full items-center gap-3 bg-transparent py-2 text-left text-text ${last ? '' : 'border-b border-line'}`}>
+    <button type="button" data-row={id} onClick={onClick} className={`flex min-h-[60px] w-full items-center gap-3 bg-transparent py-2 text-left text-text ${last ? '' : 'border-b border-line'}`}>
       <span className="flex size-9 flex-none items-center justify-center rounded-xl bg-surface-2 text-soft" aria-hidden="true">
         {icon}
       </span>
@@ -44,7 +44,6 @@ const svg = (d: string) => (
   </svg>
 );
 const ICONS = {
-  check: svg('M5 12l5 5 9-10'),
   pencil: svg('M4 20h4l10-10-4-4L4 16v4zM13 7l4 4'),
   mail: svg('M4 6h16v12H4zM4 7l8 6 8-6'),
   snow: svg('M12 3v18M4 7.5l16 9M20 7.5l-16 9'),
@@ -54,7 +53,7 @@ const ICONS = {
 
 function BackLink({ onClick }: { onClick(): void }) {
   return (
-    <button type="button" onClick={onClick} className="mb-3 flex min-h-11 items-center gap-1.5 bg-transparent p-0 text-sm font-semibold text-soft hover:text-text">
+    <button type="button" data-back onClick={onClick} className="mb-3 flex min-h-11 items-center gap-1.5 bg-transparent p-0 text-sm font-semibold text-soft hover:text-text">
       <ChevronRightIcon size={16} className="rotate-180" />
       Back to options
     </button>
@@ -71,40 +70,62 @@ function useWalletSave(onDone: () => void) {
   };
 }
 
-/** ⋯ menu of a wallet: everyday options, and the rare "something went wrong" ones. */
-export function WalletMenu({ open, onClose, wallet, onCheckBalance, onCloseOut, holdingSats }: { open: boolean; onClose(): void; wallet: Wallet; onCheckBalance(): void; onCloseOut(): void; holdingSats: number }) {
+/** A sub-view of the menu: focus goes to its first field, and Esc steps back to the options (a second Esc closes the sheet). */
+function Pane({ onBack, children }: { onBack(): void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    (el?.querySelector<HTMLElement>('input, textarea, select') ?? el?.querySelector<HTMLElement>('button:not([data-back]):not([disabled])') ?? el?.querySelector<HTMLElement>('[data-back]'))?.focus();
+  }, []);
   return (
-    <Sheet open={open} onClose={onClose} title={wallet.name}>
-      <MenuBody wallet={wallet} onClose={onClose} onCheckBalance={onCheckBalance} onCloseOut={onCloseOut} holdingSats={holdingSats} />
+    <div
+      ref={ref}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          onBack();
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** ⋯ menu of a wallet: everyday options, and the rare "something went wrong" ones. */
+export function WalletMenu({ open, onClose, wallet, onCloseOut, holdingSats }: { open: boolean; onClose(): void; wallet: Wallet; onCloseOut(): void; holdingSats: number }) {
+  const [view, setView] = useState<View>('menu');
+  const close = () => {
+    setView('menu');
+    onClose();
+  };
+  return (
+    <Sheet open={open} onClose={close} title={view === 'freeze' ? `Mark ${wallet.name} as frozen` : wallet.name}>
+      <MenuBody wallet={wallet} view={view} setView={setView} onClose={close} onCloseOut={onCloseOut} holdingSats={holdingSats} />
     </Sheet>
   );
 }
 
-function MenuBody({ wallet, onClose, onCheckBalance, onCloseOut, holdingSats }: { wallet: Wallet; onClose(): void; onCheckBalance(): void; onCloseOut(): void; holdingSats: number }) {
-  const [view, setView] = useState<View>('menu');
+function MenuBody({ wallet, view, setView, onClose, onCloseOut, holdingSats }: { wallet: Wallet; view: View; setView(v: View): void; onClose(): void; onCloseOut(): void; holdingSats: number }) {
   const back = () => setView('menu');
   const retirement = wallet.type === 'retirement';
-  if (view === 'rename') return <RenameView wallet={wallet} onBack={back} onClose={onClose} />;
-  if (view === 'proof') return <ProofView wallet={wallet} onBack={back} onClose={onClose} />;
-  if (view === 'freeze') return <FreezeView wallet={wallet} onBack={back} onClose={onClose} />;
-  if (view === 'lost') return <LostView wallet={wallet} onBack={back} onClose={onClose} />;
-  if (view === 'archive') return <ArchiveView wallet={wallet} holdingSats={holdingSats} onBack={back} onClose={onClose} />;
+  const menuRef = useRef<HTMLDivElement>(null);
+  const from = useRef<View>('menu');
+  useEffect(() => {
+    // Back from a sub-view: focus the row that opened it.
+    if (view === 'menu' && from.current !== 'menu') menuRef.current?.querySelector<HTMLElement>(`[data-row="${from.current}"]`)?.focus();
+    from.current = view;
+  }, [view]);
+  if (view === 'rename') return <Pane onBack={back}><RenameView wallet={wallet} onBack={back} onClose={onClose} /></Pane>;
+  if (view === 'proof') return <Pane onBack={back}><ProofView wallet={wallet} onBack={back} onClose={onClose} /></Pane>;
+  if (view === 'freeze') return <Pane onBack={back}><FreezeView wallet={wallet} onBack={back} onClose={onClose} /></Pane>;
+  if (view === 'lost') return <Pane onBack={back}><LostView wallet={wallet} onBack={back} onClose={onClose} /></Pane>;
+  if (view === 'archive') return <Pane onBack={back}><ArchiveView wallet={wallet} holdingSats={holdingSats} onBack={back} onClose={onClose} /></Pane>;
   return (
-    <div className="flex flex-col gap-4 pb-2">
+    <div ref={menuRef} className="flex flex-col gap-4 pb-2">
       <div className="flex flex-col">
-        {!retirement ? (
-          <MenuRow
-            title="Check the balance"
-            sub={`Compare with what ${wallet.name} shows`}
-            icon={ICONS.check}
-            onClick={() => {
-              onClose();
-              onCheckBalance();
-            }}
-          />
-        ) : null}
-        <MenuRow title="Rename" sub={wallet.name} icon={ICONS.pencil} onClick={() => setView('rename')} />
-        <MenuRow title="Where proof usually is" sub={wallet.defaultProof || 'Not set'} icon={ICONS.mail} onClick={() => setView('proof')} last />
+        <MenuRow id="rename" title="Rename" sub={wallet.name} icon={ICONS.pencil} onClick={() => setView('rename')} />
+        <MenuRow id="proof" title="Where proof usually is" sub={wallet.defaultProof || 'Not set'} icon={ICONS.mail} onClick={() => setView('proof')} last />
       </div>
       {!retirement ? (
         <div className="flex flex-col gap-1">
@@ -123,13 +144,13 @@ function MenuBody({ wallet, onClose, onCheckBalance, onCloseOut, holdingSats }: 
                 />
               ) : null
             ) : (
-              <MenuRow title="Platform frozen or failed" sub="Withdrawals stopped, bankruptcy" icon={ICONS.snow} onClick={() => setView('freeze')} />
+              <MenuRow id="freeze" title="Platform frozen or failed" sub="Withdrawals stopped, bankruptcy" icon={ICONS.snow} onClick={() => setView('freeze')} />
             )}
-            {!wallet.frozen ? <MenuRow title="Coins lost or stolen" sub="Lost keys, wrong address, hack, scam" icon={ICONS.alert} onClick={() => setView('lost')} last /> : null}
+            {!wallet.frozen ? <MenuRow id="lost" title="Coins lost or stolen" sub="Lost keys, wrong address, hack, scam" icon={ICONS.alert} onClick={() => setView('lost')} last /> : null}
           </div>
         </div>
       ) : null}
-      <button type="button" onClick={() => setView('archive')} className="flex min-h-11 items-center justify-center rounded-xl bg-transparent text-sm font-semibold text-soft hover:text-text">
+      <button type="button" data-row="archive" onClick={() => setView('archive')} className="flex min-h-11 items-center justify-center rounded-xl bg-transparent text-sm font-semibold text-soft hover:text-text">
         {wallet.archived ? 'Bring this wallet back from the archive' : 'Archive this wallet'}
       </button>
     </div>
@@ -249,6 +270,7 @@ function FreezeView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): voi
       }}
     >
       <BackLink onClick={onBack} />
+      <p className="m-0 text-sm text-soft">Its coins stop counting toward your worth until a payout or close-out.</p>
       <TextField label="When did withdrawals stop?" type="date" value={date} onChange={(e) => setDate(e.target.value)} error={at === null ? 'Pick a date.' : null} />
       <Button type="submit" variant="primary" className="min-h-14 rounded-[18px] text-[17px]">
         Review
@@ -270,6 +292,7 @@ function LostView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void;
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState<Draft | null>(null);
   const [tried, setTried] = useState(false);
+  const [more, setMore] = useState(false);
   const available = useMemo(() => (at === null ? [] : lotsAvailable(state, entries, wallet.id, at)), [state, entries, wallet.id, at]);
   const picks = choosePicks(available, sats, mode, chosen);
   const onDate = at === null ? today : localDate(at, tz);
@@ -277,6 +300,7 @@ function LostView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void;
 
   function review() {
     setTried(true);
+    if (errors.picks !== null) setMore(true);
     if (at === null || sats === null || picks === null) return;
     const entry: LostEntry = { id, kind: 'lost', at, tz, wallet: wallet.id, sats, cause, picks, ...(note.trim() === '' ? {} : { note: note.trim() }) };
     setDraft({
@@ -286,7 +310,7 @@ function LostView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void;
       rows: [
         { label: 'Lost', value: <Amount sats={sats} interactive={false} showUnit /> },
         { label: 'What happened', value: CAUSES.find((c) => c.value === cause)?.label ?? '' },
-        { label: 'When', value: whenLabel(at, tz) },
+        { label: 'When', value: whenLabel(at, tz, nowMs) },
         { label: 'Wallet', value: wallet.name },
       ],
       coins: { picks, lots: available, onDate },
@@ -304,15 +328,17 @@ function LostView({ wallet, onBack, onClose }: { wallet: Wallet; onBack(): void;
     >
       <BackLink onClick={onBack} />
       <AmountInput amount={amount} label="How much was lost or stolen" error={tried ? errors.amount : null} />
-      <SelectField label="What happened" value={cause} onChange={(e) => setCause(e.target.value as LostCause)} options={CAUSES} />
       <WhenField value={when} onChange={setWhen} label="When" error={tried ? errors.when : null} />
-      <CoinPicker lots={available} needed={sats} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} />
-      {tried && errors.picks ? (
-        <p role="alert" className="m-0 text-xs text-loss">
-          {errors.picks}
-        </p>
-      ) : null}
-      <TextAreaField label="What you know (optional)" value={note} onChange={(e) => setNote(e.target.value)} hint="No deduction is recorded. This entry is flagged for your CPA." />
+      <SelectField label="What happened" value={cause} onChange={(e) => setCause(e.target.value as LostCause)} options={CAUSES} />
+      <MoreDetails open={more} onOpenChange={setMore}>
+        <CoinPicker lots={available} needed={sats} mode={mode} onMode={setMode} chosen={chosen} onChosen={setChosen} picks={picks} onDate={onDate} today={today} walletName={wallet.name} />
+        {tried && errors.picks ? (
+          <p role="alert" className="m-0 text-xs text-loss">
+            {errors.picks}
+          </p>
+        ) : null}
+        <TextAreaField label="What you know (optional)" value={note} onChange={(e) => setNote(e.target.value)} hint="No deduction is recorded. This entry is flagged for your CPA." />
+      </MoreDetails>
       <FormFooter>
         <Button type="submit" variant="primary" className="min-h-14 flex-1 rounded-[18px] text-[17px]">
           Review

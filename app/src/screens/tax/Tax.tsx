@@ -16,7 +16,7 @@ import { Sheet } from '../../ui/Sheet.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import { LockIcon } from '../../ui/icons.tsx';
-import { answerReason, flagsForYear, form1099Rows, overExclusion, totalsByKind, yearsAvailable, yearTaxView } from './tax-logic.ts';
+import { answerReason, defaultTaxYear, flagsForYear, form1099Rows, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
 
 const CHECKED_KEY = 'bb.1099.checked';
 function loadChecked(): string[] {
@@ -115,7 +115,7 @@ export function Tax() {
   const [params, setParams] = useSearchParams();
   const years = useMemo(() => yearsAvailable(state, today), [state, today]);
   const asked = Number(params.get('year'));
-  const year = years.includes(asked) ? asked : (years[0] as number);
+  const year = years.includes(asked) ? asked : defaultTaxYear(years, today);
   const [sheet, setSheet] = useState<'close' | 'unlock' | null>(null);
   const [checked, setChecked] = useState<string[]>(() => loadChecked());
 
@@ -158,20 +158,27 @@ export function Tax() {
     </section>
   );
 
+  const kindRows: [string, ReactNode][] = (
+    [
+      ['Sales', totals.sales],
+      ['Spending', totals.spending],
+      ['Network fees (tiny sales)', totals.fees],
+      ['Frozen platform loss or payout', totals.other],
+    ] as const
+  )
+    .filter(([, t]) => t.count > 0)
+    .map(([label, t]) => [label, <Count key={label} n={t.count}><Money cents={t.gainCents} signed /></Count>]);
   const summaryRows: [string, ReactNode][] = [
-    ['Sales', <Count key="s" n={totals.sales.count}><Money cents={totals.sales.gainCents} signed /></Count>],
-    ['Spending', <Count key="p" n={totals.spending.count}><Money cents={totals.spending.gainCents} signed /></Count>],
-    ['Network fees (tiny sales)', <Count key="f" n={totals.fees.count}><Money cents={totals.fees.gainCents} signed /></Count>],
-    ...(totals.other.count > 0 ? ([['Frozen platform loss or payout', <Count key="o" n={totals.other.count}><Money cents={totals.other.gainCents} signed /></Count>]] as [string, ReactNode][]) : []),
+    ...(kindRows.length > 0 ? kindRows : ([['Sales and spending', 'None this year']] as [string, ReactNode][])),
     ['Short-term total', <Money key="st" cents={view.stCents} signed />],
     ['Long-term total', <Money key="lt" cents={view.ltCents} signed />],
   ];
   const afterRows: [string, ReactNode][] = [
-    ...(view.carriedIn.st + view.carriedIn.lt > 0 ? ([['Loss carried in from earlier years', <Money key="ci" cents={view.carriedIn.st + view.carriedIn.lt} precision="dollars" />]] as [string, ReactNode][]) : []),
-    ['Short-term after carryforward', <Money key="ast" cents={view.netting.st} signed />],
-    ['Long-term after carryforward', <Money key="alt" cents={view.netting.lt} signed />],
-    ...(view.netting.lossDeduction > 0 ? ([['Used against other income', <Money key="ld" cents={view.netting.lossDeduction} precision="dollars" />]] as [string, ReactNode][]) : []),
-    [`Carries into ${year + 1}`, <Money key="co" cents={view.carryOut.st + view.carryOut.lt} precision="dollars" />],
+    ...(view.carriedIn.st + view.carriedIn.lt > 0 ? ([['Losses from earlier years', <Money key="ci" cents={view.carriedIn.st + view.carriedIn.lt} />]] as [string, ReactNode][]) : []),
+    ['Short-term after earlier losses', <Money key="ast" cents={view.netting.st} signed />],
+    ['Long-term after earlier losses', <Money key="alt" cents={view.netting.lt} signed />],
+    ...(view.netting.lossDeduction > 0 ? ([['Used against other income', <Money key="ld" cents={view.netting.lossDeduction} />]] as [string, ReactNode][]) : []),
+    [`Losses to use later (${year + 1})`, <Money key="co" cents={view.carryOut.st + view.carryOut.lt} />],
   ];
 
   const income = (
@@ -225,18 +232,28 @@ export function Tax() {
             <input type="checkbox" id={`chk-${id}`} checked={on} onChange={(e) => toggleChecked(f.wallet.id, e.target.checked)} className="mt-0.5 size-5 flex-none accent-accent" />
             <div className="flex flex-col gap-1">
               <label htmlFor={`chk-${id}`} className="text-sm font-semibold">
-                {f.wallet.name}: {f.sales === 0 ? 'no form expected' : f.sales === 1 ? '1 sale' : `${f.sales} sales`}
+                {f.wallet.name}
                 {on && <CheckIcon size={14} className="ml-1.5 inline text-accent" />}
               </label>
               <span className="text-xs leading-[1.4] text-muted">
-                {f.sales === 0 ? 'Nothing sold or spent there this year.' : <>It should show {f.sales === 1 ? 'one sale' : `${f.sales} sales`} and <Money cents={f.proceedsCents} /> in proceeds. Match them to the sales you logged.</>}
-                {f.gifts > 0 && (
+                {f.sales === 0 ? (
+                  'No form expected.'
+                ) : (
                   <>
-                    {' '}
-                    You also gave {f.gifts === 1 ? 'one gift' : `${f.gifts} gifts`} from here (<Money cents={f.giftValueCents} /> worth, your cost <Money cents={f.giftCostCents} />). Some exchanges report gifts sent to other users as sales. If yours did, match each one to the gift you logged and use its cost: a gift is not a sale.
+                    Should show {f.sales === 1 ? '1 sale' : `${f.sales} sales`}, <Money cents={f.proceedsCents} />.
                   </>
                 )}
               </span>
+              {f.gifts > 0 && (
+                <details className="text-xs leading-[1.4] text-muted">
+                  <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-amber">
+                    You also gave {f.gifts === 1 ? 'one gift' : `${f.gifts} gifts`} from here
+                  </summary>
+                  <span>
+                    <Money cents={f.giftValueCents} /> worth, your cost <Money cents={f.giftCostCents} />. Some exchanges report gifts to other users as sales. If yours did, match each one to the gift you logged and use its cost: a gift is not a sale.
+                  </span>
+                </details>
+              )}
             </div>
           </div>
         );
@@ -296,11 +313,13 @@ export function Tax() {
         Unlock {year}…
       </Button>
     </div>
-  ) : (
+  ) : yearIsOver(year, today) ? (
     <Button variant="primary" className="min-h-[54px] w-full !rounded-2xl text-base" onClick={() => setSheet('close')}>
       <LockIcon size={18} />
       Close {year} once it&apos;s filed
     </Button>
+  ) : (
+    <p className="m-0 text-center text-[13px] text-muted">You can close {year} after you file.</p>
   );
 
   const note = (
@@ -326,7 +345,7 @@ export function Tax() {
         <div className="flex flex-col gap-3">
           {answer}
           <Rows label="Summary" rows={summaryRows} />
-          <Rows label="After carryforward" rows={afterRows} />
+          <Rows label="After earlier losses" rows={afterRows} />
           {income}
         </div>
         <div className="flex flex-col gap-3">

@@ -4,6 +4,7 @@ import { formatMoney } from '../../lib/format.ts';
 import { TIER_HELP, TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { MoneyInput } from '../../ui/formatted-inputs.tsx';
 import { SelectField, TextAreaField, TextField } from '../../ui/form-fields.tsx';
 import type { FormProps } from './draft.ts';
 import { useAmount, useFormEnv, usePriceAt, withSource, stripSource } from './hooks.ts';
@@ -62,11 +63,12 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
       title: 'Review purchase',
       saveLabel: 'Save purchase',
       savedMessage: 'Purchase saved.',
+      direct: edit === null,
       rows: [
         { label: 'Bought', value: <Amount sats={sats} interactive={false} showUnit /> },
         { label: 'Total paid', value: <Money cents={costCents} /> },
         ...(perBtc === null ? [] : [{ label: 'Cost per BTC', value: <Money cents={perBtc} /> }]),
-        { label: 'When', value: whenLabel(at, tz) },
+        { label: 'When', value: whenLabel(at, tz, nowMs) },
         { label: 'Wallet', value: w.name },
         { label: 'Proof', value: proofText || 'None yet' },
         { label: 'How sure', value: TIER_LABEL[tier] },
@@ -84,6 +86,7 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
       }}
     >
       <AmountInput amount={amount} label="Amount" needsPrice error={tried ? errors.amount : null} />
+      <WalletSelect label="Wallet" value={wallet} onChange={setWallet} wallets={wallets} error={tried ? errors.wallet : null} />
       {usd ? (
         <p className="m-0 rounded-xl bg-bg px-3.5 py-3 text-[13px] text-muted" aria-live="polite">
           {sats !== null ? (
@@ -95,22 +98,10 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
           )}
         </p>
       ) : (
-        <TextField
-          label="Total paid, including fees"
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="$0.00"
-          value={paid}
-          onChange={(e) => setPaid(e.target.value)}
-          error={tried ? errors.paid : null}
-          trailing={perBtc === null ? null : `${formatMoney(perBtc)} per BTC`}
-        />
+        <MoneyInput label="Total paid, including fees" value={paid} onChange={setPaid} error={tried ? errors.paid : null} trailing={perBtc === null ? null : `${formatMoney(perBtc)} per BTC`} />
       )}
-      <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
-        <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
-        <WalletSelect label="Wallet" value={wallet} onChange={setWallet} wallets={wallets} error={tried ? errors.wallet : null} />
-      </div>
-      <TextField label="Where the proof is" value={proofText} onChange={(e) => setProof(e.target.value)} autoComplete="off" hint={w && proof === null ? `${w.name}'s usual place` : undefined} />
+      <WhenField value={when} onChange={setWhen} error={tried ? errors.when : null} />
+      <TextField label="Proof" value={proofText} onChange={(e) => setProof(e.target.value)} autoComplete="off" hint={w && proof === null ? `${w.name}'s usual` : undefined} />
       <details className="rounded-2xl border border-line px-3.5 py-1">
         <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-soft">More details</summary>
         <div className="flex flex-col gap-3 pb-3">
@@ -120,7 +111,7 @@ export function BuyForm({ initial, preset, onReview }: FormProps) {
       </details>
       <FormFooter>
         <Button type="submit" variant="primary" className="min-h-14 flex-1 rounded-[18px] text-[17px] tracking-[0.01em] shadow-[0_10px_30px_rgba(247,147,26,0.35)]">
-          Review purchase
+          {edit === null ? 'Save purchase' : 'Review change'}
         </Button>
       </FormFooter>
     </form>

@@ -1,5 +1,21 @@
 import { planSale, type LedgerState, type Lot, type LotPick, type SalePlan, type SalePlanError, type SalePlans, type Settings, type Result } from '@bitcoin-basis/engine';
 
+/** The amount What if starts on: 0.25 BTC, or a round quarter of a smaller wallet. */
+export function defaultSats(balance: number): number {
+  if (balance >= 25_000_000) return 25_000_000;
+  for (const unit of [1_000_000, 100_000, 10_000, 1000, 100, 1]) {
+    const v = Math.floor(balance / 4 / unit) * unit;
+    if (v > 0) return v;
+  }
+  return balance;
+}
+
+/** Size of one slider step in sats: 0.01 BTC for a big wallet, finer for a small one (at least ~20 steps). */
+export function stepFor(balance: number): number {
+  for (const step of [1_000_000, 100_000, 10_000, 1000, 100, 10]) if (balance / step >= 20) return step;
+  return 1;
+}
+
 /** Slider runs 0..SLIDER_MAX over the wallet's balance. */
 export const SLIDER_MAX = 1000;
 
@@ -45,7 +61,7 @@ export type Segment = string | { cents: number; bold?: boolean } | { bold: strin
 
 export const carriedOut = (p: SalePlan): number => p.carryforwardOut.st + p.carryforwardOut.lt;
 
-/** Plain-language summary of the comparison, as text with money slots (so hide-amounts can mask them). */
+/** One-line verdict on the comparison, as text with money slots (so hide-amounts can mask them). */
 export function summarize(oldest: SalePlan, lowest: SalePlan): Segment[] {
   const out: Segment[] = [];
   const carryDiff = carriedOut(lowest) - carriedOut(oldest);
@@ -60,10 +76,13 @@ export function summarize(oldest: SalePlan, lowest: SalePlan): Segment[] {
   } else {
     out.push({ bold: 'Oldest first is cheaper by ' }, { cents: lowest.totalTaxCents - oldest.totalTaxCents, bold: true }, { bold: ' this year' }, '. ');
   }
-  const rough = Math.max(oldest.estimatedShareBp, lowest.estimatedShareBp);
-  if (rough === 0) out.push('All coins used are Documented.');
-  else out.push(`Part of the sale uses Estimated or Unknown cost (up to ${shortPercentFromBp(rough)}): confirm with your CPA.`);
   return out;
+}
+
+/** How well documented the coins used are (the detail behind the verdict). */
+export function documentationNote(oldest: SalePlan, lowest: SalePlan): string {
+  const rough = Math.max(oldest.estimatedShareBp, lowest.estimatedShareBp);
+  return rough === 0 ? 'All coins used are Documented.' : `Part of the sale uses Estimated or Unknown cost (up to ${shortPercentFromBp(rough)}): confirm with your CPA.`;
 }
 
 /** The exchange follows its own default (oldest first) unless told which coins to sell. */

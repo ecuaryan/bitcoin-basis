@@ -7,6 +7,19 @@ export function yearsAvailable(state: LedgerState, today: string): number[] {
   return [...years].sort((a, b) => b - a);
 }
 
+/** The year to open on: last year until filing day (Apr 15), this year after that. */
+export function defaultTaxYear(years: readonly number[], today: string): number {
+  const thisYear = yearOf(today);
+  const beforeFiling = today.slice(5) <= '04-15';
+  if (beforeFiling && years.includes(thisYear - 1)) return thisYear - 1;
+  return years.includes(thisYear) ? thisYear : (years[0] as number);
+}
+
+/** The year is over (its last day is before `today`), so it can be closed once filed. */
+export function yearIsOver(year: number, today: string): boolean {
+  return yearOf(today) > year;
+}
+
 /** `a`, `a and b`, `a, b and c`. */
 export function joinWords(items: readonly string[]): string {
   if (items.length <= 1) return items[0] ?? '';

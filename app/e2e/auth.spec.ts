@@ -25,7 +25,7 @@ test('setup: claim, passkey, recovery code once, confirm, done', async ({ page }
   const code = await readCode(page);
   expect(code).toMatch(/^([0-9A-Z]{5}-){5}[0-9A-Z]{5}$/);
 
-  await page.getByRole('button', { name: 'I wrote it down' }).click();
+  await page.getByRole('button', { name: "I've saved it" }).click();
   await expect(page.getByRole('heading', { name: 'Check your recovery code' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
   await page.getByLabel('Group 4 of your recovery code').fill('AAAAA');
@@ -36,28 +36,29 @@ test('setup: claim, passkey, recovery code once, confirm, done', async ({ page }
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: "You're all set" })).toBeVisible();
   await expectNoViolations(page);
-  await page.getByRole('button', { name: 'Go to my records' }).click();
+  await page.getByRole('button', { name: 'Add my first wallet' }).click();
   await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
   await expectNoViolations(page);
 });
 
-test('confirming by ticking the box also works, and the code can be shown again', async ({ page }) => {
+test('the check can be skipped after a warning, and the code can be shown again', async ({ page }) => {
   await setUp(page, { finish: false });
-  await page.getByRole('button', { name: 'I wrote it down' }).click();
+  await page.getByRole('button', { name: "I've saved it" }).click();
   await page.getByRole('button', { name: 'Show the code again' }).click();
   await expect(page.getByRole('list', { name: 'Recovery code, six groups of five' })).toBeVisible();
-  await page.getByLabel(/I've written it down/).check();
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Skip this check' }).click();
+  await expect(page.getByText("won't open your records")).toBeVisible();
+  await page.getByRole('button', { name: 'Skip anyway' }).click();
   await expect(page.getByRole('heading', { name: "You're all set" })).toBeVisible();
 });
 
 test('lock, unlock with the passkey, and a calm reason when it locked itself', async ({ page }) => {
   await setUp(page);
   await lock(page);
-  await expect(page.getByRole('button', { name: /^Unlock with/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Use recovery code' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Use my recovery code instead' })).toBeVisible();
   await expectNoViolations(page);
-  await page.getByRole('button', { name: /^Unlock with/ }).click();
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
 
   // Locked by the idle timer: the reason is shown.
@@ -69,7 +70,7 @@ test('lock, unlock with the passkey, and a calm reason when it locked itself', a
 test('unlock with the recovery code, with live checking', async ({ page }) => {
   const code = await setUp(page);
   await lock(page);
-  await page.getByRole('button', { name: 'Use recovery code' }).click();
+  await page.getByRole('button', { name: 'Use my recovery code instead' }).click();
   const field = page.getByLabel('Recovery code', { exact: true });
   await field.fill(code.replaceAll('-', '').slice(0, 8));
   await expect(page.getByText('8 of 30 characters')).toBeVisible();
@@ -89,7 +90,7 @@ test('a new device: restore with the code, then add a passkey there', async ({ p
   // The fake build keeps everything in the page, so a reload would reset it: use in-app navigation instead.
   await page.evaluate(() => window.__bbFake?.vault.forgetDevice());
   await expect(page.getByRole('heading', { name: /on the record/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Restore on this device' }).click();
+  await page.getByRole('button', { name: 'I already use Bitcoin Basis' }).click();
   await expect(page.getByText('This is NOT a Bitcoin seed phrase.')).toBeVisible();
   await expectNoViolations(page);
   await page.getByLabel('Recovery code', { exact: true }).fill(code);
@@ -99,12 +100,13 @@ test('a new device: restore with the code, then add a passkey there', async ({ p
   await page.getByRole('button', { name: 'Add a passkey on this device' }).click();
   await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
   await lock(page);
-  await expect(page.getByRole('button', { name: /^Unlock with/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible();
 });
 
 test('Records → Security: add a device QR, passkey, auto-lock, rotate, forget', async ({ page }) => {
   const code = await setUp(page);
   await goSecurity(page);
+  await page.getByText('Show the address and square code').click();
   await expect(page.getByRole('img', { name: /QR code for 127\.0\.0\.1/ })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Syncing' })).toContainText(/Synced|Connected|Last synced/);
   await expectNoViolations(page);
@@ -112,8 +114,9 @@ test('Records → Security: add a device QR, passkey, auto-lock, rotate, forget'
   await page.getByLabel('Lock after').selectOption('15');
   expect(await page.evaluate(() => window.__bbFake?.vault.status.autoLockMinutes)).toBe(15);
 
-  await page.getByRole('button', { name: 'Add a passkey on this device' }).click();
-  await expect(page.getByText('Passkey added on this device.')).toBeVisible();
+  // Setup already made a passkey here, so there is nothing to add.
+  await expect(page.getByText('Passkey on this device ✓')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add a passkey on this device' })).toHaveCount(0);
 
   // Rotate: confirm first, then the new code appears on the kit; the old one stops working.
   await page.getByRole('button', { name: 'Make a new recovery code' }).click();
@@ -147,10 +150,9 @@ test('the emergency kit prints right after setup, then only without the code', a
   await page.getByRole('button', { name: 'Print', exact: true }).click();
   expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(1);
 
-  await page.getByRole('button', { name: /I saved it/ }).click();
-  await expect(paper).not.toContainText((code.split('-')[0] ?? ''));
-  await expect(page.getByRole('note')).toContainText('only shown once');
-  await expectNoViolations(page);
+  await expect(page.getByText('Print this page or save it as a PDF, then tap Back to finish setup.')).toBeVisible();
+  await page.getByRole('link', { name: 'Back' }).click();
+  await expect(page.getByRole('heading', { name: 'Save your recovery code' })).toBeVisible();
 });
 
 test('forget this device asks first, then goes back to Welcome', async ({ page }) => {
@@ -168,13 +170,13 @@ test('forget this device asks first, then goes back to Welcome', async ({ page }
 
 test('sync indicator shows offline and a Connect button when signed out', async ({ page }) => {
   await setUp(page);
-  await expect(page.getByRole('status', { name: /^Sync:/ }).first()).toBeAttached();
+  await expect(page.getByRole('link', { name: /^Sync: Synced/ }).first()).toBeAttached();
   await page.evaluate(() => {
     const f = window.__bbFake;
     if (f) f.client.offline = true;
   });
   await page.evaluate(() => window.__bbFake?.vault.sync());
-  await expect(page.getByRole('status', { name: 'Sync: Offline' }).first()).toBeAttached();
+  await expect(page.getByRole('link', { name: /^Sync: Offline/ }).first()).toBeAttached();
   await page.evaluate(() => {
     const f = window.__bbFake;
     if (f) {
@@ -183,7 +185,7 @@ test('sync indicator shows offline and a Connect button when signed out', async 
     }
   });
   await page.evaluate(() => window.__bbFake?.vault.sync());
-  await expect(page.getByRole('status', { name: 'Sync: Sign in to sync' }).first()).toBeAttached();
+  await expect(page.getByRole('button', { name: 'Sign in to sync' }).first()).toBeVisible();
 });
 
 test('demo mode is labelled, never touches the vault, and has an exit', async ({ page }) => {

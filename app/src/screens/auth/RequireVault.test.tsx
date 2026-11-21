@@ -73,16 +73,17 @@ describe('Unlock', () => {
   const label = () => document.querySelector('button')?.textContent ?? '';
 
   it.each([
-    ['android', 'Unlock with fingerprint or screen lock'],
-    ['macos', 'Unlock with Touch ID'],
-    ['ios', 'Unlock with Face ID'],
-    ['windows', 'Unlock with passkey'],
-    ['other', 'Unlock with passkey'],
-  ] as const)('on %s the button says %s', async (platform, text) => {
+    ['android', 'Fingerprint or screen lock'],
+    ['macos', 'Touch ID or password'],
+    ['ios', 'Face ID or passcode'],
+    ['windows', 'Passkey on this device'],
+    ['other', 'Passkey on this device'],
+  ] as const)('on %s the button says Unlock and the line under it says %s', async (platform, text) => {
     const { device } = await deviceWithVault('locked');
     app = await renderWithVault(<Unlock platform={platform} />, device);
-    expect(label()).toBe(text);
-    expect(app.container.textContent).toContain('Use recovery code');
+    expect(label()).toBe('Unlock');
+    expect(app.container.textContent).toContain(text);
+    expect(app.container.textContent).toContain('Use my recovery code instead');
     if (platform !== 'ios') expect(app.container.textContent).not.toContain('Face ID');
   });
 
@@ -99,7 +100,7 @@ describe('Unlock', () => {
     app = await renderWithVault(<Unlock platform="macos" />, other);
     const text = app.container.textContent ?? '';
     expect(text).toContain('has no passkey for these records yet');
-    expect(text).not.toContain('Unlock with Touch ID');
+    expect(text).not.toContain('Touch ID');
     expect(app.container.querySelector('input')).not.toBeNull();
     expect(device.vault.status.state).toBe('unlocked');
   });
