@@ -67,6 +67,19 @@ CI runs on the tag, then Deploy deploys it and publishes the release with `dist-
 
 Actions -> Deploy -> Run workflow -> `ref` = an earlier tag (for example `v0.9.0`). It deploys that tag after checking CI passed for it. Data is never rolled back: the vault is append-only and old versions read the same data. Roll back only the app.
 
+## Restoring from the backup
+
+The daily cron copies everything to `bitcoin-basis-backup` under `vault/<vaultId>/` (see [sync-protocol.md](sync-protocol.md), Backups). To restore after the data bucket was emptied:
+
+```sh
+node tools/restore-backup.mjs --account-id <CF_ACCOUNT_ID>            # dry run, lists what is missing
+node tools/restore-backup.mjs --account-id <CF_ACCOUNT_ID> --apply    # only-if-new copy into bitcoin-basis-data
+```
+
+It uses your `wrangler login` through the Cloudflare API (never printing the token), takes `--vault <id>` when the backup bucket holds several vaults, and `--data-bucket` / `--backup-bucket` for other names. After it runs, `/api/status` says `claimed` again and every passkey and the recovery code work as before.
+
+**Practising it (staging only).** `app/e2e-live/restore-drill.spec.ts` runs the whole drill (set up, backup cron, wipe, restore, fresh device, passkey device) against a throwaway staging Worker and buckets (`*-staging-*`, no bucket lock so they can be deleted). The cron cannot be called from outside, so the staging config uses a tiny wrapper entry file that re-exports the Worker and adds `POST /__cron` guarded by a `CRON_KEY` secret. Keep that wrapper and its config out of the repo and never use it on `bitcoin-basis`. Environment: `BB_LIVE_URL`, `BB_LIVE_SETUP_CODE`, `BB_LIVE_CRON_KEY`, `BB_LIVE_CF_ACCOUNT`, `BB_LIVE_DATA_BUCKET`, `BB_LIVE_BACKUP_BUCKET`; run `npx playwright test -c playwright.live.config.ts restore-drill` in `app/`.
+
 ## Verifying a deployment
 
 Anyone can check that a live site matches the published source:

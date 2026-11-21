@@ -180,6 +180,7 @@ Pull from upstream into your fork's `main`. CI and Deploy run again. Data is nev
 | Setup code lost, vault still unclaimed | `npm run setup -- --rotate-secrets` makes a new code (and signs everyone out). If the vault is already claimed you do not need it. |
 | Passkey step says PRF is not supported | Use a passkey provider that supports it (current Chrome, Safari 18+, iOS 18+, a password manager with passkeys). You can still restore with the recovery code. |
 | Setup failed halfway (`meta/claimed` exists but no passkey) | See "Half-written states" in [docs/sync-protocol.md](docs/sync-protocol.md). |
+| The data bucket was emptied or lost, but `/api/status` used to say `claimed` | Restore from the backup bucket: see "Restoring from the backup" below. |
 | Rate limited (429) | Wait a minute; sign-in is limited to 30 a minute per IP. |
 
 ### Starting over
@@ -190,7 +191,19 @@ Only if you want an empty instance. This deletes your data from the live bucket:
 2. `npm run setup -- --rotate-secrets` for a new setup code.
 3. Open the app and claim it again.
 
-Backups are not deleted. They live under `vault/<id>/` in `bitcoin-basis-backup`, are locked for the retention period, and stay encrypted: they open only with that vault's passkeys or recovery code. To restore, copy `vault/<id>/*` back into the data bucket without the prefix. Also clear site data in your browsers (the old local copy would otherwise reconnect).
+Backups are not deleted. They live under `vault/<id>/` in `bitcoin-basis-backup`, are locked for the retention period, and stay encrypted: they open only with that vault's passkeys or recovery code. To restore, see below. Also clear site data in your browsers (the old local copy would otherwise reconnect).
+
+### Restoring from the backup
+
+If the data bucket is emptied or damaged (the app's `/api/status` says `{"claimed":false}` although you had set up), restore it from `bitcoin-basis-backup`. The Worker and its secrets are not involved, so do not run setup again.
+
+```sh
+npx wrangler login
+node tools/restore-backup.mjs --account-id <your CF_ACCOUNT_ID>             # dry run: lists what would be copied
+node tools/restore-backup.mjs --account-id <your CF_ACCOUNT_ID> --apply     # copies it
+```
+
+It copies `vault/<id>/<key>` to `<key>` in `bitcoin-basis-data` and never overwrites an object that is already there, so running it twice is safe. If the backup holds more than one vault (you claimed the instance again after a wipe), it lists their ids and you pick the one you want with `--vault <id>`. Then clear site data in your browsers and open the app: your recovery code (or a passkey already registered) opens it. Anything logged after the last daily backup (03:17 UTC) and not yet synced from a device is still on that device and syncs up again. Use `--data-bucket` / `--backup-bucket` if you renamed the buckets.
 
 ## Costs
 
