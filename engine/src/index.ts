@@ -9,7 +9,7 @@ export { createUuidV7, isUuidV7, uuidv7, type UuidV7Options } from './uuidv7.ts'
 export { formatBtc, formatCents, parseBtc, parseDollars } from './format.ts';
 export { parseEntry } from './validate.ts';
 export { replay, DEFAULT_SETTINGS, APPRAISAL_THRESHOLD_CENTS } from './replay.ts';
-export { lowestTaxOrder, oldestFirst, oldestFirstOrder, picksAfterMove, picksFor, splitCost, splitMovePicks, takeInOrder, termFor, validatePicks, type LowestTaxOptions } from './picks.ts';
+export { lowestCostFirst, lowestCostOrder, lowestTaxOrder, oldestFirst, oldestFirstOrder, picksAfterMove, picksFor, satsGivenBelowCost, splitCost, splitMovePicks, takeInOrder, termFor, validatePicks, type LowestTaxOptions } from './picks.ts';
 export { averageCostPerBtc, giftsOverExclusion, giftTotalsByRecipient, holdings, yearSummary, type Holdings, type RecipientTotal, type RetirementHolding, type RetirementSnapshotCheck, type WalletHolding, type YearSummary } from './reports.ts';
 export { allBitcoin, retirementPurchases, worthOf, type AllBitcoin, type RetirementPurchaseView, type Worth, type WorthWithUnknown } from './retirement.ts';
 export { canSellFrom, type SellRefusal } from './sell-guard.ts';

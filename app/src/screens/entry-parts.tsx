@@ -108,7 +108,7 @@ function facts(e: Entry, name: (id: string) => string, loan: (id: string) => str
     case 'sell':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash(e.spent ? 'Value spent' : 'Proceeds', e.proceedsCents), ['Lots used', countOf(e.picks.length, 'lot')], ...(e.description ? ([['What for', e.description]] as [string, ReactNode][]) : [])];
     case 'give':
-      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['To', `${e.recipient} (${e.to})`], ['Lots used', countOf(e.picks.length, 'lot')]];
+      return [['Wallet', name(e.wallet)], coins('Coins', e.sats), cash('Value that day', e.valueCents), ['To', e.to === 'charity' ? `${e.recipient} (charity)` : e.recipient], ['Lots used', countOf(e.picks.length, 'lot')]];
     case 'lost':
       return [['Wallet', name(e.wallet)], coins('Coins', e.sats), ['Cause', e.cause.replace('-', ' ')]];
     case 'retirement-buy':

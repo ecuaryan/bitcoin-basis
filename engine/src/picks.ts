@@ -100,6 +100,43 @@ export function lowestTaxOrder(lots: readonly Lot[], wallet: WalletId, options: 
   return keyed.map((k) => k.lot);
 }
 
+/** Cost per sat of `a` against `b`, exactly (cross-multiplied in BigInt): negative when `a` cost less per sat. */
+function compareCostPerSat(a: Lot, b: Lot): number {
+  const left = BigInt(a.costCents) * BigInt(b.sats);
+  const right = BigInt(b.costCents) * BigInt(a.sats);
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * The wallet's open lots in "lowest cost first" order, the default for a gift: lowest cost per BTC first,
+ * ties oldest first. The giver keeps the higher-cost coins (less tax on a later sale) and the recipient takes
+ * over the cost. Lots that cost at or below the gift's value per BTC always come before lots that cost more,
+ * so a gift uses coins with a loss (a loss nobody can claim, Treas. Reg. 1.1015-1(a)) only when the others
+ * cannot cover it, and then the ones with the smallest loss per sat.
+ */
+export function lowestCostOrder(lots: readonly Lot[], wallet: WalletId): Lot[] {
+  return oldestFirstOrder(lots, wallet).sort(compareCostPerSat);
+}
+
+/** Picks for `sats` from the wallet, lowest cost first (the default for a gift). */
+export function lowestCostFirst(lots: readonly Lot[], wallet: WalletId, sats: Sats): Result<LotPick[], PickError> {
+  return picksFor(lowestCostOrder(lots, wallet), sats);
+}
+
+/**
+ * Sats of a gift's `picks` that come from lots costing more per sat than the gift is worth per sat
+ * (`valueCents` for `totalSats`): given below cost, so their loss is lost. Picks of unknown lots count as 0.
+ */
+export function satsGivenBelowCost(lots: readonly Lot[], picks: readonly LotPick[], totalSats: Sats, valueCents: Cents): Sats {
+  const byId = new Map(lots.map((l) => [l.id, l]));
+  let below = 0;
+  for (const p of picks) {
+    const lot = byId.get(p.lotId);
+    if (lot !== undefined && BigInt(lot.costCents) * BigInt(totalSats) > BigInt(valueCents) * BigInt(lot.sats)) below += p.sats;
+  }
+  return below;
+}
+
 /** Take up to `sats` from lots in the given order (as far as they go). */
 export function takeInOrder(orderedLots: readonly Lot[], sats: Sats): LotPick[] {
   const picks: LotPick[] = [];

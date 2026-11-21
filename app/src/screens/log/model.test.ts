@@ -1,6 +1,6 @@
 import { replay, type BuyEntry, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
-import { amountText, choosePicks, localInputFor, lotsAvailable, parseAmount, trialReplay, zonedInstant } from './model.ts';
+import { amountText, choosePicks, keepSavedPicks, localInputFor, lotsAvailable, parseAmount, trialReplay, zonedInstant } from './model.ts';
 
 const wallet: Entry = { id: 'w1', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: 'America/Boise', wallet: 'ex', name: 'Ex', type: 'exchange', defaultProof: '' };
 const buy = (id: string, at: string, sats: number, costCents: number): BuyEntry => ({ id, kind: 'buy', at, tz: 'America/Boise', wallet: 'ex', sats, costCents, tier: 'documented' });
@@ -39,6 +39,31 @@ describe('coin choice and trial replay', () => {
     ]);
     expect(choosePicks(lots, 10_000_000, 'hand', new Set(['b2']))).toEqual([{ lotId: 'b2', sats: 10_000_000 }]);
     expect(choosePicks(lots, 10_000_000, 'hand', new Set())).toBeNull();
+  });
+  it('gifts: lowest cost first, and ticked lots in that same order', () => {
+    // b2 cost $80,000 per BTC, b1 $40,000: b1 is the lower-cost lot (and here also the oldest), so test with a cheaper newer one.
+    const cheap: Entry[] = [...book, buy('b3', '2025-06-01T17:00:00Z', 20_000_000, 400_000)];
+    const lots = lotsAvailable(replay(cheap), cheap, 'ex', '2026-01-01T00:00:00Z');
+    expect(choosePicks(lots, 30_000_000, 'lowest-cost', new Set())).toEqual([
+      { lotId: 'b3', sats: 20_000_000 },
+      { lotId: 'b1', sats: 10_000_000 },
+    ]);
+    expect(choosePicks(lots, 25_000_000, 'hand', new Set(['b2', 'b3']), 'lowest-cost')).toEqual([
+      { lotId: 'b3', sats: 20_000_000 },
+      { lotId: 'b2', sats: 5_000_000 },
+    ]);
+    expect(choosePicks(lots, 25_000_000, 'hand', new Set(['b2', 'b3']))).toEqual([
+      { lotId: 'b2', sats: 25_000_000 },
+    ]);
+  });
+  it('an edit that keeps the amount and the lots keeps its saved split', () => {
+    const saved = [{ lotId: 'b1', sats: 5 }, { lotId: 'b2', sats: 10 }];
+    expect(keepSavedPicks(saved, 15, 15, 'hand', new Set(['b2', 'b1']))).toEqual(saved);
+    expect(keepSavedPicks(saved, 15, 16, 'hand', new Set(['b2', 'b1']))).toBeNull();
+    expect(keepSavedPicks(saved, 15, 15, 'hand', new Set(['b1']))).toBeNull();
+    expect(keepSavedPicks(saved, 15, 15, 'hand', new Set(['b1', 'b3']))).toBeNull();
+    expect(keepSavedPicks(saved, 15, 15, 'lowest-cost', new Set(['b2', 'b1']))).toBeNull();
+    expect(keepSavedPicks(undefined, undefined, 15, 'hand', new Set())).toBeNull();
   });
   it('hides coins that did not exist yet', () => {
     expect(lotsAvailable(state, book, 'ex', '2024-06-01T00:00:00Z').map((l) => l.id)).toEqual(['b1']);

@@ -69,14 +69,17 @@ export function describeEntry(e: Entry, wallets: ReadonlyMap<string, Wallet>, lo
       return line('→', 'Moved', `${w(e.from)} to ${w(e.to)}`, { summary: `Moved ${w(e.from)} to ${w(e.to)}`, sats: e.sats });
     case 'sell':
       return line('↑', e.spent ? 'Spent' : 'Sold', `${w(e.wallet)}${e.description ? ` · ${e.description}` : ''}`, { sats: e.sats, sign: '−', cents: e.proceedsCents, centsLabel: e.spent ? 'worth' : 'received' });
-    case 'give':
-      return line('♥', 'Gave', `${w(e.wallet)} · to ${e.recipient}`, {
-        summary: e.to === 'person' ? `Gave to ${e.recipient}` : `Gave to ${e.recipient} (charity)`,
+    case 'give': {
+      // "Gave to Mom" reads as one thought; the wallet it left goes with the date ("Strike · Nov 21, 2026").
+      const to = e.to === 'person' ? `Gave to ${e.recipient}` : `Gave to ${e.recipient} (charity)`;
+      return line('♥', to, w(e.wallet), {
+        summary: to,
         sats: e.sats,
         sign: '−',
         cents: e.valueCents,
         centsLabel: 'worth',
       });
+    }
     case 'lost':
       return line('!', 'Lost', `${w(e.wallet)} · ${e.cause.replace('-', ' ')}`, { summary: 'Lost or stolen', sats: e.sats, sign: '−' });
     case 'opening-lot':

@@ -36,6 +36,8 @@ export interface Draft {
   title: string;
   saveLabel: string;
   rows: DraftRow[];
+  /** Two entries saved together (a purchase and the gift of it): each under its own heading, shown instead of `rows`. */
+  groups?: { title: string; rows: DraftRow[] }[];
   coins?: { picks: readonly LotPick[]; lots: readonly Lot[]; onDate: string };
   /** The entries to save. `reason` is filled when an edit or removal needs one. */
   build(reason: string): Entry[];

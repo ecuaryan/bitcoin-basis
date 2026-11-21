@@ -129,13 +129,28 @@ export function Review({ draft, onBack, onSaved, showTitle = true }: { draft: Dr
       }}
     >
       {showTitle ? <h3 className="m-0 font-display text-lg font-semibold tracking-tight">{draft.title}</h3> : null}
-      <dl className="m-0 rounded-2xl border border-line bg-bg px-3.5 py-1">
-        {draft.rows.map((r) => (
-          <SummaryRow key={r.label} label={r.label}>
-            {r.value}
-          </SummaryRow>
-        ))}
-      </dl>
+      {draft.groups ? (
+        draft.groups.map((g) => (
+          <section key={g.title} aria-label={g.title} className="flex flex-col gap-1.5">
+            <h3 className="m-0 text-xs font-semibold uppercase tracking-[0.08em] text-muted">{g.title}</h3>
+            <dl className="m-0 rounded-2xl border border-line bg-bg px-3.5 py-1">
+              {g.rows.map((r) => (
+                <SummaryRow key={r.label} label={r.label}>
+                  {r.value}
+                </SummaryRow>
+              ))}
+            </dl>
+          </section>
+        ))
+      ) : (
+        <dl className="m-0 rounded-2xl border border-line bg-bg px-3.5 py-1">
+          {draft.rows.map((r) => (
+            <SummaryRow key={r.label} label={r.label}>
+              {r.value}
+            </SummaryRow>
+          ))}
+        </dl>
+      )}
       {draft.coins ? <CoinsUsed coins={draft.coins} /> : null}
       {effect ? <EffectCard effect={effect} /> : null}
       {draft.removing ? <Callout>This takes the entry out of your totals. Your history keeps it, marked as removed, with your reason.</Callout> : null}

@@ -9,6 +9,7 @@ import {
   formatCents,
   giftsOverExclusion,
   incrementalTax,
+  lowestCostOrder,
   mulDivRoundHalfUp,
   oldestFirstOrder,
   parseBtc,
@@ -156,14 +157,27 @@ export function lotsAvailable(state: LedgerState, entries: readonly Entry[], wal
   return oldestFirstOrder(ok, wallet);
 }
 
-export type PickMode = 'oldest' | 'hand';
+/** The automatic orders: oldest first (sales, moves, losses) and lowest cost first (gifts). */
+export type AutoOrder = 'oldest' | 'lowest-cost';
+export type PickMode = AutoOrder | 'hand';
 
-/** Picks for `sats`: oldest first from everything, or oldest first from only the coins ticked. Null if they fall short. */
-export function choosePicks(available: readonly Lot[], sats: number | null, mode: PickMode, chosen: ReadonlySet<string>): LotPick[] | null {
+/**
+ * Picks for `sats`: in the automatic order from everything, or in that same order from only the coins ticked
+ * (`auto` says which order hand picks follow). Null if they fall short.
+ */
+export function choosePicks(available: readonly Lot[], sats: number | null, mode: PickMode, chosen: ReadonlySet<string>, auto: AutoOrder = 'oldest'): LotPick[] | null {
   if (sats === null || sats <= 0) return null;
   const pool = mode === 'hand' ? available.filter((l) => chosen.has(l.id)) : available;
-  const r = picksFor(pool, sats);
+  const order = mode === 'lowest-cost' || (mode === 'hand' && auto === 'lowest-cost') ? lowestCostOrder(pool, pool[0]?.wallet ?? '') : pool;
+  const r = picksFor(order, sats);
   return r.ok ? r.value : null;
+}
+
+/** The saved picks when an edit still asks for exactly the same amount from exactly the same lots: never re-split them. */
+export function keepSavedPicks(saved: readonly LotPick[] | undefined, savedSats: number | undefined, sats: number | null, mode: PickMode, chosen: ReadonlySet<string>): LotPick[] | null {
+  if (saved === undefined || mode !== 'hand' || sats === null || sats !== savedSats) return null;
+  const ids = new Set(saved.map((p) => p.lotId));
+  return ids.size === chosen.size && [...chosen].every((id) => ids.has(id)) ? [...saved] : null;
 }
 
 // ---- Trial replay ----------------------------------------------------------------------
