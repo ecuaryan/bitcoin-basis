@@ -4,7 +4,7 @@
  * (Security review 4: `begin()` ran `store.start` before setting the session, so a failed local read
  * left the data keys in the store while the app showed the lock screen, and `lock()` returned early.)
  */
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { buildDemoBook } from '../demo/demo-data.ts';
 import type { Entry } from '@bitcoin-basis/engine';
 import type { BroadcastLike } from './env.ts';
@@ -117,8 +117,8 @@ describe('lock() while an unlock is reading the local copy', () => {
     };
     const revoked = server.revoked.size;
     const unlocking = d.vault.unlockWithPasskey();
-    for (let i = 0; i < 20 && !reached; i++) await settle();
-    expect(reached).toBe(true);
+    // Real WebCrypto runs first; on a slow CI machine that takes more than a few ticks.
+    await vi.waitFor(() => expect(reached).toBe(true), { timeout: 5000 });
     expect(d.vault.status.state).toBe('locked');
     expect(d.vault.holdsKeyMaterial()).toBe(true); // the store holds the keys while it reads
 
@@ -148,8 +148,8 @@ describe('a stale unlock never wipes a newer one', () => {
       return new Promise((r) => (release = () => void real(s).then(r)));
     };
     const first = d.vault.unlockWithPasskey();
-    for (let i = 0; i < 20 && !reached; i++) await settle();
-    expect(reached).toBe(true);
+    // Real WebCrypto runs first; on a slow CI machine that takes more than a few ticks.
+    await vi.waitFor(() => expect(reached).toBe(true), { timeout: 5000 });
     const second = d.vault.unlockWithPasskey(); // aborts the first
     await expect(first).rejects.toMatchObject({ code: 'aborted' });
     await expect(second).resolves.toMatchObject({ via: 'passkey' });
