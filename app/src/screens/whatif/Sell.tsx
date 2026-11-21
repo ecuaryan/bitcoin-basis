@@ -5,6 +5,7 @@ import { Link } from 'react-router';
 import { hasLosses, staleLosses } from '../../lib/losses.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
+import { PriceAge } from '../../ui/PriceFreshness.tsx';
 import { cx } from '../../lib/cx.ts';
 import { formatMoney, satsToCents } from '../../lib/format.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
@@ -123,6 +124,7 @@ export function Sell() {
             <>
               ≈ <Money cents={satsToCents(amount, price)} /> at {quote?.source === 'manual' ? 'your price ' : ''}
               {formatMoney(price)}
+              <PriceAge quote={quote} />
             </>
           )}
         </span>

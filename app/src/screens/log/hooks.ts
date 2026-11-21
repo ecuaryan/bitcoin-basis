@@ -28,7 +28,8 @@ export function usePriceAt(at: string | null, nowMs: number): PriceAt {
   const source = isDemo ? 'the demo price' : 'mempool.space';
   const [fetched, setFetched] = useState<{ at: string; cents: number | null; error: boolean } | null>(null);
   const atMs = at === null ? null : Date.parse(at);
-  const useQuote = atMs !== null && quote !== null && Math.abs(atMs - nowMs) < NEAR_NOW_MS;
+  // The live quote stands in for "now" only while it is itself recent (a kept price from hours ago is not now's price).
+  const useQuote = atMs !== null && quote !== null && Math.abs(atMs - nowMs) < NEAR_NOW_MS && (quote.source !== 'live' || nowMs - quote.asOf < NEAR_NOW_MS);
 
   useEffect(() => {
     if (at === null || atMs === null || useQuote) return;
@@ -52,7 +53,7 @@ export function usePriceAt(at: string | null, nowMs: number): PriceAt {
   return useMemo<PriceAt>(() => {
     if (at === null) return { cents: null, status: 'idle', source };
     // A price the person typed (the live one could not be loaded) is named as theirs in the hint and the entry's note.
-    if (useQuote && quote !== null) return { cents: quote.usdCents, status: 'ok', source: quote.source === 'manual' ? 'your price' : source };
+    if (useQuote && quote !== null) return { cents: quote.usdCents, status: 'ok', source: quote.source === 'manual' ? 'your price' : (quote.provider ?? source) };
     if (fetched !== null && fetched.at === at) return { cents: fetched.cents, status: fetched.error ? 'error' : 'ok', source };
     return { cents: null, status: 'loading', source };
   }, [at, useQuote, quote, fetched, source]);

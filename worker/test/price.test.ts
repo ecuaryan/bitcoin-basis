@@ -1,10 +1,12 @@
 // The public price endpoints: the Worker fetches mempool server-side (a local fake here), so the browser
 // never contacts a third party. Input is validated, timestamps are rounded down to the hour, answers are
-// cached, and any upstream trouble is a 502 JSON error.
+// cached, and upstream trouble is a 502 JSON error, except for the live price: mempool is retried once, then
+// Coinbase's spot price is asked, then the last good price is answered, marked stale.
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { mempoolBase } from '../src/config.ts';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { coinbaseBase, mempoolBase } from '../src/config.ts';
+import { decimalDollarsToCents, livePrice } from '../src/price.ts';
 import { Client, ORIGIN, startServer } from './harness.ts';
 
 type Reply = { status: number; body: string };
@@ -19,7 +21,7 @@ const fake = createServer((req, res) => {
 await new Promise<void>((done) => fake.listen(0, '127.0.0.1', done));
 const FAKE = `http://127.0.0.1:${(fake.address() as AddressInfo).port}`;
 
-const server = startServer({ MEMPOOL_URL: FAKE, DEV_ALLOW_HTTP: '1' });
+const server = startServer({ MEMPOOL_URL: FAKE, COINBASE_URL: FAKE, DEV_ALLOW_HTTP: '1' });
 beforeAll(() => server.listen(), 60_000);
 afterAll(async () => {
   await server.close();
@@ -110,16 +112,162 @@ describe('GET /api/price/history', () => {
   });
 });
 
+const liveOk = (usd: number) => (url: URL) => (url.pathname === '/api/v1/prices' ? { status: 200, body: JSON.stringify({ time: 1, USD: usd, EUR: 93_000 }) } : { status: 404, body: '' });
+const down = () => ({ status: 503, body: 'down' });
+const liveCalls = () => seen.filter((s) => s.url === '/api/v1/prices').length;
+const SPOT = '/v2/prices/BTC-USD/spot';
+const coinbaseCalls = () => seen.filter((s) => s.url === SPOT).length;
+const spot = (data: unknown) => ({ status: 200, body: JSON.stringify({ data }) });
+/** mempool down, Coinbase answering `r`. */
+const onlyCoinbase = (r: Reply) => (url: URL) => (url.pathname === SPOT ? r : down());
+
+// In order: the Worker's cache outlives a test, and the first good answer fills it.
 describe('GET /api/price', () => {
-  it('answers the live USD price in integer cents, cached for a minute', async () => {
-    reply = (url) => (url.pathname === '/api/v1/prices' ? { status: 200, body: JSON.stringify({ time: 1, USD: 101_000, EUR: 93_000 }) } : { status: 404, body: '' });
+  it('mempool failing twice and Coinbase failing, with no last good price, is a 502 JSON error', async () => {
+    reply = down;
+    const res = await new Client(server).get('/api/price');
+    expect(res.status).toBe(502);
+    expect(res.data).toEqual({ error: 'bad_gateway' });
+    expect(liveCalls()).toBe(2);
+    expect(coinbaseCalls()).toBe(1);
+  });
+
+  it('one hiccup is retried once; the answer is integer cents and when it was fetched, cached for a minute', async () => {
+    let calls = 0;
+    reply = (url) => (url.pathname === '/api/v1/prices' && ++calls === 1 ? down() : liveOk(101_000)(url));
     const c = new Client(server);
+    const before = Date.now();
     const res = await c.get('/api/price');
     expect(res.status).toBe(200);
-    expect(res.data).toEqual({ usdCents: 10_100_000 });
-    const calls = seen.length;
-    expect((await c.get('/api/price')).data).toEqual({ usdCents: 10_100_000 });
-    expect(seen.length).toBe(calls);
+    expect(res.data).toEqual({ usdCents: 10_100_000, asOf: expect.any(Number), source: 'mempool' });
+    const { asOf } = res.data as { asOf: number };
+    expect(asOf).toBeGreaterThanOrEqual(before - 5000);
+    expect(asOf).toBeLessThanOrEqual(Date.now() + 5000);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(liveCalls()).toBe(2);
+    expect(coinbaseCalls()).toBe(0);
+    expect((await c.get('/api/price')).data).toEqual({ usdCents: 10_100_000, asOf, source: 'mempool' });
+    expect(liveCalls()).toBe(2);
+  });
+});
+
+/** The Cache API, stood in for in Node, so a test can let the one-minute answer run out. */
+describe('live price when mempool is down (stand-in cache)', () => {
+  const store = new Map<string, { body: string; cacheControl: string | null }>();
+  let cacheBroken = false;
+  const standIn = {
+    match: (req: Request) => {
+      if (cacheBroken) return Promise.reject(new Error('cache down'));
+      const hit = store.get(req.url);
+      return Promise.resolve(hit ? new Response(hit.body) : undefined);
+    },
+    put: async (req: Request, res: Response) => {
+      if (cacheBroken) throw new Error('cache down');
+      store.set(req.url, { body: await res.text(), cacheControl: res.headers.get('Cache-Control') });
+    },
+  };
+  const FRESH = `${ORIGIN}/__price/live`;
+  const LAST_GOOD = `${ORIGIN}/__price/live-last-good`;
+  const env = { ORIGIN, MEMPOOL_URL: FAKE, COINBASE_URL: FAKE, DEV_ALLOW_HTTP: '1' };
+  const browser = { 'Sec-Fetch-Site': 'same-origin', Origin: ORIGIN, Referer: `${ORIGIN}/`, Cookie: '__Secure-bb_session=secret', 'CF-Connecting-IP': '198.51.100.7' };
+  const ask = async (e: Record<string, string> = env) => (await livePrice(new Request(`${ORIGIN}/api/price`, { headers: browser }), { ...e, ORIGIN })).json();
+
+  beforeEach(() => {
+    store.clear();
+    cacheBroken = false;
+    vi.stubGlobal('caches', { default: standIn });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the last good price for 6 hours and answers it, marked stale with its time, once the minute is over', async () => {
+    reply = liveOk(90_000);
+    const good = (await ask()) as { usdCents: number; asOf: number };
+    expect(good).toEqual({ usdCents: 9_000_000, asOf: expect.any(Number), source: 'mempool' });
+    expect(store.get(FRESH)?.cacheControl).toBe('public, max-age=60');
+    expect(store.get(LAST_GOOD)?.cacheControl).toBe('public, max-age=21600');
+
+    store.delete(FRESH); // the minute is over
+    reply = down;
+    seen.length = 0;
+    expect(await ask()).toEqual({ usdCents: 9_000_000, asOf: good.asOf, source: 'mempool', stale: true });
+    expect(liveCalls()).toBe(2);
+    expect(coinbaseCalls()).toBe(1);
+    // A stale answer is not cached as fresh: the next request asks mempool again.
+    reply = liveOk(91_000);
+    expect(await ask()).toEqual({ usdCents: 9_100_000, asOf: expect.any(Number), source: 'mempool' });
+  });
+
+  it('a 502 only when there is no last good price', async () => {
+    reply = down;
+    await expect(ask()).rejects.toMatchObject({ status: 502 });
+    expect(liveCalls()).toBe(2);
+    expect(coinbaseCalls()).toBe(1);
+  });
+
+  it('mempool down: Coinbase\'s spot price, in integer cents, cached like any good answer; it gets nothing from the browser', async () => {
+    reply = onlyCoinbase(spot({ amount: '60195.125', base: 'BTC', currency: 'USD' }));
+    expect(await ask()).toEqual({ usdCents: 6_019_513, asOf: expect.any(Number), source: 'coinbase' });
+    expect(liveCalls()).toBe(2);
+    expect(coinbaseCalls()).toBe(1);
+    expect(store.has(FRESH) && store.has(LAST_GOOD)).toBe(true);
+    const h = seen.find((x) => x.url === SPOT)?.headers ?? {};
+    expect(h.cookie).toBeUndefined();
+    expect(h.origin).toBeUndefined();
+    expect(h.referer).toBeUndefined();
+    expect(JSON.stringify(h)).not.toContain('198.51.100.7');
+  });
+
+  it.each([
+    ['an error status', { status: 503, body: 'down' }],
+    ['a redirect', { status: 302, body: '' }],
+    ['not JSON', { status: 200, body: '<html>' }],
+    ['another coin', spot({ amount: '3000.00', base: 'ETH', currency: 'USD' })],
+    ['another currency', spot({ amount: '55000.00', base: 'BTC', currency: 'EUR' })],
+    ['a number, not a string', spot({ amount: 60195.12, base: 'BTC', currency: 'USD' })],
+    ['a nonsense amount', spot({ amount: '-1', base: 'BTC', currency: 'USD' })],
+    ['no data', { status: 200, body: '{"amount":"60195.12"}' }],
+    ['a huge body', spot({ amount: '60195.12', base: 'BTC', currency: 'USD', pad: 'x'.repeat(70_000) })],
+  ])('Coinbase failing too (%s): the last good price, or a 502 without one', async (_label, r) => {
+    reply = onlyCoinbase(r);
+    await expect(ask()).rejects.toMatchObject({ status: 502 });
+    store.set(LAST_GOOD, { body: JSON.stringify({ usdCents: 8_000_000, asOf: 1_700_000_000_000, source: 'coinbase' }), cacheControl: null });
+    expect(await ask()).toEqual({ usdCents: 8_000_000, asOf: 1_700_000_000_000, source: 'coinbase', stale: true });
+  });
+
+  it('COINBASE_URL=off: mempool alone, then the last good price', async () => {
+    reply = onlyCoinbase(spot({ amount: '60195.12', base: 'BTC', currency: 'USD' }));
+    await expect(ask({ ...env, COINBASE_URL: 'off' })).rejects.toMatchObject({ status: 502 });
+    expect(coinbaseCalls()).toBe(0);
+    expect(liveCalls()).toBe(2);
+  });
+
+  it('a COINBASE_URL that is not acceptable is a deploy error (500), like MEMPOOL_URL', async () => {
+    await expect(ask({ ...env, COINBASE_URL: 'http://api.coinbase.com', DEV_ALLOW_HTTP: '' })).rejects.toMatchObject({ status: 500 });
+    expect(seen).toHaveLength(0);
+  });
+
+  it('nonsense from mempool is a failure too (retried, then Coinbase, then the last good price)', async () => {
+    store.set(LAST_GOOD, { body: JSON.stringify({ usdCents: 8_000_000, asOf: 1_700_000_000_000, source: 'coinbase' }), cacheControl: null });
+    reply = (url) => (url.pathname === SPOT ? down() : { status: 200, body: '{"USD":-1}' });
+    expect(await ask()).toEqual({ usdCents: 8_000_000, asOf: 1_700_000_000_000, source: 'coinbase', stale: true });
+    expect(liveCalls()).toBe(2);
+  });
+
+  it.each(['{"usdCents":1}', '{"usdCents":1,"asOf":5}', '{"usdCents":1,"asOf":5,"source":"elsewhere"}', 'junk'])('ignores a stored answer of the wrong shape (%s; an older Worker kept no time)', async (body) => {
+    store.set(FRESH, { body, cacheControl: null });
+    store.set(LAST_GOOD, { body, cacheControl: null });
+    reply = down;
+    await expect(ask()).rejects.toMatchObject({ status: 502 });
+    reply = liveOk(95_000);
+    expect(await ask()).toEqual({ usdCents: 9_500_000, asOf: expect.any(Number), source: 'mempool' });
+  });
+
+  it('a broken cache never fails the request', async () => {
+    cacheBroken = true;
+    reply = liveOk(95_000);
+    expect(await ask()).toEqual({ usdCents: 9_500_000, asOf: expect.any(Number), source: 'mempool' });
   });
 });
 
@@ -148,6 +296,31 @@ describe('same origin only, no session needed', () => {
 
   it('only GET', async () => {
     expect((await new Client(server).post('/api/price', {})).status).toBe(405);
+  });
+});
+
+describe('Coinbase amounts', () => {
+  it('turns a decimal dollar string into integer cents, half up, without floats', () => {
+    expect(decimalDollarsToCents('60195.12')).toBe(6_019_512);
+    expect(decimalDollarsToCents('60195.125')).toBe(6_019_513);
+    expect(decimalDollarsToCents('60195.12499999')).toBe(6_019_512);
+    expect(decimalDollarsToCents('60195')).toBe(6_019_500);
+    expect(decimalDollarsToCents('0.1')).toBe(10);
+    expect(decimalDollarsToCents('99999999.99')).toBe(9_999_999_999);
+    for (const bad of ['', '0', '0.00', '0.004', '-1', '1e5', ' 1', '1.', '.5', '1,000.00', '100000000.01', '1234567890', 60195.12, null]) {
+      expect(decimalDollarsToCents(bad), String(bad)).toBeNull();
+    }
+  });
+});
+
+describe('COINBASE_URL', () => {
+  it('defaults to api.coinbase.com, can be turned off, and follows the MEMPOOL_URL rules', () => {
+    expect(coinbaseBase({})).toBe('https://api.coinbase.com');
+    expect(coinbaseBase({ COINBASE_URL: '' })).toBe('https://api.coinbase.com');
+    expect(coinbaseBase({ COINBASE_URL: 'off' })).toBe('off');
+    expect(coinbaseBase({ COINBASE_URL: ' OFF ' })).toBe('off');
+    expect(coinbaseBase({ COINBASE_URL: 'https://proxy.example.com/' })).toBe('https://proxy.example.com');
+    for (const bad of ['http://api.coinbase.com', 'https://u:p@api.coinbase.com', 'https://api.coinbase.com/?x=1', 'nope']) expect(coinbaseBase({ COINBASE_URL: bad }), bad).toBeNull();
   });
 });
 

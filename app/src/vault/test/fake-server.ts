@@ -73,6 +73,11 @@ export class FakeServer {
    * `priceCents`, `GET /api/price/history?ts=` answers `priceAt(ts)` (null: no price, 404). Fixed, so tests never drift.
    */
   priceCents = 9_500_000;
+  /**
+   * When set, `GET /api/price` answers as the Worker does while mempool is down and it still has the last good
+   * price: `priceCents` from this time (ms), marked stale. Otherwise the answer is from now.
+   */
+  priceKeptAt: number | null = null;
   priceAt: (unixSeconds: number) => number | null = () => this.priceCents;
   private readonly sessions = new Map<string, Session>();
   private readonly challenges = new Map<string, { challenge: string; type: 'create' | 'get'; purpose?: string; cookie?: string }>();
@@ -170,7 +175,7 @@ export class FakeServer {
       case 'GET /api/status':
         return { status: 200, json: { claimed: this.claimed !== null } };
       case 'GET /api/price':
-        return { status: 200, json: { usdCents: this.priceCents } };
+        return { status: 200, json: this.priceKeptAt === null ? { usdCents: this.priceCents, asOf: Date.now(), source: 'mempool' } : { usdCents: this.priceCents, asOf: this.priceKeptAt, source: 'mempool', stale: true } };
       case 'GET /api/price/history': {
         const ts = Number(url.searchParams.get('ts'));
         const cents = Number.isSafeInteger(ts) && ts > 0 ? this.priceAt(Math.floor(ts / 3600) * 3600) : null;

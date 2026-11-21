@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanDecimal, countOf, formatDay, formatMoney, formatWhen, groupedBtc, groupedSats, maskDigits, prettyBtc, prettyDollars, satsToCents, shortBtc, shortDate } from './format.ts';
+import { cleanDecimal, countOf, formatDay, formatMoney, formatWhen, groupedBtc, groupedSats, maskDigits, prettyBtc, prettyDollars, satsToCents, shortBtc, shortDate, shortWhen } from './format.ts';
 
 describe('format', () => {
   it('groups BTC in fours', () => {
@@ -56,6 +56,12 @@ describe('format', () => {
     expect(formatWhen('2025-03-02T00:05:00Z', now, 'UTC')).toBe('Mar 2, 2025 \u00b7 12:05 AM');
     expect(formatDay('2026-11-20', '2026-11-20')).toBe('Today');
     expect(formatDay('2026-11-02', '2026-11-20')).toBe('Nov 2, 2026');
+  });
+  it('says when a price is from, short', () => {
+    const now = Date.parse('2026-11-20T23:00:00Z');
+    expect(shortWhen(Date.parse('2026-11-20T15:12:00Z'), now, 'UTC')).toBe('3:12 PM');
+    expect(shortWhen(Date.parse('2026-11-19T15:12:00Z'), now, 'UTC')).toBe('Nov 19, 3:12 PM');
+    expect(shortWhen(Date.parse('2025-12-31T09:05:00Z'), now, 'UTC')).toBe('Dec 31, 2025, 9:05 AM');
   });
   it('cleans and prettifies typed numbers', () => {
     expect(cleanDecimal('$94,812.40 USD', 2)).toBe('94812.40');

@@ -1,7 +1,7 @@
 import { mulDivRoundHalfUp, SATS_PER_BTC, type Lot, type Tier, type Worth } from '@bitcoin-basis/engine';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { dayChangeTenthsPercent, type PriceQuote } from '../data/price.ts';
+import { dayChangeTenthsPercent } from '../data/price.ts';
 import { cx } from '../lib/cx.ts';
 import { countOf, formatMoney, shortDate } from '../lib/format.ts';
 import type { HoldingsView, StackYear, WalletCard } from '../lib/holdings-view.ts';
@@ -16,6 +16,7 @@ import { ChevronRightIcon } from '../ui/icons.tsx';
 import { useHelp } from '../ui/Help.tsx';
 import { usePrice } from '../data/price-provider.tsx';
 import { PriceUnavailableLine, yourPriceText } from '../ui/PriceProblem.tsx';
+import { PriceAge, PriceRefreshButton } from '../ui/PriceFreshness.tsx';
 import { walletKindLabel } from '../lib/wallet-label.ts';
 import { sumWorth, worthNow } from '../lib/worth-now.ts';
 import { GainWords, WorthLine } from '../ui/WorthLine.tsx';
@@ -32,7 +33,12 @@ const TIER_ORDER: Tier[] = ['documented', 'reconstructed', 'estimated', 'unknown
 
 // ---- Hero ------------------------------------------------------------------------------
 
-export function PriceLine({ quote, status, className }: { quote: PriceQuote | null; status: string; error?: string | null; className?: string }) {
+/**
+ * The price under the Holdings hero: `at $95,000.00`, the change today, and a small refresh button. A price that is
+ * not current says when it is from (`· as of 3:12 PM`); a failed refresh keeps the price it had.
+ */
+export function PriceLine({ className }: { className?: string }) {
+  const { quote, status } = usePrice();
   if (quote === null) {
     return status === 'error' ? <PriceUnavailableLine className={className} /> : <span className={cx('text-muted', className)}>Getting the price…</span>;
   }
@@ -40,13 +46,21 @@ export function PriceLine({ quote, status, className }: { quote: PriceQuote | nu
   const tenths = dayChangeTenthsPercent(quote);
   return (
     <>
-      <span className={cx('text-muted', className)}>at {formatMoney(quote.usdCents)}</span>
-      {tenths !== null && (
-        <span className={cx(tenths >= 0 ? 'text-amber' : 'text-loss', className)}>
-          {tenths >= 0 ? '▲' : '▼'} {(Math.abs(tenths) / 10).toFixed(1)}% today
+      <span className={cx('text-muted', className)}>
+        at {formatMoney(quote.usdCents)}
+        <PriceAge quote={quote} />
+      </span>
+      {tenths === null ? (
+        <PriceRefreshButton />
+      ) : (
+        // The change and the button wrap together, so the button never sits alone on a line.
+        <span className="inline-flex items-baseline gap-x-2.5 whitespace-nowrap">
+          <span className={cx(tenths >= 0 ? 'text-amber' : 'text-loss', className)}>
+            {tenths >= 0 ? '▲' : '▼'} {(Math.abs(tenths) / 10).toFixed(1)}% today
+          </span>
+          <PriceRefreshButton />
         </span>
       )}
-      {status === 'error' && <span className={cx('text-loss', className)}>Price may be out of date</span>}
     </>
   );
 }

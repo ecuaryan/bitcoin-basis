@@ -29,7 +29,10 @@
     "RP_NAME": "Bitcoin Basis",
     // Where the public BTC price comes from (fetched by the Worker, never by the browser).
     // Point it at your own mempool instance if you run one, e.g. "https://mempool.example.com".
-    "MEMPOOL_URL": "https://mempool.space"
+    "MEMPOOL_URL": "https://mempool.space",
+    // A second source for the live price only, asked when mempool fails twice: Coinbase's public spot price
+    // (no key, nothing about you is sent). "off" uses mempool alone (then the last good price, kept 6 hours).
+    "COINBASE_URL": "https://api.coinbase.com"
   },
   // Secrets (never committed): SESSION_SECRET, SETUP_CODE. Set with `wrangler secret put`.
   // Workers Rate Limiting (free), per client IP: sign-in, recovery sign-in and registration; and the

@@ -124,6 +124,15 @@ export function formatWhen(at: string | number, nowMs: number, tz?: string): str
   return `${MONTHS[c.mo - 1] ?? ''} ${c.d}, ${c.y} \u00b7 ${c.time}`;
 }
 
+/** When a price is from, short: `3:12 PM` today, `Nov 19, 3:12 PM` this year, `Nov 19, 2025, 3:12 PM` before. */
+export function shortWhen(at: number, nowMs: number, tz?: string): string {
+  const c = clockIn(at, tz);
+  const n = clockIn(nowMs, tz);
+  if (c.y === n.y && c.mo === n.mo && c.d === n.d) return c.time;
+  const day = `${MONTHS[c.mo - 1] ?? ''} ${c.d}`;
+  return c.y === n.y ? `${day}, ${c.time}` : `${day}, ${c.y}, ${c.time}`;
+}
+
 /** A calendar day as `Today` or `Nov 20, 2026`. */
 export function formatDay(date: string, today: string): string {
   return date === today ? 'Today' : longDate(date);

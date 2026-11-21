@@ -44,6 +44,46 @@ test('the test build serves a fixed price, so Holdings and Sell show real figure
   await expect(page.getByRole('region', { name: 'Amount to sell' })).toContainText(`at ${PRICE}`);
 });
 
+test('a flaky price: a failed refresh keeps the price; a kept price says when it is from', async ({ page }) => {
+  await setUp(page);
+  await addWallet(page, 'Kraken');
+  await logPurchase(page);
+  const hero = page.getByRole('region', { name: /Bitcoin is worth/ });
+  await expect(hero).toContainText(`at ${PRICE}`);
+  await expect(hero).not.toContainText('as of');
+  const refresh = hero.getByRole('button', { name: 'Refresh the price' });
+  await expect(refresh).toBeVisible();
+  const box = await refresh.boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+
+  // The server fails: the price stays, with no warning.
+  await priceDown(page, true);
+  await refresh.click();
+  await expect(hero).toContainText(`at ${PRICE}`);
+  await expect(page.getByText('Can’t load today’s Bitcoin price.')).toHaveCount(0);
+  await expectNoViolations(page);
+
+  // The server answers the last good price it kept (mempool down): the time says it is not current.
+  // (Kept just now: a kept price older than the one on screen would not replace it.)
+  await priceDown(page, false);
+  await page.evaluate(() => {
+    const server = window.__bbFake?.server;
+    if (server) server.priceKeptAt = Date.now();
+  });
+  await refresh.click();
+  await expect(hero).toContainText(/at \$[\d,.]+ · as of ([A-Z][a-z]{2} \d{1,2}, )?\d{1,2}:\d\d [AP]M/);
+  await expectNoViolations(page);
+
+  // A current price again: the time goes away.
+  await page.evaluate(() => {
+    const server = window.__bbFake?.server;
+    if (server) server.priceKeptAt = null;
+  });
+  await refresh.click();
+  await expect(hero).not.toContainText('as of');
+});
+
 test('no price: a plain message with Retry, or a price you enter, labeled as yours everywhere it is used', async ({ page }) => {
   await setUp(page);
   await priceDown(page, true);

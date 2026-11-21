@@ -71,7 +71,7 @@ function usePriceSeries(): { points: PricePoint[]; loading: boolean } {
   const points = useMemo(() => {
     // A price the person typed is not a market price: it never joins the chart.
     if (isDemo || quote === null || quote.source === 'manual') return past;
-    return [...past, { ms: quote.fetchedAt, cents: quote.usdCents }];
+    return [...past, { ms: quote.asOf, cents: quote.usdCents }];
   }, [past, quote, isDemo]);
   return { points, loading: !loaded };
 }
@@ -220,7 +220,7 @@ function ChartFooter({ points, className }: { points: PricePoint[]; className?: 
 // ---- Phone -----------------------------------------------------------------------------
 
 function PhoneHoldings({ view }: { view: HoldingsView }) {
-  const { quote, status, error } = usePrice();
+  const { status } = usePrice();
   const { today } = useLedger();
   const { points: series, loading: seriesLoading } = usePriceSeries();
   const young = isYoung(view, today);
@@ -242,7 +242,7 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
             <Amount sats={hero.sats} showUnit countUp className="-my-2.5 inline-flex min-h-11 items-center" />
           </span>
           <span className="flex flex-wrap items-baseline gap-x-2.5">
-            <PriceLine quote={quote} status={status} error={error} className="text-[13px]" />
+            <PriceLine className="text-[13px]" />
           </span>
           <HeroGainLine view={view} className="text-[13px]" />
           <HeroAverageLine view={view} className="text-[13px]" />
@@ -308,7 +308,7 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
 // ---- Desktop ---------------------------------------------------------------------------
 
 function DesktopHoldings({ view }: { view: HoldingsView }) {
-  const { quote, status, error } = usePrice();
+  const { status } = usePrice();
   const { today } = useLedger();
   const { points: series, loading: seriesLoading } = usePriceSeries();
   const young = isYoung(view, today);
@@ -330,7 +330,7 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
             <span className="text-xl font-semibold">
               <Amount sats={hero.sats} showUnit countUp className="-my-2 inline-flex min-h-11 items-center" />
             </span>
-            <PriceLine quote={quote} status={status} error={error} className="text-sm" />
+            <PriceLine className="text-sm" />
           </div>
           <HeroGainLine view={view} className="text-sm" />
           <HeroAverageLine view={view} className="text-sm" />

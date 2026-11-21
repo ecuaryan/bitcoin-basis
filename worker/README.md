@@ -14,8 +14,8 @@ The contract with the app is [`docs/sync-protocol.md`](../docs/sync-protocol.md)
 |---|---|
 | `src/index.ts` | Routes and the cron entry point |
 | `src/session.ts` | Revocable session cookie, single-use challenge and step-up tokens |
-| `src/config.ts` | Refuses to serve the API unless `ORIGIN` is https and `RP_ID` is its hostname; checks `MEMPOOL_URL` |
-| `src/price.ts` | Public price relay: same-origin only, rate limited, timestamps rounded down to the hour, Cache API |
+| `src/config.ts` | Refuses to serve the API unless `ORIGIN` is https and `RP_ID` is its hostname; checks `MEMPOOL_URL` and `COINBASE_URL` |
+| `src/price.ts` | Public price relay: same-origin only, rate limited, timestamps rounded down to the hour, Cache API. Live price: mempool (one retry), then Coinbase, then the last good price (6 hours, marked stale) |
 | `src/webauthn.ts` | Passkey options and verification (`@simplewebauthn/server`) |
 | `src/store.ts` | R2 access (only-if-new writes) and the backup copy |
 | `src/http.ts`, `src/validate.ts`, `src/crypto.ts` | Request guards, input checks, WebCrypto helpers |
@@ -43,6 +43,7 @@ Tests run the real Worker in `workerd` with local R2 (`npm test -w worker`, also
 | `SESSION_SECRET` | secret | 32+ random characters; signs sessions and challenges. Changing it signs everyone out |
 | `SETUP_CODE` | secret | 16+ characters; lets the first passkey register. Useless once the vault is claimed |
 | `MEMPOOL_URL` | var | Where the price comes from (default `https://mempool.space`). Set it to your own mempool instance if you run one; https only |
+| `COINBASE_URL` | var | Second source for the live price only, asked when mempool fails (default `https://api.coinbase.com`, its public spot price; no key). `off` uses mempool alone; https only |
 | `ASSETS` | static assets | The built app (`../app/dist`) |
 | `PRICE_LIMITER` | rate limit | 120 price requests a minute per IP |
 | `AUTH_LIMITER` | rate limit | Workers Rate Limiting (free): 30 requests a minute per IP on sign-in, recovery sign-in and registration |

@@ -13,6 +13,9 @@
 
 ### Changed
 
+- **A calmer price line**: the red "Price may be out of date" is gone. Holdings shows a small refresh button beside the price (it spins while it loads). When the price shown is more than 5 minutes old, or is a kept price the server sent, its time follows it quietly ("· as of 3:12 PM", amber after 30 minutes); a current price shows no time. Sell shows the same time beside its price. A failed refresh keeps the price it had, and the app tries again after 15 s, 30 s and 60 s, then every minute (it used to back off up to 15 minutes).
+- **The live price rides out a flaky source**: the Worker asks mempool once more after a failure, then Coinbase's public spot price (`COINBASE_URL`, `off` to skip it), and keeps the last good price for 6 hours. With all of them down it answers that price marked `stale` with the time it is from, and a 502 only when it has none. `/api/price` now also says when the price is from (`asOf`) and where (`source`). Historical prices still come from mempool alone.
+- A purchase logged "now" uses the live price only while it is recent; a kept price from hours ago is no longer taken as the price now, and the note names Coinbase when the price came from there.
 - **"Unrealized" instead of "on paper"**: Holdings' gain card is now "Unrealized gain", with a "?" that says what it means (what you would gain if you sold today; no tax is due until you sell), and wallet pages say "unrealized" too.
 
 ### Fixed
