@@ -54,7 +54,9 @@ const text = () => document.body.textContent ?? '';
 const button = (name: string) => [...document.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement | undefined;
 
 async function until(check: () => boolean): Promise<void> {
-  for (let i = 0; i < 60 && !check(); i++) {
+  // Real crypto and IndexedDB work runs here: wait by time (slow CI runners), not by a count of ticks.
+  const deadline = Date.now() + 10_000;
+  while (!check() && Date.now() < deadline) {
     await act(async () => {
       await settle();
     });

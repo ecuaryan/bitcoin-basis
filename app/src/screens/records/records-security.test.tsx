@@ -45,7 +45,9 @@ const dialog = () => document.querySelector('[role="dialog"]') as HTMLElement | 
 const inDialog = (name: string) => [...(dialog()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === name) as HTMLButtonElement | undefined;
 
 async function until(check: () => boolean): Promise<void> {
-  for (let i = 0; i < 50 && !check(); i++) {
+  // Real crypto and IndexedDB work runs here: wait by time (slow CI runners), not by a count of ticks.
+  const deadline = Date.now() + 10_000;
+  while (!check() && Date.now() < deadline) {
     await act(async () => {
       await settle();
     });
