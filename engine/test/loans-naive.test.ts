@@ -97,7 +97,14 @@ describe('loan interest against a day-by-day loop', () => {
         const fromDay = throughs.length === 0 ? firstDraw : Math.max(...throughs) + 1;
         const accrued = fromDay > dayNumber(asOf) ? 0 : naiveInterest(loan, fromDay, dayNumber(asOf), asOf);
         expect(s.accruedInterestCents).toBe(accrued);
-        expect(s.owedNowCents).toBe(s.principalOwedCents + accrued);
+        // Unpaid billed: each covered cycle (between consecutive interestThrough dates on or before as-of) at the
+        // spec formula, added up, less the interest paid for them; never below 0.
+        const billedThroughs = [...new Set(throughs.filter((t) => t <= dayNumber(asOf)))].sort((a, b) => a - b);
+        const billed = billedThroughs.reduce((t, through, i) => t + naiveInterest(loan, i === 0 ? firstDraw : (billedThroughs[i - 1] as number) + 1, through, asOf), 0);
+        const paidForBilled = loan.payments.filter((p) => p.date <= asOf && p.interestCents > 0 && p.interestThrough <= asOf).reduce((t, p) => t + p.interestCents, 0);
+        expect(s.unpaidBilledInterestCents).toBe(Math.max(0, billed - paidForBilled));
+        expect(s.owedNowCents).toBe(s.principalOwedCents + s.unpaidBilledInterestCents + accrued);
+        expect(s.owedNowEstimated).toBe(accrued !== 0 || s.unpaidBilledInterestCents !== 0);
         const ps = loanPurchases(state, 'h', 9_000_000, asOf);
         for (const p of ps) expect(p.interestShareCents).toBeGreaterThanOrEqual(0);
         expect(s.interestOnPurchasesCents).toBeLessThanOrEqual(s.interestPaidCents - s.unallocatedInterestCents);

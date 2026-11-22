@@ -146,7 +146,7 @@ export function createMempoolPriceService(fetchFn: FetchLike = (url, init) => fe
       const cents = parsePriceCents(body);
       if (cents === null) throw new PriceError('The price service sent an unexpected answer.');
       const stale = isRecord(body) && body['stale'] === true;
-      // The "today" change is a nicety: no yesterday price, no change shown.
+      // The 24-hour change is a nicety: no price from 24 hours ago, no change shown.
       const prev = await historical(Math.floor(fetchedAt / 1000) - 86_400, signal).catch(() => null);
       return { usdCents: cents, prevDayUsdCents: prev, fetchedAt, asOf: quoteAsOf(body, fetchedAt, stale), stale, provider: priceProvider(body), source: 'live' };
     },
@@ -164,8 +164,13 @@ export function createFixedPriceService(usdCents: number, prevDayUsdCents: numbe
   };
 }
 
-/** Change since yesterday in tenths of a percent (18 = 1.8%), or null. Integer math on cents. */
+/**
+ * Change over the past 24 hours (against the price 24 hours before the quote was fetched) in tenths of a percent
+ * (18 = 1.8%), or null. Integer math on cents, rounded half away from zero, the same for a fall as for a rise.
+ */
 export function dayChangeTenthsPercent(q: Pick<PriceQuote, 'usdCents' | 'prevDayUsdCents'>): number | null {
   if (q.prevDayUsdCents === null || q.prevDayUsdCents <= 0) return null;
-  return Math.round(((q.usdCents - q.prevDayUsdCents) * 1000) / q.prevDayUsdCents);
+  const diff = q.usdCents - q.prevDayUsdCents;
+  const magnitude = Math.floor((Math.abs(diff) * 2000 + q.prevDayUsdCents) / (2 * q.prevDayUsdCents));
+  return diff < 0 ? 0 - magnitude : magnitude; // never −0
 }

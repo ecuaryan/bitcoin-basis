@@ -3,9 +3,9 @@ import { describe, expect, test } from 'vitest';
 import { exportEntriesJson, exportOpeningLotsCsv, form8949Csv, importEntriesJson, importOpeningLotsCsv } from '../src/io.ts';
 import { exampleCoins, exampleLoan } from './loan-helpers.ts';
 import { MAX_ENTRY_CENTS, MAX_ENTRY_SATS } from '../src/money.ts';
-import { holdings } from '../src/reports.ts';
+import { holdings, type RetirementHolding } from '../src/reports.ts';
 import { replay } from '../src/replay.ts';
-import { allBitcoin, retirementPurchases, worthOf } from '../src/retirement.ts';
+import { allBitcoin, retirementPurchases, retirementWorth, taxableLots, valueOfPieces, worthOf, worthOfPieces } from '../src/retirement.ts';
 import type { Entry, RetirementBuyEntry } from '../src/types.ts';
 import { parseEntry } from '../src/validate.ts';
 import { buy, cents, noon, sats, testBook, TZ, wallet } from './helpers.ts';
@@ -172,8 +172,9 @@ describe('per purchase and all Bitcoin', () => {
 
   test('taxable is exactly the holdings totals; retirement adds its own; the parts add up', () => {
     const h = holdings(state);
-    const all = allBitcoin(h, PRICE);
+    const all = allBitcoin(state, h, PRICE);
     expect(all.taxable).toEqual(worthOf(h.totalSats, h.totalCostCents, PRICE));
+    expect(all.taxable).toEqual(worthOfPieces(taxableLots(state), PRICE));
     expect(all.taxable.sats).toBe(sats('1.2'));
     expect(all.retirement).toEqual({ sats: sats('0.81'), costCents: cents('20000'), valueCents: cents('60750'), gainCents: cents('3250'), percent: 16, unknownCostSats: sats('0.5') });
     expect(all.total.sats).toBe(all.taxable.sats + all.retirement.sats);
@@ -185,23 +186,51 @@ describe('per purchase and all Bitcoin', () => {
     expect(all.total.unknownCostSats).toBe(sats('0.5'));
   });
 
+  test('every worth is lot by lot and purchase by purchase, so the lists add up to the totals', () => {
+    // At $100,000 per BTC, 5 sats are worth half a cent: each piece rounds to 1 cent, so 3 pieces are 3 cents (not 2).
+    const tiny = replay([
+      wallet('ex'),
+      wallet('ira', 'retirement'),
+      wallet('bad'),
+      { ...buy('T1', 'ex', '2024-01-01', '0.00000005', '0'), sats: 5 },
+      { ...buy('T2', 'ex', '2024-01-02', '0.00000005', '0'), sats: 5 },
+      { ...buy('T3', 'ex', '2024-01-03', '0.00000005', '0'), sats: 5 },
+      { ...buy('T4', 'bad', '2024-01-03', '1', '1'), sats: 5 },
+      { id: 'FZ', kind: 'wallet-freeze', at: noon('2024-02-01'), tz: TZ, wallet: 'bad' },
+      { id: 'R1', kind: 'retirement-buy', at: noon('2024-01-01'), tz: TZ, wallet: 'ira', sats: 5, costCents: 0 },
+      { id: 'R2', kind: 'retirement-buy', at: noon('2024-01-02'), tz: TZ, wallet: 'ira', sats: 5, costCents: 0 },
+    ]);
+    const all = allBitcoin(tiny, holdings(tiny), cents('100000'));
+    expect(taxableLots(tiny).map((l) => l.id)).toEqual(['T1', 'T2', 'T3']);
+    expect(all.taxable).toMatchObject({ sats: 15, valueCents: 3 });
+    expect(all.retirement).toMatchObject({ sats: 10, valueCents: 2, gainCents: 2 });
+    expect(all.total.valueCents).toBe(5);
+    const ira = holdings(tiny).retirement[0] as RetirementHolding;
+    expect(retirementWorth(tiny, ira, cents('100000'))).toEqual(worthOfPieces(retirementPurchases(tiny, 'ira', null, '2026-01-01'), cents('100000')));
+    expect(retirementWorth(tiny, { ...ira, balanceFrom: 'snapshot', sats: 15 }, cents('100000'))).toEqual({ sats: 15, costCents: 0, valueCents: 2, gainCents: null, percent: null });
+    expect(valueOfPieces([{ sats: 5 }, { sats: 5 }], null)).toBeNull();
+    expect(valueOfPieces([], cents('100000'))).toBe(0);
+  });
+
   test('no price: worth and gain are null; notes only: gain is the taxable gain', () => {
-    const none = allBitcoin(holdings(state), null);
+    const none = allBitcoin(state, holdings(state), null);
     expect([none.taxable.valueCents, none.retirement.valueCents, none.retirement.gainCents, none.total.valueCents, none.total.gainCents]).toEqual([null, null, null, null, null]);
-    const notesOnly = allBitcoin(holdings(replay([...testBook(), wallet('old', 'retirement'), snapshot('S', 'old', '2025-12-31', sats('0.5'))])), PRICE);
+    const notesState = replay([...testBook(), wallet('old', 'retirement'), snapshot('S', 'old', '2025-12-31', sats('0.5'))]);
+    const notesOnly = allBitcoin(notesState, holdings(notesState), PRICE);
     expect(notesOnly.retirement).toMatchObject({ sats: sats('0.5'), costCents: 0, valueCents: cents('37500'), gainCents: null, percent: null });
     expect(notesOnly.total.gainCents).toBe(notesOnly.taxable.gainCents);
   });
 
   test('worth, gain and percent are null together when a worth cannot be represented', () => {
-    const h = holdings(replay([...testBook(), wallet('ira', 'retirement'), wallet('big', 'retirement'), rbuy('R1', 'ira', '2024-01-01', '0.1', '100'), snapshot('S', 'big', '2025-01-01', MAX_ENTRY_SATS)]));
-    const all = allBitcoin(h, MAX_ENTRY_CENTS);
+    const bigState = replay([...testBook(), wallet('ira', 'retirement'), wallet('big', 'retirement'), rbuy('R1', 'ira', '2024-01-01', '0.1', '100'), snapshot('S', 'big', '2025-01-01', MAX_ENTRY_SATS)]);
+    const all = allBitcoin(bigState, holdings(bigState), MAX_ENTRY_CENTS);
     expect([all.retirement.valueCents, all.retirement.gainCents, all.retirement.percent]).toEqual([null, null, null]);
     expect([all.total.valueCents, all.total.gainCents, all.total.percent]).toEqual([null, null, null]);
   });
 
   test('a figure too large to represent is null, never rounded', () => {
-    const huge = allBitcoin(holdings(replay([wallet('ira', 'retirement'), { id: 'R', kind: 'retirement-buy', at: noon('2024-01-01'), tz: TZ, wallet: 'ira', sats: MAX_ENTRY_SATS, costCents: 1 }])), MAX_ENTRY_CENTS);
+    const hugeState = replay([wallet('ira', 'retirement'), { id: 'R', kind: 'retirement-buy', at: noon('2024-01-01'), tz: TZ, wallet: 'ira', sats: MAX_ENTRY_SATS, costCents: 1 }]);
+    const huge = allBitcoin(hugeState, holdings(hugeState), MAX_ENTRY_CENTS);
     expect(huge.retirement.valueCents).toBeNull();
     expect(huge.retirement.gainCents).toBeNull();
     expect(huge.total.valueCents).toBeNull();

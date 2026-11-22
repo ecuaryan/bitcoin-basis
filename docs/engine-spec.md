@@ -102,7 +102,8 @@ Filing status, wages, state (flat-rate, no-tax or custom rate), losses from past
 - Holdings: per wallet balance, cost, average cost; totals excluding frozen and retirement; documentation mix by sats.
 - Retirement wallets (`holdings().retirement`): purchases count, sats, cost and average cost. **Balance rule:** with any purchase recorded, the balance is the purchases' total; with none, the latest balance note (0 if none), so books with notes only look as before. The latest note is checked against the purchases dated up to its time (`snapshot.differenceSats`, `matches`); a difference is reported, never silently resolved.
 - Per retirement purchase (`retirementPurchases(state, wallet, price, today)`): cost, worth now (sats × price, half-up), gain, percent (nearest whole, half away from zero; none for a $0 cost) and whole days held.
-- All Bitcoin (`allBitcoin(holdings, price)`): `taxable` is exactly the taxable totals; `retirement` is every retirement wallet's balance, with cost and gain over the wallets with purchases (`unknownCostSats` for notes-only wallets: in the worth, not in cost or gain); `total` adds the two. Frozen wallets stay out. No tax figure reads it.
+- **Worth is piece by piece.** Coins are valued one way everywhere: each lot (or retirement purchase) at sats × price, half-up, then added (`valueOfPieces`, `worthOfPieces`; `retirementWorth` for a retirement wallet: its purchases, or its balance note with no cost). So a list of lots or purchases always adds up to its total exactly, and Holdings, wallets, year rows and loans never differ by a cent.
+- All Bitcoin (`allBitcoin(state, holdings, price)`): `taxable` is the taxable totals (`taxableLots`: wallets not frozen or retirement), valued lot by lot; `retirement` is every retirement wallet's balance (`retirementWorth`), with cost and gain over the wallets with purchases (`unknownCostSats` for notes-only wallets: in the worth, not in cost or gain); `total` adds the two. Frozen wallets stay out. No tax figure reads it.
 - **Average cost** = total cost ÷ BTC held, in cents per BTC, half-up (null if nothing is held or the figure is too large to represent).
 - Per year: disposals with ST/LT gains (sales, spending, fees), close-out losses and recoveries, income received, gifts given (flag total over the annual exclusion per recipient per year; $19,000 in 2026), charity gifts (held > 1 year → value that day; ≤ 1 year → cost; over $5,000 → qualified appraisal flag), the 1040 digital-asset answer (Yes if any disposal, income or fee that year).
 - Loans (purchases funded by a HELOC or other loan): interest paid, owed now, value, break-even and payoff figures; see [loans-spec.md](loans-spec.md).
@@ -115,7 +116,7 @@ Data files by year (federal brackets for all filing statuses, standard deduction
 - `taxForYear({ year, filingStatus, wages, st, lt, carryforward, state })` → federal (ordinary + LT + NIIT), state, total, and carryforward out by character.
 - Netting: ST and LT net within themselves; carryforward joins its own character first; then cross-net; a net loss deducts up to the limit against ordinary income (ST loss used first); the rest carries forward keeping character.
 - **Capital tax effect** = tax with the capital items − tax with none (wages only).
-- **Incremental tax of a sale** = capital tax effect with the sale − capital tax effect without it (this is "Tax this adds" on the Sell screen).
+- **Incremental tax of a sale** = capital tax effect with the sale − capital tax effect without it (this is "Tax this adds" on the Sell screen, or "Tax this saves" when it is negative).
 - Marginal rates for ranking lots.
 - State: flat rate on net capital gain included in income (net loss deduction as federal), Idaho 5.3%.
 

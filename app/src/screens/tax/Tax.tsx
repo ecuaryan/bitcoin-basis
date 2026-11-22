@@ -24,7 +24,7 @@ import { useWriter } from '../../ui/use-writer.ts';
 import { useTitle } from '../../ui/use-title.ts';
 import { TERM_HELP } from '../../lib/terms.ts';
 import { useHelp } from '../../ui/Help.tsx';
-import { TaxProfilePrompt } from './TaxProfilePrompt.tsx';
+import { NoIncomeNote, TaxProfilePrompt } from './TaxProfilePrompt.tsx';
 import { newestFirst } from '../../lib/newest-first.ts';
 
 /** A card of label/value rows. `help` puts a "?" after one row's label, with its answer under the rows. */
@@ -423,6 +423,7 @@ export function Tax() {
         <div className="flex flex-col gap-3">
           {answer}
           <TaxProfilePrompt />
+          <NoIncomeNote />
           {stale !== null && (
             <p className="m-0 text-[13px] leading-snug text-amber">
               Your losses from past years are saved for {stale.savedFor}.{' '}

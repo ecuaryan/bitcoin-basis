@@ -167,6 +167,6 @@ describe('Held apart card', () => {
 
 describe('heldLabel', () => {
   it('whole units, toward zero', () => {
-    expect([0, 1, 59, 60, 364, 365, 400, 730].map(heldLabel)).toEqual(['Bought today', 'Held 1 day', 'Held 59 days', 'Held 1 month', 'Held 11 months', 'Held 1 year', 'Held 1 yr 1 mo', 'Held 2 years']);
+    expect([0, 1, 59, 60, 61, 364, 365, 400, 730].map(heldLabel)).toEqual(['Bought today', 'Held 1 day', 'Held 59 days', 'Held 60 days', 'Held 2 months', 'Held 11 months', 'Held 1 year', 'Held 1 yr 1 mo', 'Held 2 years']);
   });
 });

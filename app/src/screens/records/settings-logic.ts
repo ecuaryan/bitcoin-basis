@@ -9,19 +9,33 @@ export const FILING_LABELS: Record<FilingStatus, string> = {
   'qualifying-surviving-spouse': 'Qualifying surviving spouse',
 };
 
-/** Whether the person has ever chosen their filing status and state (a new vault starts with neither). */
+/** Whether the person has ever chosen their filing status, state and income (a new vault starts with none). */
 export interface TaxProfileSet {
   filing: boolean;
   state: boolean;
+  /** Wages and other income saved at least once (a saved $0 counts: it is an answer). */
+  wages: boolean;
 }
 
-/** Filing status and state count as chosen once any settings entry has saved them (the demo book does). */
+/** Filing status, state and income count as chosen once any settings entry has saved them (the demo book does). */
 export function taxProfileSet(entries: readonly Entry[]): TaxProfileSet {
   const patches = entries.flatMap((e) => (e.kind === 'settings' ? [e.patch] : []));
-  return { filing: patches.some((p) => p.filingStatus !== undefined), state: patches.some((p) => p.state !== undefined) };
+  return { filing: patches.some((p) => p.filingStatus !== undefined), state: patches.some((p) => p.state !== undefined), wages: patches.some((p) => p.wagesCents !== undefined) };
 }
 
-const ALL_SET: TaxProfileSet = { filing: true, state: true };
+/** The tax estimates assume $0 of other income because none was ever entered (not because $0 was saved). */
+export function assumesNoIncome(set: TaxProfileSet, s: Pick<Settings, 'wagesCents'>): boolean {
+  return !set.wages && s.wagesCents === 0;
+}
+
+/** What the "set up your taxes" prompt asks for: `filing status, state and income`, only the ones not chosen yet. Null when all are. */
+export function taxProfileMissing(set: TaxProfileSet): string | null {
+  const missing = [...(set.filing ? [] : ['filing status']), ...(set.state ? [] : ['state']), ...(set.wages ? [] : ['income'])];
+  if (missing.length === 0) return null;
+  return missing.length === 1 ? (missing[0] as string) : `${missing.slice(0, -1).join(', ')} and ${missing.at(-1) as string}`;
+}
+
+const ALL_SET: TaxProfileSet = { filing: true, state: true, wages: true };
 
 /** The state choices: `none`, `custom` (somewhere else), or a postal code. */
 export const NO_STATE_TAX = 'none';
@@ -69,14 +83,14 @@ function stateChoiceOf(state: StateTaxSetting): string {
 }
 
 /**
- * The form for `s`; losses from past years are the ones saved for `year` (the current tax year). Filing status and
- * state show as not set until the person has chosen them (`set`).
+ * The form for `s`; losses from past years are the ones saved for `year` (the current tax year). Filing status, state
+ * and income show as not set (income: an empty box) until the person has chosen them (`set`).
  */
 export function draftFrom(s: Settings, year?: number, set: TaxProfileSet = ALL_SET): SettingsDraft {
   const losses = year === undefined ? { st: s.carryforwardStCents, lt: s.carryforwardLtCents } : carryforwardFor(s, year);
   return {
     filingStatus: set.filing ? s.filingStatus : '',
-    wages: dollars(s.wagesCents),
+    wages: set.wages || s.wagesCents !== 0 ? dollars(s.wagesCents) : '',
     stateChoice: set.state ? stateChoiceOf(s.state) : '',
     stateRate: s.state.kind === 'custom' ? percent(s.state.rate) : '',
     carryforwardSt: dollars(losses.st),
@@ -91,8 +105,8 @@ export type DraftResult = { ok: true; patch: SettingsPatch } | { ok: false; erro
  * The settings that changed, or what is wrong with the form.
  * `year` is the tax year typed-in losses are for (the current year): changed losses save under that year only
  * (`carryforwardByYear`), so another year's figure never changes. Without a year they save as the plain fields.
- * A filing status or state chosen for the first time (`set`) is saved even when it matches the built-in default; one
- * left "Not set" is not saved. A state that needs its own rate waits until a rate is typed.
+ * A filing status, state or income chosen for the first time (`set`) is saved even when it matches the built-in default
+ * ($0 income is an answer); one left "Not set" (or empty) is not saved. A state that needs its own rate waits until a rate is typed.
  */
 export function patchFrom(current: Settings, d: SettingsDraft, year?: number, set: TaxProfileSet = ALL_SET): DraftResult {
   const errors: Partial<Record<keyof SettingsDraft, string>> = {};
@@ -101,7 +115,9 @@ export function patchFrom(current: Settings, d: SettingsDraft, year?: number, se
     if (c === null) errors[key] = 'Use a dollar amount, like 130000.';
     return c ?? 0;
   };
-  const wages = money('wages', d.wages);
+  // Income left empty before it was ever saved stays not set (no error, nothing saved).
+  const wagesUnset = !set.wages && d.wages.trim() === '';
+  const wages = wagesUnset ? current.wagesCents : money('wages', d.wages);
   const st = money('carryforwardSt', d.carryforwardSt);
   const lt = money('carryforwardLt', d.carryforwardLt);
   if (!isValidTimeZone(d.timeZone)) errors.timeZone = 'Use a time zone name, like America/Boise.';
@@ -129,6 +145,7 @@ export function patchFrom(current: Settings, d: SettingsDraft, year?: number, se
   }
   if (!set.filing && d.filingStatus !== '') patch.filingStatus = d.filingStatus;
   if (!set.state && state !== null) patch.state = state;
+  if (!set.wages && !wagesUnset) patch.wagesCents = wages;
   if (year !== undefined) {
     const now = carryforwardFor(current, year);
     if (st !== now.st || lt !== now.lt) patch.carryforwardByYear = { [String(year)]: { st, lt } };

@@ -107,19 +107,28 @@ function useUnrealizedHelp() {
 function LossesStat({ view, variant }: { view: HoldingsView; variant: 'row' | 'tile' }) {
   const help = useHelp(`What are ${LOSSES_TITLE.toLowerCase()}?`, LOSSES_HELP);
   const { today } = useLedger();
-  const forYear = view.lossesYear !== null && view.lossesYear !== Number(today.slice(0, 4)) ? ` (for ${view.lossesYear})` : '';
   const money = <Money cents={view.carryforwardCents} precision="dollars" />;
+  // As on Sell and Tax season: only an earlier year's losses are saved, so ask for this year's.
+  const stale =
+    view.staleLossesFor === null ? null : (
+      <span className="text-[13px] leading-snug text-amber">
+        Saved for {view.staleLossesFor}.{' '}
+        <Link to="/settings#taxes" className="font-semibold text-amber underline underline-offset-2 hover:text-text">
+          Update them for {today.slice(0, 4)}
+        </Link>
+      </span>
+    );
   if (variant === 'row') {
     return (
       <div className="flex flex-col gap-2 border-t border-line pt-2.5">
         <div className="flex items-baseline justify-between">
           <span className="flex items-baseline gap-1 text-xs text-muted">
             {LOSSES_TITLE}
-            {forYear}
             {help.button}
           </span>
           <span className="text-[15px] font-semibold">{money}</span>
         </div>
+        {stale}
         {help.panel}
       </div>
     );
@@ -128,10 +137,10 @@ function LossesStat({ view, variant }: { view: HoldingsView; variant: 'row' | 't
     <>
       <span className="flex items-baseline gap-1 text-[13px] text-muted">
         {LOSSES_TITLE}
-        {forYear}
         {help.button}
       </span>
       <span className="text-2xl font-semibold">{money}</span>
+      {stale}
       {help.panel}
     </>
   );
@@ -245,7 +254,7 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
         {/* Two lines, always: inline, a longer amount (sats, dollars, or hidden) would wrap the price line and move the page. */}
         <div className="mt-1 flex flex-col items-start gap-0.5">
           <span className="text-[17px] font-semibold">
-            <Amount sats={hero.sats} showUnit countUp className="-my-2.5 inline-flex min-h-11 items-center" />
+            <Amount sats={hero.sats} showUnit countUp valueCents={hero.worthCents} className="-my-2.5 inline-flex min-h-11 items-center" />
           </span>
           <span className="flex flex-wrap items-baseline gap-x-2.5">
             <PriceLine className="text-[13px]" />
@@ -273,7 +282,7 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
               Unrealized gain
               {gainHelp.button}
             </span>
-            <GainText cents={view.gainCents} className="text-xl font-semibold" />
+            <GainText cents={view.taxableGainShownCents} className="text-xl font-semibold" />
           </div>
         </div>
         {gainHelp.panel}
@@ -295,7 +304,7 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
         </div>
         {tierHelp.panel}
         <span className="text-xs text-muted">
-          {view.documentedPercent}% documented. Pick a year to see each lot and where it came from.
+          {view.tierShares.documented} documented. Pick a year to see each lot and where it came from.
         </span>
       </Card>
 
@@ -342,7 +351,7 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
           </span>
           <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
             <span className="text-xl font-semibold">
-              <Amount sats={hero.sats} showUnit countUp className="-my-2 inline-flex min-h-11 items-center" />
+              <Amount sats={hero.sats} showUnit countUp valueCents={hero.worthCents} className="-my-2 inline-flex min-h-11 items-center" />
             </span>
             <PriceLine className="text-sm" />
           </div>
@@ -373,7 +382,7 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
             Unrealized gain
             {gainHelp.button}
           </span>
-          <GainText cents={view.gainCents} className="text-2xl font-semibold" />
+          <GainText cents={view.taxableGainShownCents} className="text-2xl font-semibold" />
           {gainHelp.panel}
         </Card>
         <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
@@ -417,7 +426,7 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
         {tierHelp.panel}
         <StackColumns stack={view.stack} onPick={setYear} />
         <span className="text-xs text-muted">
-          {view.documentedPercent}% documented. Pick a year to see each lot and where it came from.
+          {view.tierShares.documented} documented. Pick a year to see each lot and where it came from.
         </span>
       </Card>
 

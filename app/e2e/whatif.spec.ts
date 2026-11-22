@@ -60,6 +60,13 @@ test('Borrow: loan-to-value, price scale and a saved scenario', async ({ page })
   await expectNoViolations(page);
   await page.getByLabel('Borrow', { exact: true }).fill('50000');
   await expect(ltv).toContainText('52.7%');
+  // Past the lender's limits: no "Price could fall 0%".
+  await page.getByLabel('Borrow', { exact: true }).fill('80000');
+  await expect(ltv).toContainText('The lender would already sell at this price');
+  await expect(ltv).not.toContainText('Price could fall');
+  await page.getByLabel('Borrow', { exact: true }).fill('70000');
+  await expect(ltv).toContainText('Already past the margin call');
+  await expect(ltv).toContainText('Price could fall');
   await page.getByLabel('Borrow', { exact: true }).fill('abc');
   await expect(page.getByRole('alert')).toContainText('dollars');
   await page.getByLabel('Borrow', { exact: true }).fill('25000');

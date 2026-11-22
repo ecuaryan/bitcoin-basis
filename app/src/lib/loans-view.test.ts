@@ -23,6 +23,11 @@ describe('loan words', () => {
     expect(breakEvenWords(10_050_000, 10_000_000)).toBe('Price is 1% above break-even');
     expect(breakEvenWords(null, 10_000_000)).toBeNull();
     expect(breakEvenWords(10_000_000, null)).toBeNull();
+    // Hide amounts: the percent hides (one fixed shape), the words stay.
+    expect(breakEvenWords(7_000_000, 10_000_000, true)).toBe('Price is ••••••• below break-even');
+    expect(breakEvenWords(12_299_999, 10_000_000, true)).toBe('Price is ••••••• above break-even');
+    expect(breakEvenWords(10_049_999, 10_000_000, true)).toBe('Price is within ••••••• of break-even');
+    expect(breakEvenWords(10_000_000, 10_000_000, true)).toBe('Price is at break-even');
   });
   it('names the statement day', () => {
     expect(statementDayText(null)).toBe('Not set');

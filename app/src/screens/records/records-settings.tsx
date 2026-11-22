@@ -77,7 +77,7 @@ export function SettingsView() {
       setDraft((cur) => ({ ...cur, carryforwardSt: shown.carryforwardSt, carryforwardLt: shown.carryforwardLt }));
     }
     // A first choice of filing status or state is saved even when it equals the built-in default.
-    const firstChoice = (!set.filing && 'filingStatus' in patch) || (!set.state && 'state' in patch);
+    const firstChoice = (!set.filing && 'filingStatus' in patch) || (!set.state && 'state' in patch) || (!set.wages && 'wagesCents' in patch);
     const written = await write({ kind: 'settings', patch }, { evenIfSame: firstChoice });
     // Never say "Saved" for something that was not written.
     if (written === null) return;
@@ -111,7 +111,13 @@ export function SettingsView() {
           </SelectBox>
         </SavedMark>
         <SavedMark show={saved('wages')}>
-          <MoneyInput label="Wages and other income (a year)" value={draft.wages} {...num('wages')} error={err('wages')} />
+          <MoneyInput
+            label="Wages and other income (a year)"
+            value={draft.wages}
+            {...num('wages')}
+            error={err('wages')}
+            {...(set.wages ? {} : { hint: 'Not set yet. Tax estimates assume $0 until you enter it; 0 is a fine answer.' })}
+          />
         </SavedMark>
         <SavedMark show={saved('stateChoice') || (saved('stateRate') && !needsOwnRate(draft.stateChoice))}>
           <SelectBox label="State" value={draft.stateChoice} onChange={(e) => pick('stateChoice', e.target.value)}>

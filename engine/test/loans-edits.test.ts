@@ -82,6 +82,31 @@ describe('loan names and statement days follow the timeline', () => {
     const over = replay([...base, payment('Y1', 'h', '2025-02-05', '70')]);
     expect(suggestLoanPayment(over, 'h', '2025-02-10')).toMatchObject({ interestCents: 0, alreadyPaidCents: 7_000 });
   });
+
+  test('owed now counts what is left of a cycle paid in part, plus the days since (Example P)', () => {
+    const base: Entry[] = [loan('h', '2025-01-01', 73_000, { statementDay: 31 }), { id: 'D', kind: 'loan-draw', at: noon('2025-01-01'), tz: TZ, loan: 'h', cents: 1_000_000 }];
+    // January $62.00 billed, $40.00 paid: $22.00 unpaid. Feb 1-20: $10,000 × 7.3% × 20 / 365 = $40.00, not billed yet.
+    const part = replay([...base, payment('Y1', 'h', '2025-02-05', '40')]);
+    expect(loanSummary(part, 'h', null, '2025-02-20')).toMatchObject({ principalOwedCents: 1_000_000, unpaidBilledInterestCents: 2_200, accruedInterestCents: 4_000, accruedFrom: '2025-02-01', accruedBilledThrough: null, owedNowCents: 1_006_200, owedNowEstimated: true });
+    // Nothing paid yet: January's statement closed, so the accrued interest through Jan 31 is billed, not paid.
+    expect(loanSummary(replay(base), 'h', null, '2025-02-20')).toMatchObject({ unpaidBilledInterestCents: 0, accruedFrom: '2025-01-01', accruedBilledThrough: '2025-01-31', accruedInterestCents: 10_200 });
+    expect(loanSummary(replay(base), 'h', null, '2025-01-20')).toMatchObject({ accruedFrom: '2025-01-01', accruedBilledThrough: null });
+    // No statement day: nothing is known to be billed.
+    const noDay = replay([loan('h', '2025-01-01', 73_000), base[1] as Entry]);
+    expect(loanSummary(noDay, 'h', null, '2025-02-20')).toMatchObject({ accruedFrom: '2025-01-01', accruedBilledThrough: null });
+    // Paid in full: nothing unpaid.
+    const full = replay([...base, payment('Y1', 'h', '2025-02-05', '62')]);
+    expect(loanSummary(full, 'h', null, '2025-02-20')).toMatchObject({ unpaidBilledInterestCents: 0, owedNowCents: 1_004_000 });
+    // Paid more than the cycle: no credit for interest (never below 0).
+    const over = replay([...base, payment('Y1', 'h', '2025-02-05', '70')]);
+    expect(loanSummary(over, 'h', null, '2025-02-20')).toMatchObject({ unpaidBilledInterestCents: 0, owedNowCents: 1_004_000 });
+    // The rest paid with February's statement (February $56.00 + January's $22.00): nothing unpaid.
+    const caughtUp = replay([...base, payment('Y1', 'h', '2025-02-05', '40'), payment('Y2', 'h', '2025-03-05', '78')]);
+    expect(loanSummary(caughtUp, 'h', null, '2025-03-05')).toMatchObject({ unpaidBilledInterestCents: 0, accruedInterestCents: 1_000, owedNowCents: 1_001_000 });
+    // The second part paid later for the same cycle: nothing unpaid.
+    const parts = replay([...base, payment('Y1', 'h', '2025-02-05', '40'), payment('Y2', 'h', '2025-02-15', '22')]);
+    expect(loanSummary(parts, 'h', null, '2025-02-20')).toMatchObject({ unpaidBilledInterestCents: 0, owedNowCents: 1_004_000 });
+  });
 });
 
 describe('frozen platforms and loan-funded coins', () => {

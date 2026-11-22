@@ -8,7 +8,7 @@ export interface WorthNow {
   /** Null while no price is known. */
   valueCents: number | null;
   gainCents: number | null;
-  /** Whole percent toward zero (never overstates a gain). Null with no price or no cost. */
+  /** Whole percent, to the nearest (half away from zero), as the engine rounds it. Null with no price or no cost. */
   percent: number | null;
 }
 
@@ -41,7 +41,7 @@ export function sumWorth(lots: readonly Pick<Lot, 'sats' | 'costCents'>[], price
   return fromParts(sats, cost, priceCents === null ? null : value);
 }
 
-export type PartKind = 'sold' | 'spent' | 'fees' | 'given' | 'lost';
+export type PartKind = 'sold' | 'spent' | 'fees' | 'given' | 'lost' | 'closed-out';
 
 /** A piece of an entry's coins that has left. */
 export interface GonePart {
@@ -52,22 +52,23 @@ export interface GonePart {
 
 export interface EntryWorth {
   held: WorthNow;
+  /** Coins still in a frozen wallet: not held (no value now), not gone either. */
+  frozen: { sats: number; costCents: number };
   gone: GonePart[];
 }
 
 /**
  * The coins that came from one buy or receive entry (any of its versions, `entryIds`): what is still held, wherever it
- * moved, and what has been sold, spent, given or lost (one part per entry that took some). Coins in a frozen wallet are
- * not counted as held. Thin wrapper over the engine's `traceCoins`.
+ * moved, what is in a frozen wallet (not counted as held), and what has been sold, spent, given, lost or closed out on a
+ * frozen platform (one part per entry that took some). Thin wrapper over the engine's `traceCoins`.
  */
 export function entryWorth(state: LedgerState, entryIds: readonly string[], priceCents: number | null): EntryWorth {
   const traced = traceCoins(state, entryIds);
   const parts = new Map<string, GonePart>();
   for (const g of traced.gone) {
-    if (g.kind === 'closed-out') continue;
     const part = parts.get(g.entryId);
     if (part === undefined) parts.set(g.entryId, { kind: g.kind, sats: g.sats, date: g.date });
     else part.sats += g.sats;
   }
-  return { held: sumWorth(traced.held, priceCents), gone: [...parts.values()] };
+  return { held: sumWorth(traced.held, priceCents), frozen: { sats: traced.frozenSats, costCents: traced.frozenCostCents }, gone: [...parts.values()] };
 }

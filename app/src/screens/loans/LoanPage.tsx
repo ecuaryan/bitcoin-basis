@@ -21,11 +21,12 @@ import { PlainMoney } from '../../ui/plain-money.tsx';
 import { EmptyLine, SectionCount, SectionHeader, ShowMore } from '../../ui/SectionHeader.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { useSubmit } from '../../ui/use-submit.ts';
+import { usePrefs } from '../../ui/prefs.tsx';
 import { useTitle } from '../../ui/use-title.ts';
 import { GainWords } from '../../ui/WorthLine.tsx';
 import { EntrySheet } from '../entry-parts.tsx';
 import { cleanNumber } from '../log/model.ts';
-import { Approx, BREAK_EVEN_HELP, BREAK_EVEN_LABEL, IncludingInterest, LOAN_ESTIMATE_HELP, PAYOFF_HELP, SignedMoney } from './loan-parts.tsx';
+import { Approx, BREAK_EVEN_HELP, BREAK_EVEN_LABEL, IncludingInterest, LOAN_ESTIMATE_HELP, OwedNowParts, PAYOFF_HELP, SignedMoney } from './loan-parts.tsx';
 import { CloseLoanSheet, LoanSettingsSheet, PaymentSheet, RateSheet, useReopen } from './loan-sheets.tsx';
 import { ManagePurchasesSheet } from './LoanSetup.tsx';
 import { useLoanWriter } from './loan-writer.ts';
@@ -63,6 +64,7 @@ const runOf = (item: EntryItem): EntryRun => ({ item, count: 1, items: [item], n
 
 function Standing({ loan, s, purchases }: { loan: Loan; s: LoanSummary; purchases: readonly LoanPurchase[] }) {
   const { today } = useLedger();
+  const { masked } = usePrefs();
   const help = useHelp('What does ≈ mean?', LOAN_ESTIMATE_HELP);
   const breakEvenHelp = useHelp('What is in the break-even price?', BREAK_EVEN_HELP);
   const payoffHelp = useHelp('What does paying it off today use?', PAYOFF_HELP);
@@ -81,11 +83,7 @@ function Standing({ loan, s, purchases }: { loan: Loan; s: LoanSummary; purchase
                 <Money cents={s.owedNowCents} />
               </>
             ),
-            sub: (
-              <>
-                Includes about <Money cents={s.accruedInterestCents} /> interest since {shortDate(s.accruedFrom ?? today)}, not billed yet
-              </>
-            ),
+            sub: <OwedNowParts s={s} today={today} />,
           },
         ]
       : []),
@@ -152,7 +150,7 @@ function Standing({ loan, s, purchases }: { loan: Loan; s: LoanSummary; purchase
                 <Money cents={s.breakEvenPriceCents} />
               </>
             ),
-            sub: breakEvenWords(s.priceCents, s.breakEvenPriceCents),
+            sub: breakEvenWords(s.priceCents, s.breakEvenPriceCents, masked),
           },
         ]
       : []),

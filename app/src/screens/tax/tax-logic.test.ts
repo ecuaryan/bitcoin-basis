@@ -1,7 +1,7 @@
 import { createUuidV7, replay, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_TODAY } from '../../demo/demo-data.ts';
-import { answerReason, feeOnlyYes, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, joinWords, overExclusion, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory, nextYearLosses } from './tax-logic.ts';
+import { answerReason, feeOnlyYes, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, form8949Detail, joinWords, overExclusion, termWord, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory, nextYearLosses } from './tax-logic.ts';
 import { yearSummary } from '@bitcoin-basis/engine';
 
 const state = replay(buildDemoBook().entries);
@@ -93,6 +93,54 @@ describe('form1099Rows', () => {
     expect(strike?.gifts).toBe(1);
     expect(strike?.giftCostCents).toBeGreaterThan(0);
     expect(rows.every((r) => r.wallet.type === 'exchange')).toBe(true);
+  });
+});
+
+describe('form1099Rows: the year is the local date', () => {
+  it('counts a purchase at 11:30 PM on Dec 31 (local) in that year, not the next', () => {
+    const TZ = 'America/Boise';
+    const book: Entry[] = [
+      { id: 'w', kind: 'wallet', at: '2025-01-01T00:00:00Z', tz: TZ, wallet: 'ex', name: 'Exchange', type: 'exchange', defaultProof: '' },
+      // 2026-01-01T06:30Z is Dec 31, 2025, 11:30 PM in Boise.
+      { id: 'b', kind: 'buy', at: '2026-01-01T06:30:00Z', tz: TZ, wallet: 'ex', sats: 1_000, costCents: 100, tier: 'documented' },
+    ];
+    const s = replay(book);
+    expect(form1099Rows(s, 2025, book).map((r) => r.wallet.id)).toEqual(['ex']);
+    expect(form1099Rows(s, 2026, book)).toEqual([]);
+  });
+});
+
+describe('CPA summary: Form 8949 detail', () => {
+  const TZ = 'America/Boise';
+  const noon = (d: string) => `${d}T19:00:00Z`;
+  const book: Entry[] = [
+    { id: 'w1', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'ex', name: 'Exchange', type: 'exchange', defaultProof: '' },
+    { id: 'w2', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'bad', name: 'Bad', type: 'exchange', defaultProof: '' },
+    { id: 'A', kind: 'buy', at: noon('2024-01-10'), tz: TZ, wallet: 'ex', sats: 100_000_000, costCents: 4_000_000, tier: 'documented' },
+    { id: 'B', kind: 'buy', at: noon('2024-01-10'), tz: TZ, wallet: 'bad', sats: 100_000_000, costCents: 4_000_000, tier: 'documented' },
+    { id: 'F', kind: 'wallet-freeze', at: noon('2024-03-01'), tz: TZ, wallet: 'bad' },
+    // A long-term sale at exactly its cost: a $0 gain, still long-term.
+    { id: 'S', kind: 'sell', at: noon('2026-02-01'), tz: TZ, wallet: 'ex', sats: 10_000_000, proceedsCents: 400_000, spent: false, picks: [{ lotId: 'A', sats: 10_000_000 }] },
+    { id: 'C', kind: 'wallet-close-out', at: noon('2026-05-01'), tz: TZ, wallet: 'bad', reason: 'Failed' },
+    { id: 'P', kind: 'receive', at: noon('2026-06-01'), tz: TZ, wallet: 'ex', sats: 1_000_000, valueCents: 150_000, source: { type: 'frozen-payout', fromWallet: 'bad' } },
+  ];
+  const s = replay(book);
+  it('lists the sale, the close-out and the payout after it, as the 8949 CSV does', () => {
+    const y = yearSummary(s, 2026);
+    expect(s.errors).toEqual([]);
+    expect(form8949Detail(y)).toEqual([
+      { key: 'S', date: '2026-02-01', wallet: 'ex', kind: 'sell', sats: 10_000_000, proceedsCents: 400_000, costCents: 400_000, gainCents: 0, term: 'long' },
+      { key: 'C', date: '2026-05-01', wallet: 'bad', kind: 'close-out', sats: 100_000_000, proceedsCents: 0, costCents: 4_000_000, gainCents: -4_000_000, term: 'long' },
+      { key: 'P', date: '2026-06-01', wallet: 'ex', kind: 'recovery', sats: null, proceedsCents: 150_000, costCents: 0, gainCents: 150_000, term: 'long' },
+    ]);
+    // The gains table's frozen-platform line: the close-out and the payout.
+    expect(totalsByKind(y).other).toMatchObject({ count: 2, gainCents: -3_850_000 });
+  });
+  it('words the term from the holding periods used', () => {
+    expect(termWord(['short'])).toBe('short');
+    expect(termWord(['long', 'long'])).toBe('long');
+    expect(termWord(['long', 'short'])).toBe('both');
+    expect(termWord([])).toBe('short');
   });
 });
 

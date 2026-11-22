@@ -11,7 +11,6 @@ const expected = (() => {
   if (s === null) throw new Error('the demo has no loan');
   return s;
 })();
-const dollars = (c: number) => formatMoney(c, { precision: 'dollars' });
 
 async function openLog(page: Page) {
   await page.getByRole('button', { name: 'Log', exact: true }).first().click();
@@ -24,11 +23,13 @@ test('Holdings: the loan card shows exactly the engine’s figures for the demo 
   await openDemo(page);
   const card = page.getByRole('region', { name: 'Loans' });
   await expect(card).toContainText('Home equity line');
-  await expect(card).toContainText(`Owed ${dollars(expected.principalOwedCents)} · Available ${dollars(expected.availableCreditCents ?? 0)}`);
-  await expect(card).toContainText(`Bought ${shortBtc(expected.heldSats)} BTC · worth ${dollars(expected.valueCents ?? 0)}`);
-  await expect(card).toContainText(`Interest paid ${dollars(expected.interestPaidCents)}`);
+  // Cents, as on the loan page: Owed plus Available is the credit limit exactly, and the break-even is never cut short.
+  await expect(card).toContainText(`Owed ${formatMoney(expected.principalOwedCents)} · Available ${formatMoney(expected.availableCreditCents ?? 0)}`);
+  expect(expected.principalOwedCents + (expected.availableCreditCents ?? 0)).toBe(expected.creditLimitCents);
+  await expect(card).toContainText(`Bought ${shortBtc(expected.heldSats)} BTC · worth ${formatMoney(expected.valueCents ?? 0)}`);
+  await expect(card).toContainText(`Interest paid ${formatMoney(expected.interestPaidCents)}`);
   await expect(card).toContainText(formatMoney(expected.gainIncludingInterestCents ?? 0, { precision: 'dollars', signed: true }));
-  await expect(card).toContainText(`Break-even price (with interest paid so far) ${dollars(expected.breakEvenPriceCents ?? 0)}`);
+  await expect(card).toContainText(`Break-even price (with interest paid so far) ${formatMoney(expected.breakEvenPriceCents ?? 0)}`);
   const left = expected.payoffLeftoverSats ?? 0;
   await expect(card).toContainText(`${shortBtc(Math.abs(left))} BTC ${left < 0 ? 'short' : 'left over'}`);
   await expect(page.getByRole('region', { name: 'Loan payment reminder' })).toHaveCount(0);
@@ -50,9 +51,13 @@ test('Hide amounts masks every loan figure in one fixed shape', async ({ page })
   const card = page.getByRole('region', { name: 'Loans' });
   await expect(card).toContainText('$•••••');
   expect(await card.innerText()).not.toMatch(/\$\d|\d\.\d{4}/);
+  // The distance from break-even is a gain percent: hidden too, the words kept.
+  await expect(card).toContainText(/Price is ••••••• (above|below) break-even/);
+  expect(await card.innerText()).not.toMatch(/\d%/);
   await go(page, `/loans/${DEMO_LOAN_ID}`);
   const standing = page.getByRole('region', { name: 'Where it stands' });
   await expect(standing).toContainText('$•••••');
+  await expect(standing).toContainText(/Price is ••••••• (above|below) break-even/);
   for (const name of ['Where it stands', 'Purchases', 'Payments', 'Statement check']) {
     expect(await page.getByRole('region', { name }).innerText(), name).not.toMatch(/\$\d|\d\.\d{4}/);
   }
@@ -275,7 +280,10 @@ test('Loan page: Bought is everything the purchases bought; after a gift, Still 
   await expect(row('Bought')).toContainText(`${groupedBtc(expected.boughtSats)} BTC`);
   await expect(rows.getByText('Still held', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'What does paying it off today use?' }).click();
-  await expect(rows).toContainText('not been billed yet');
+  await expect(rows).toContainText('interest not paid yet, billed or not');
+  // The demo pays every statement in full, so owed now adds only the days since the last one.
+  await expect(row('Owed now, with interest')).toContainText('not billed yet');
+  await expect(row('Owed now, with interest')).not.toContainText('billed but not yet paid');
 
   // Give away a little from a lot the loan paid for.
   await page.getByRole('button', { name: 'Log', exact: true }).first().click();

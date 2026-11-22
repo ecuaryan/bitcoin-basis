@@ -146,7 +146,7 @@ function facts(e: Entry, name: (id: string) => string, loan: (id: string) => str
   }
 }
 
-const GONE_WORD: Record<PartKind, string> = { sold: 'sold', spent: 'spent', fees: 'paid in network fees', given: 'given away', lost: 'lost' };
+const GONE_WORD: Record<PartKind, string> = { sold: 'sold', spent: 'spent', fees: 'paid in network fees', given: 'given away', lost: 'lost', 'closed-out': 'closed out on a frozen platform' };
 const BOUGHT_KINDS = new Set(['buy', 'receive', 'opening-lot']);
 
 /** What the coins from one buy or receive are worth now, wherever they moved to. */
@@ -154,7 +154,7 @@ function WorthBlock({ item, state }: { item: EntryItem; state: LedgerState; toda
   const { quote } = usePrice();
   const priceCents = quote?.usdCents ?? null;
   const w = useMemo(() => entryWorth(state, [item.id, ...item.versions.map((v) => v.id)], priceCents), [state, item, priceCents]);
-  const none = w.held.sats === 0;
+  const none = w.held.sats === 0 && w.frozen.sats === 0;
   const rows: [string, ReactNode][] = [
     ['Cost', <Money key="c" cents={w.held.costCents} />],
     ['Worth now', w.held.valueCents === null ? '—' : <Money key="v" cents={w.held.valueCents} />],
@@ -165,14 +165,20 @@ function WorthBlock({ item, state }: { item: EntryItem; state: LedgerState; toda
       <h2 className="m-0 text-[15px] font-semibold">What these coins are worth now</h2>
       {none ? (
         <p className="m-0 text-sm text-muted">None of these coins are left.</p>
-      ) : (
+      ) : null}
+      {w.held.sats > 0 ? (
         <>
           <p className="m-0 text-xs text-muted">
             <Amount sats={w.held.sats} showUnit interactive={false} /> still held, in any wallet.
           </p>
           <FactList rows={rows} />
         </>
-      )}
+      ) : null}
+      {w.frozen.sats > 0 ? (
+        <p className="m-0 text-sm text-soft">
+          <Amount sats={w.frozen.sats} showUnit interactive={false} /> of it is in a frozen wallet (cost <Money cents={w.frozen.costCents} />), not counted in what your Bitcoin is worth.
+        </p>
+      ) : null}
       {w.gone.map((g, i) => (
         <p key={i} className="m-0 text-sm text-soft">
           <Amount sats={g.sats} showUnit interactive={false} /> of it {GONE_WORD[g.kind]} on {shortDate(g.date)}

@@ -81,7 +81,9 @@ test('Holdings with a retirement account: all your Bitcoin on top, split into ta
   const split = page.getByRole('region', { name: 'Taxable and retirement' });
   const taxable = split.getByRole('button', { name: /^Taxable/ });
   await expect(taxable).toContainText('Counts for tax · 3.3667 BTC');
-  await expect(taxable).toContainText('$319,206');
+  // $319,206.94 + $33,184.34 = $352,391.28: the rows add up to the total ($319,207 + $33,184 = $352,391).
+  await expect(page.getByRole('region', { name: 'What all your Bitcoin is worth' })).toContainText('$352,391');
+  await expect(taxable).toContainText('$319,207');
   await expect(taxable).toContainText('up $180,329');
   const retirement = split.getByRole('link', { name: /^Retirement/ });
   await expect(retirement).toContainText('Kept apart from tax · 0.3500 BTC');
@@ -130,5 +132,5 @@ test('Holdings without a retirement account looks as before: the hero is taxable
 
 test('the all-Bitcoin hero shows the average cost of all your Bitcoin', async ({ page }) => {
   await openDemo(page);
-  await expect(page.getByText(/Average cost \$[\d,]+\.\d\d per BTC/).first()).toBeVisible();
+  await expect(page.getByText(/Average cost of all your Bitcoin: \$[\d,]+\.\d\d per BTC/).first()).toBeVisible();
 });

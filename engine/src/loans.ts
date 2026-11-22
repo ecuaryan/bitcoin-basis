@@ -195,6 +195,11 @@ interface Allocation {
   accruedCents: Cents;
   /** First day of the accrual estimate (the day after the last day paid), or null if nothing is unpaid. */
   accruedFrom: LocalDate | null;
+  /**
+   * ESTIMATE: interest for the cycles payments cover (through `onDate`) that those payments did not pay: the
+   * cycles' interest (each rounded once) − the interest paid for them, never below 0.
+   */
+  unpaidBilledCents: Cents;
 }
 
 /**
@@ -202,7 +207,8 @@ interface Allocation {
  * covers (end-of-day outstanding × rate × days); payments covering the same last day share one period, and a
  * payment with no interest (principal only) covers no period. A period with no balance falls back to the amounts
  * of the draws made by its last day (none: unallocated). Also estimate interest accrued after the last day paid, through
- * `onDate`.
+ * `onDate`, and what is left unpaid of the cycles the payments cover (a cycle paid in part). The unpaid part is
+ * cumulative: paying more for one cycle (a past-due remainder paid with the next statement) makes up for another.
  */
 function allocate(loan: Loan, draws: readonly LoanDraw[], payments: readonly LoanPayment[], onDate: LocalDate): Allocation {
   const interestPayments = payments.filter((p) => p.interestCents > 0);
@@ -226,7 +232,17 @@ function allocate(loan: Loan, draws: readonly LoanDraw[], payments: readonly Loa
     return { payment, shares: split };
   });
   const accruing = end > lastCut;
-  return { shares, unallocatedCents, perPayment, accruedCents: accruing ? interestOf(loan, windows.at(-1) as bigint[]) : 0, accruedFrom: accruing ? dateOfDay(lastCut) : null };
+  // Cycles that ended on or before `onDate` (a cycle paid ahead is not billed yet).
+  const billed = sum(cuts.slice(1).map((c, k) => (c <= end && throughCuts.includes(c) ? interestOf(loan, windows[k] as bigint[]) : 0)));
+  const paidForBilled = sum(interestPayments.filter((p) => dayNumber(p.interestThrough) < end).map((p) => p.interestCents));
+  return {
+    shares,
+    unallocatedCents,
+    perPayment,
+    accruedCents: accruing ? interestOf(loan, windows.at(-1) as bigint[]) : 0,
+    accruedFrom: accruing ? dateOfDay(lastCut) : null,
+    unpaidBilledCents: Math.max(0, billed - paidForBilled),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -300,7 +316,18 @@ export interface LoanSummary {
   /** ESTIMATE: interest since `interestPaidThrough` through `asOf` (billed or not), on the recorded balance. */
   accruedInterestCents: Cents;
   accruedFrom: LocalDate | null;
-  /** Principal owed + accrued interest (an estimate whenever accrued interest is not 0). */
+  /**
+   * The latest statement closing date from `accruedFrom` through `asOf` (by the statement day in force on `asOf`):
+   * accrued interest up to it has been billed, not paid. Null when no statement closed in that time (none of it is
+   * billed yet) or the loan has no statement day.
+   */
+  accruedBilledThrough: LocalDate | null;
+  /**
+   * ESTIMATE: interest for the days payments already cover that they did not pay (a cycle paid in part): the
+   * cycles' interest − the interest paid for them, never below 0. 0 when every cycle was paid in full.
+   */
+  unpaidBilledInterestCents: Cents;
+  /** Principal owed + unpaid billed interest + accrued interest (an estimate whenever either interest part is not 0). */
   owedNowCents: Cents;
   owedNowEstimated: boolean;
   creditLimitCents: Cents | null;
@@ -349,6 +376,14 @@ export interface LoanSummary {
 }
 
 const ceilDiv = (n: bigint, d: bigint): bigint => (n + d - 1n) / d;
+
+/** The latest statement closing date on or before `onDate` if it is on or after `from` (see `accruedBilledThrough`). */
+function billedThrough(loan: Loan, from: LocalDate | null, onDate: LocalDate): LocalDate | null {
+  const day = statementDayOn(loan, onDate);
+  if (from === null || day === null) return null;
+  const close = latestMonthDay(onDate, day);
+  return close >= from ? close : null;
+}
 
 /** Sats needed to raise `cents` at `priceCents` per BTC, rounded up (never negative). */
 function satsFor(cents: Cents, priceCents: Cents): Sats {
@@ -431,7 +466,7 @@ export function loanSummary(state: LedgerState, loanId: LoanId, priceCents: Cent
   const principalRepaidCents = sum(payments.map((p) => p.principalCents));
   const net = drawnCents - principalRepaidCents;
   const principalOwedCents = Math.max(0, net);
-  const owedNowCents = principalOwedCents + allocation.accruedCents;
+  const owedNowCents = principalOwedCents + allocation.unpaidBilledCents + allocation.accruedCents;
   const interestPaidCents = sum(payments.map((p) => p.interestCents));
   const otherDrawsCents = drawnCents - purchasesDrawnCents;
   const interestOnPurchasesCents = total((p) => p.interestShareCents);
@@ -462,8 +497,10 @@ export function loanSummary(state: LedgerState, loanId: LoanId, priceCents: Cent
     interestPaidThrough: throughDates.at(-1) ?? null,
     accruedInterestCents: allocation.accruedCents,
     accruedFrom: allocation.accruedFrom,
+    accruedBilledThrough: billedThrough(loan, allocation.accruedFrom, onDate),
+    unpaidBilledInterestCents: allocation.unpaidBilledCents,
     owedNowCents,
-    owedNowEstimated: allocation.accruedCents !== 0,
+    owedNowEstimated: allocation.accruedCents !== 0 || allocation.unpaidBilledCents !== 0,
     creditLimitCents: loan.creditLimitCents,
     availableCreditCents: loan.creditLimitCents === null ? null : loan.creditLimitCents - net,
     statements: loan.statements

@@ -1,5 +1,6 @@
-import { allBitcoin, carryforwardFor, TIERS, worthOf, yearOf, type AllBitcoin, type Holdings, type LedgerState, type Lot, type RetirementHolding, type Tier, type WalletType, type Worth } from '@bitcoin-basis/engine';
-import { confirmedLabel, satsToCents } from './format.ts';
+import { allBitcoin, carryforwardFor, retirementWorth, TIERS, valueOfPieces, yearOf, type AllBitcoin, type Holdings, type LedgerState, type Lot, type RetirementHolding, type Tier, type WalletType, type Worth, type WorthWithUnknown } from '@bitcoin-basis/engine';
+import { confirmedLabel, sharePercents, wholeDollarParts } from './format.ts';
+import { staleLosses } from './losses.ts';
 import { WALLET_TYPE_LABEL } from './wallet-label.ts';
 
 export interface StackYear {
@@ -33,6 +34,8 @@ export interface RetirementCard {
   balanceFrom: RetirementHolding['balanceFrom'];
   /** Worth and, when purchases are recorded, cost and gain. */
   worth: Worth;
+  /** `worth` in whole dollars as Held apart shows it: the wallets add up to the Retirement row under the hero. */
+  shown: Worth;
   /** Cost and gain are known (purchases recorded). */
   costKnown: boolean;
   /** The latest balance note does not match the purchases up to its date. */
@@ -47,7 +50,8 @@ export interface HoldingsView {
   worthCents: number | null;
   gainCents: number | null;
   lotCount: number;
-  documentedPercent: number;
+  /** Share of the taxable BTC in each tier (`sharePercents`: adds up to 100%, `under 1%` for a sliver, 100% only for all). */
+  tierShares: Record<Tier, string>;
   mix: Record<Tier, number>;
   stack: StackYear[];
   wallets: WalletCard[];
@@ -55,12 +59,33 @@ export interface HoldingsView {
   retirement: RetirementCard[];
   /** Taxable, retirement and all together; null when no retirement wallet holds anything (it would just repeat the total). */
   all: AllBitcoin | null;
+  /**
+   * The Taxable and Retirement rows under the hero, in whole dollars that add up to the hero's (`wholeDollarParts`:
+   * worth to worth, gain to gain). Null without retirement coins.
+   */
+  split: { taxable: Worth; retirement: WorthWithUnknown } | null;
+  /** The taxable unrealized gain as shown in whole dollars: the same figure as the Taxable row when there is one. */
+  taxableGainShownCents: number | null;
+  /** Losses from past years saved for this tax year. */
   carryforwardCents: number;
-  /** The tax year the saved losses are for, if one was saved. */
-  lossesYear: number | null;
+  /** None are saved for this year but an earlier year has some: the latest such year (ask to update them), else null. */
+  staleLossesFor: number | null;
   isEmpty: boolean;
 }
 
+
+/** The two rows under the all-Bitcoin hero, in whole dollars that add up to its worth and gain (see `wholeDollarParts`). */
+function splitShown(all: AllBitcoin): { taxable: Worth; retirement: WorthWithUnknown } {
+  const value = all.total.valueCents === null ? [all.taxable.valueCents, all.retirement.valueCents] : wholeDollarParts([all.taxable.valueCents, all.retirement.valueCents], all.total.valueCents);
+  const gain = all.total.gainCents === null ? [all.taxable.gainCents, all.retirement.gainCents] : wholeDollarParts([all.taxable.gainCents, all.retirement.gainCents], all.total.gainCents);
+  return { taxable: { ...all.taxable, valueCents: value[0] ?? null, gainCents: gain[0] ?? null }, retirement: { ...all.retirement, valueCents: value[1] ?? null, gainCents: gain[1] ?? null } };
+}
+
+/** Each tier's share of `mix` (see `sharePercents`). */
+export function tierShares(mix: Partial<Record<Tier, number>>): Record<Tier, string> {
+  const shares = sharePercents(TIERS.map((t) => mix[t] ?? 0));
+  return Object.fromEntries(TIERS.map((t, i) => [t, shares[i] as string])) as Record<Tier, string>;
+}
 
 export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: number | null, today: string): HoldingsView {
   const live = new Set(h.wallets.filter((w) => !w.frozen).map((w) => w.wallet));
@@ -99,8 +124,19 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
     };
   };
 
-  const documented = h.documentationMix.documented;
-  const worthCents = priceCents === null ? null : satsToCents(h.totalSats, priceCents);
+  // Lot by lot (each half-up, then added), as everywhere: the year rows, wallets and loan purchases add up to it exactly.
+  const worthCents = valueOfPieces(lots, priceCents);
+  const all = h.retirement.some((r) => r.sats > 0) ? allBitcoin(state, h, priceCents) : null;
+  const split = all === null ? null : splitShown(all);
+  const cards = h.retirement.map((r) => {
+    const costKnown = r.balanceFrom === 'purchases';
+    const worth = retirementWorth(state, r, priceCents);
+    return { id: r.wallet, name: r.name, sats: r.sats, balanceFrom: r.balanceFrom, worth: costKnown ? worth : { ...worth, gainCents: null, percent: null }, costKnown, noteDiffers: costKnown && r.snapshot !== null && !r.snapshot.matches };
+  });
+  // Whole dollars that add up to the Retirement row (or, without one, each wallet toward zero).
+  const values = wholeDollarParts(cards.map((c) => c.worth.valueCents), split?.retirement.valueCents ?? 0);
+  const gains = wholeDollarParts(cards.map((c) => c.worth.gainCents), split?.retirement.gainCents ?? 0);
+  const retirement: RetirementCard[] = cards.map((c, i) => ({ ...c, shown: split === null ? c.worth : { ...c.worth, valueCents: values[i] ?? null, gainCents: gains[i] ?? null } }));
   return {
     totalSats: h.totalSats,
     totalCostCents: h.totalCostCents,
@@ -108,7 +144,7 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
     worthCents,
     gainCents: worthCents === null ? null : worthCents - h.totalCostCents,
     lotCount: lots.length,
-    documentedPercent: h.totalSats === 0 ? 0 : Math.round((documented * 100) / h.totalSats),
+    tierShares: tierShares(h.documentationMix),
     mix: h.documentationMix,
     stack,
     wallets: h.wallets
@@ -116,14 +152,12 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
       .map(card)
       .sort((a, b) => b.sats - a.sats),
     frozen: h.wallets.filter((w) => w.frozen).map(card),
-    retirement: h.retirement.map((r) => {
-      const costKnown = r.balanceFrom === 'purchases';
-      const worth = worthOf(r.sats, r.costCents, priceCents);
-      return { id: r.wallet, name: r.name, sats: r.sats, balanceFrom: r.balanceFrom, worth: costKnown ? worth : { ...worth, gainCents: null, percent: null }, costKnown, noteDiffers: costKnown && r.snapshot !== null && !r.snapshot.matches };
-    }),
-    all: h.retirement.some((r) => r.sats > 0) ? allBitcoin(h, priceCents) : null,
+    retirement,
+    all,
+    split,
+    taxableGainShownCents: split === null ? worthCents === null ? null : worthCents - h.totalCostCents : split.taxable.gainCents,
     carryforwardCents: (({ st, lt }) => st + lt)(carryforwardFor(state.settings, yearOf(today), yearOf(today))),
-    lossesYear: yearOf(today),
+    staleLossesFor: staleLosses(state.settings, yearOf(today))?.savedFor ?? null,
     isEmpty: state.wallets.length === 0 && state.lots.length === 0,
   };
 }

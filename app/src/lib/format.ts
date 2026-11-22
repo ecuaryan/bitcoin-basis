@@ -31,28 +31,89 @@ export function groupedSats(sats: number): string {
   return sats.toLocaleString('en-US');
 }
 
-/** BTC to 4 decimals, rounded half-up on sats, for compact lists: `1.1802`. */
+/**
+ * BTC to 4 decimals, rounded half-up on sats, for compact lists: `1.1802`. An amount too small to show in 4 decimals
+ * keeps all 8 (`0.0000 4999`), so a few sats are never shown as zero.
+ */
 export function shortBtc(sats: number): string {
   const rounded = Math.floor((sats + 5_000) / 10_000); // units of 0.0001 BTC
+  if (rounded === 0 && sats !== 0) return groupedBtc(sats);
   const whole = Math.floor(rounded / 10_000);
   return `${whole}.${String(rounded % 10_000).padStart(4, '0')}`;
 }
 
 export interface MoneyFormat {
-  /** `cents` shows $1,234.56. `dollars` drops the cents, rounding toward zero so gains are never overstated. */
+  /**
+   * `cents` shows $1,234.56. `dollars` drops the cents, rounding toward zero so gains are never overstated; an amount
+   * under $1 (not $0) keeps its cents (`$0.40`), so it is never shown as $0.
+   */
   precision?: 'cents' | 'dollars';
   /** Put a + in front of gains. */
   signed?: boolean;
+}
+
+/**
+ * Parts shown in whole dollars under a total shown in whole dollars, so the parts add up to the total exactly (largest
+ * remainder). Each part starts at its whole dollars toward zero, as `formatMoney` shows it; the dollar or two they fall
+ * short of the total's (toward zero) go to the parts closest to their next dollar, in the total's direction. Returns cents
+ * (whole dollars) to show with `precision: 'dollars'`. A part under $1 (not $0) keeps its cents, as `formatMoney` shows
+ * it. Null parts stay null and are left out.
+ */
+export function wholeDollarParts(parts: readonly (number | null)[], total: number): (number | null)[] {
+  const whole = (c: number): number => Math.trunc(c / 100) * 100;
+  const out = parts.map((p) => (p === null ? null : Math.abs(p) < 100 ? p : whole(p)));
+  const shown = out.reduce<number>((t, p) => t + (p ?? 0), 0);
+  let left = Math.round((whole(total) - shown) / 100);
+  const step = Math.sign(left);
+  // Closest to the next dollar in the total's direction first; earlier first on a tie. Parts under $1 keep their cents.
+  const order = parts
+    .map((p, i) => ({ i, rem: p === null || Math.abs(p) < 100 ? -1 : (step > 0 ? p - whole(p) : whole(p) - p) }))
+    .filter((x) => x.rem > 0)
+    .sort((a, b) => b.rem - a.rem || a.i - b.i);
+  for (const { i } of order) {
+    if (left === 0) break;
+    out[i] = (out[i] as number) + step * 100;
+    left -= step;
+  }
+  return out;
 }
 
 /** Cents as dollars: `$1,234.56`, `−$1,234.56` (a real minus sign), `+$180,329`. */
 export function formatMoney(cents: number, { precision = 'cents', signed = false }: MoneyFormat = {}): string {
   const abs = Math.abs(cents);
   const whole = Math.floor(abs / 100);
-  const body = precision === 'dollars' ? whole.toLocaleString('en-US') : `${whole.toLocaleString('en-US')}.${String(abs % 100).padStart(2, '0')}`;
-  const negative = cents < 0 && (precision === 'cents' || whole > 0);
+  const dollars = precision === 'dollars' && (whole > 0 || abs === 0);
+  const body = dollars ? whole.toLocaleString('en-US') : `${whole.toLocaleString('en-US')}.${String(abs % 100).padStart(2, '0')}`;
+  const negative = cents < 0;
   const sign = negative ? '\u2212' : signed && cents > 0 ? '+' : '';
   return `${sign}$${body}`;
+}
+
+/**
+ * Whole-percent shares of a total that add up to 100% (largest remainder: each share rounded down, the leftover points
+ * to the largest remainders, earlier first on a tie), with two rules so a share is never misleading: only a part that is
+ * all of the total shows `100%` (a part that is not gets 99% and the point goes to the next), and a part that is not zero
+ * never shows `0%` (`under 1%` instead). Parts are whole sats; integer math (BigInt), no floats.
+ */
+export function sharePercents(parts: readonly number[]): string[] {
+  const total = parts.reduce((t, p) => t + BigInt(p), 0n);
+  if (total <= 0n) return parts.map(() => '0%');
+  const pts = parts.map((p) => Number((BigInt(p) * 100n) / total));
+  const rem = parts.map((p) => (BigInt(p) * 100n) % total);
+  const order = parts.map((_, i) => i).sort((a, b) => ((rem[a] as bigint) === (rem[b] as bigint) ? a - b : (rem[a] as bigint) > (rem[b] as bigint) ? -1 : 1));
+  let left = 100 - pts.reduce((t, p) => t + p, 0);
+  for (const i of order) {
+    if (left <= 0) break;
+    pts[i] = (pts[i] as number) + 1;
+    left -= 1;
+  }
+  parts.forEach((p, i) => {
+    if (pts[i] !== 100 || BigInt(p) === total) return;
+    pts[i] = 99;
+    const next = order.find((j) => j !== i && (parts[j] as number) > 0) as number;
+    pts[next] = (pts[next] as number) + 1;
+  });
+  return parts.map((p, i) => (p === 0 ? '0%' : pts[i] === 0 ? 'under 1%' : `${pts[i]}%`));
 }
 
 /** Value of `sats` at `priceCents` per BTC, in cents (half-up, no floats). */
@@ -178,11 +239,14 @@ export function prettyBtc(clean: string): string {
   return `${withCommas(whole === '' ? '0' : whole)}.${f.slice(0, 4)} ${f.slice(4)}`;
 }
 
-/** How long coins have been held, in whole units toward zero: `Bought today`, `Held 12 days`, `Held 8 months`, `Held 2 yr 3 mo`. */
+/**
+ * How long coins have been held, in whole units toward zero: `Bought today`, `Held 12 days`, `Held 8 months`, `Held 2 yr
+ * 3 mo`. Days until two whole months have passed, so the count never drops (`Held 60 days`, then `Held 2 months`).
+ */
 export function heldLabel(days: number): string {
   if (days < 1) return 'Bought today';
-  if (days < 60) return `Held ${countOf(days, 'day')}`;
   const months = Math.floor((days * 12) / 365);
+  if (months < 2) return `Held ${countOf(days, 'day')}`;
   if (months < 12) return `Held ${countOf(months, 'month')}`;
   const years = Math.floor(months / 12);
   return months % 12 === 0 ? `Held ${countOf(years, 'year')}` : `Held ${years} yr ${months % 12} mo`;

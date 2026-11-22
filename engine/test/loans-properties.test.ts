@@ -114,7 +114,8 @@ describe('loan properties', () => {
         expect(s.principalOwedCents === 0 || s.creditCents === 0).toBe(true);
         expect(s.principalOwedCents - s.creditCents).toBe(s.drawnCents - s.principalRepaidCents);
         expect(s.accruedInterestCents).toBeGreaterThanOrEqual(0);
-        expect(s.owedNowCents).toBe(s.principalOwedCents + s.accruedInterestCents);
+        expect(s.unpaidBilledInterestCents).toBeGreaterThanOrEqual(0);
+        expect(s.owedNowCents).toBe(s.principalOwedCents + s.unpaidBilledInterestCents + s.accruedInterestCents);
       }),
       RUNS,
     );

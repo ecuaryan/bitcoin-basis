@@ -5,7 +5,7 @@ import { TIER_LABEL } from '../../lib/origin.ts';
 import { countOf } from '../../lib/format.ts';
 import { Money } from '../../ui/Amount.tsx';
 import { InfoIcon } from '../../ui/more-icons.tsx';
-import { rangeLabel, shortPercentFromBp, type Segment } from './sell-logic.ts';
+import { rangeLabel, riskPercentFromBp, taxEffectLabel, type Segment } from './sell-logic.ts';
 
 export const TIER_DOT: Record<Tier, string> = { documented: 'bg-accent', reconstructed: 'bg-cream', estimated: 'bg-tier-estimated', unknown: 'bg-tier-unknown' };
 
@@ -73,6 +73,7 @@ export function PlanCard({ title, plan, active, onSelect, carryBest = false, cla
   if (rows.length === 0) rows.push({ label: 'Gain', cents: 0 });
   const tone = active ? 'hot' : 'plain';
   const carried = plan.carryforwardOut.st + plan.carryforwardOut.lt;
+  const tax = taxEffectLabel(plan.totalTaxCents);
   return (
     <button
       type="button"
@@ -99,8 +100,8 @@ export function PlanCard({ title, plan, active, onSelect, carryBest = false, cla
           <Money cents={r.cents} signed countUp />
         </Row>
       ))}
-      <Row label="Tax this adds" tone={tone} big>
-        <Money cents={plan.totalTaxCents} countUp />
+      <Row label={tax.label} tone={tone} big>
+        <Money cents={tax.cents} countUp />
       </Row>
       <Row label="Losses left for next year" tone={tone}>
         <span className={cx(carryBest && 'text-amber')}>
@@ -109,7 +110,7 @@ export function PlanCard({ title, plan, active, onSelect, carryBest = false, cla
       </Row>
       {plan.estimatedShareBp > 0 && (
         <Row label="On Estimated or Unknown cost" tone={tone}>
-          {shortPercentFromBp(plan.estimatedShareBp)}
+          {riskPercentFromBp(plan.estimatedShareBp)}
         </Row>
       )}
     </button>

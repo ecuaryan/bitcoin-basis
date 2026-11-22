@@ -4,6 +4,7 @@ import { Fragment, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { countOf } from '../../lib/format.ts';
 import { TIER_LABEL } from '../../lib/origin.ts';
+import { tierShares } from '../../lib/holdings-view.ts';
 import { Segmented, type SegmentedOption } from '../../ui/Segmented.tsx';
 import { nowInstant } from '../log/model.ts';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -197,7 +198,8 @@ function ReadyBlock({ p, types, setTypes, rates, setRates, progress, failed, onA
   const r = p.retirementBuys.length;
   const lots = (k: number) => countOf(k, 'lot');
   const what = [...(n > 0 || r === 0 ? [lots(n)] : []), ...(r > 0 ? [countOf(r, 'retirement purchase')] : [])].join(' and ');
-  const mix = TIERS.filter((t) => (p.tiers[t] ?? 0) > 0).map((t) => `${TIER_LABEL[t]} ${Math.max(1, Math.round(((p.tiers[t] ?? 0) * 100) / p.sats))}%`);
+  const shares = tierShares(p.tiers);
+  const mix = TIERS.filter((t) => (p.tiers[t] ?? 0) > 0).map((t) => `${TIER_LABEL[t]} ${shares[t]}`);
   const busy = progress !== null;
   const make = p.newWallets.length > 0;
   const ratesReady = loanEntries(p.newLoans, rates, '', '') !== null;

@@ -66,7 +66,8 @@ test('a year with its own table shows no notice, and Settings names the state ra
 test('a new book: filing status and state start Not set, Tax asks once, and each change shows Saved ✓ by its field', async ({ page }) => {
   await setUp(page);
   await go(page, '/tax');
-  const prompt = page.getByRole('link', { name: 'Set your filing status and state for tax estimates' });
+  const prompt = page.getByRole('link', { name: 'Set your filing status, state and income for tax estimates' });
+  await expect(page.getByText('Assumes $0 other income. Set your income in Settings.')).toBeVisible();
   await expect(prompt).toBeVisible();
   await expectNoViolations(page);
   await prompt.click();
@@ -100,7 +101,19 @@ test('a new book: filing status and state start Not set, Tax asks once, and each
   await expectNoViolations(page);
 
   await go(page, '/tax');
-  await expect(page.getByRole('link', { name: 'Set your filing status and state for tax estimates' })).toHaveCount(0);
+  // Income was never entered: the prompt asks for it alone, and the estimates say what they assume.
+  await expect(page.getByRole('link', { name: 'Set your income for tax estimates' })).toBeVisible();
+  await expect(page.getByText('Assumes $0 other income. Set your income in Settings.')).toBeVisible();
+  await go(page, '/settings#taxes');
+  const wages = page.getByLabel('Wages and other income (a year)');
+  await expect(wages).toHaveValue('');
+  await wages.fill('0');
+  await wages.blur();
+  await expect(taxes.getByText('Saved ✓')).toHaveCount(1);
+  await go(page, '/tax');
+  // A saved $0 is an answer: no prompt, no note.
+  await expect(page.getByRole('link', { name: /for tax estimates$/ })).toHaveCount(0);
+  await expect(page.getByText('Assumes $0 other income.', { exact: false })).toHaveCount(0);
 });
 
 test('Settings › App shows the version and build, linked to the commit', async ({ page }) => {

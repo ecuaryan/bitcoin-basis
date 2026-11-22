@@ -18,6 +18,10 @@ describe('amounts', () => {
     expect(amountText(1_000_000, 'usd', 7_500_000)).toBe('750.00');
     expect(amountText(1_000_000, 'btc', null)).toBe('0.01000000');
   });
+  it('an amount too large to represent at the price is no amount, never a crash', () => {
+    expect(parseAmount('999999999999', 'usd', 1)).toBeNull();
+    expect(amountText(2_100_000_000_000_000, 'usd', 100_000_000_000_000)).toBe('');
+  });
 });
 
 describe('time zones', () => {

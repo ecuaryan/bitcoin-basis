@@ -4,6 +4,7 @@
  */
 import { latestMonthDay, localDate, loanSummary, originLotId, suggestLoanPayment, type Entry, type LedgerState, type Loan, type LoanDraw, type LoanId, type LoanPurchase, type LotId } from '@bitcoin-basis/engine';
 import { buildItems } from './entry-list.ts';
+import { maskDigits } from './format.ts';
 import type { WorthNow } from './worth-now.ts';
 
 // ---- Tags on loan-funded purchases ------------------------------------------------------------
@@ -48,14 +49,16 @@ export function loanTagFor(state: LedgerState, lotId: LotId): LoanTagInfo | null
 
 /**
  * How far the price is from break-even, in the nearest whole percent (under half a percent says within 1%): `Price is 22% below
- * break-even`. Null when either is unknown.
+ * break-even`. Null when either is unknown. `masked` (Hide amounts) hides the percent like every other gain percent; the
+ * words stay.
  */
-export function breakEvenWords(priceCents: number | null, breakEvenCents: number | null): string | null {
+export function breakEvenWords(priceCents: number | null, breakEvenCents: number | null, masked = false): string | null {
   if (priceCents === null || breakEvenCents === null || breakEvenCents <= 0) return null;
   const diff = BigInt(priceCents - breakEvenCents);
   const pct = Number(((diff < 0n ? -diff : diff) * 200n + BigInt(breakEvenCents)) / (2n * BigInt(breakEvenCents)));
-  if (pct === 0) return priceCents === breakEvenCents ? 'Price is at break-even' : 'Price is within 1% of break-even';
-  return `Price is ${pct}% ${diff < 0n ? 'below' : 'above'} break-even`;
+  const shown = (text: string): string => (masked ? maskDigits(text) : text);
+  if (pct === 0) return priceCents === breakEvenCents ? 'Price is at break-even' : `Price is within ${shown('1%')} of break-even`;
+  return `Price is ${shown(`${pct}%`)} ${diff < 0n ? 'below' : 'above'} break-even`;
 }
 
 /** The statement day in words: `the 15th`, `the last day of the month`. */

@@ -2,7 +2,7 @@
 export const ENGINE_VERSION = 1;
 
 export * from './types.ts';
-export { divRoundHalfUp, mulDivRoundHalfUp, splitProportional, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
+export { divRoundHalfUp, mulDivOrNull, mulDivRoundHalfUp, splitProportional, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
 export { ok, err } from './result.ts';
 export { dateOfDay, dayNumber, latestMonthDay, DEFAULT_TIME_ZONE, isLongTerm, isValidInstant, isValidLocalDate, isValidTimeZone, localDate, oneYearAnniversary, taxYear, yearOf } from './dates.ts';
 export { createUuidV7, isUuidV7, uuidv7, type UuidV7Options } from './uuidv7.ts';
@@ -11,7 +11,7 @@ export { parseEntry } from './validate.ts';
 export { replay, DEFAULT_SETTINGS, APPRAISAL_THRESHOLD_CENTS } from './replay.ts';
 export { lowestCostFirst, lowestCostOrder, lowestTaxOrder, oldestFirst, oldestFirstOrder, picksAfterMove, picksFor, satsGivenBelowCost, splitCost, splitMovePicks, takeInOrder, termFor, validatePicks, type LowestTaxOptions } from './picks.ts';
 export { averageCostPerBtc, giftsOverExclusion, giftTotalsByRecipient, holdings, yearSummary, type Holdings, type RecipientTotal, type RetirementHolding, type RetirementSnapshotCheck, type WalletHolding, type YearSummary } from './reports.ts';
-export { allBitcoin, retirementPurchases, worthOf, type AllBitcoin, type RetirementPurchaseView, type Worth, type WorthWithUnknown } from './retirement.ts';
+export { allBitcoin, retirementPurchases, retirementWorth, taxableLots, valueOfPieces, worthOf, worthOfPieces, type AllBitcoin, type RetirementPurchaseView, type Worth, type WorthWithUnknown } from './retirement.ts';
 export { canSellFrom, type SellRefusal } from './sell-guard.ts';
 export { originLotId, traceCoins, type GoneKind, type GonePiece, type TracedCoins } from './trace.ts';
 export {

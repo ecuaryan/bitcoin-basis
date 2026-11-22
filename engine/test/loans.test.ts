@@ -76,6 +76,7 @@ describe('Example L: four $5,000 purchases on a 6.5% HELOC', () => {
       interestPaidThrough: '2025-06-30',
       accruedInterestCents: 14_211,
       accruedFrom: '2025-07-01',
+      unpaidBilledInterestCents: 0,
       owedNowCents: 1_914_211,
       owedNowEstimated: true,
       creditLimitCents: 5_000_000,
@@ -163,7 +164,7 @@ describe('Example C: interest on a constant balance with a rate history', () => 
   });
 
   test('a draw (not a purchase) counts toward what is owed; nothing is attributed to coins', () => {
-    const s = loanSummary(replay([...entries(), payment('Y', 'c', '2025-02-01', '220.82')]), 'c', PRICE, '2025-02-01');
+    const s = loanSummary(replay([...entries(), payment('Y', 'c', '2025-01-31', '220.82', '0', { interestThrough: '2025-01-31' })]), 'c', PRICE, '2025-01-31');
     expect(s).toMatchObject({ drawnCents: 4_000_000, otherDrawsCents: 4_000_000, purchaseCount: 0, interestOnPurchasesCents: 0, interestOnPurchasesEstimated: true, heldSats: 0, breakEvenPriceCents: null, payoffPriceCents: null, payoffLeftoverSats: -42_105_264, availableCreditCents: null });
   });
 });
@@ -197,7 +198,9 @@ describe('interest allocation edge cases', () => {
     const state = replay([...coins(), loan('h', '2025-01-01', 65_000), link('K1', 'h', 'A'), link('K2', 'h', 'B'), payment('Y1', 'h', '2025-03-05', '10', '0', { interestThrough: '2025-02-28' }), payment('Y2', 'h', '2025-03-06', '10.01', '0', { interestThrough: '2025-02-28' }), payment('Y3', 'h', '2025-03-07', '5', '0', { interestThrough: '2025-03-31' })]);
     const rows = loanPurchases(state, 'h', PRICE, '2025-03-10');
     expect(rows.reduce((s, p) => s + p.interestShareCents, 0)).toBe(2_501);
-    expect(loanSummary(state, 'h', PRICE, '2025-03-10')).toMatchObject({ accruedInterestCents: 0, accruedFrom: null, interestPaidThrough: '2025-03-31', owedNowCents: 2_000_000 });
+    // Jan 10 - Feb 28 was $122.88 of interest ($10,000 from Jan 10, $20,000 from Feb 10) and only $20.01 of it was
+    // paid: $102.87 is billed and unpaid. March is paid ahead, so it is not billed yet and nothing accrues.
+    expect(loanSummary(state, 'h', PRICE, '2025-03-10')).toMatchObject({ accruedInterestCents: 0, accruedFrom: null, interestPaidThrough: '2025-03-31', unpaidBilledInterestCents: 10_287, owedNowCents: 2_010_287, owedNowEstimated: true });
   });
 
   test('principal repaid splits across draws in proportion; overpaying leaves a credit that a later draw uses first', () => {

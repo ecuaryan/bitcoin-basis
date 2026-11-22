@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
-import { draftFrom, patchFrom, stateOptionLabel, taxProfileSet } from './settings-logic.ts';
+import { assumesNoIncome, draftFrom, patchFrom, stateOptionLabel, taxProfileMissing, taxProfileSet } from './settings-logic.ts';
 
 describe('settings form', () => {
   it('starts from the current settings and changes nothing if left alone', () => {
@@ -29,14 +29,38 @@ describe('settings form', () => {
     expect(patchFrom(saved, draftFrom(saved, 2026), 2026)).toEqual({ ok: true, patch: {} });
   });
   it('starts filing status and state as not set for a new book, and saves them once chosen, even if they match the default', () => {
-    const unset = { filing: false, state: false };
+    const unset = { filing: false, state: false, wages: false };
     const d = draftFrom(DEFAULT_SETTINGS, 2026, unset);
     expect(d).toMatchObject({ filingStatus: '', stateChoice: '' });
     expect(patchFrom(DEFAULT_SETTINGS, d, 2026, unset)).toEqual({ ok: true, patch: {} });
     expect(patchFrom(DEFAULT_SETTINGS, { ...d, filingStatus: 'single', stateChoice: 'ID' }, 2026, unset)).toEqual({ ok: true, patch: { filingStatus: 'single', state: { kind: 'flat', state: 'ID' } } });
-    expect(taxProfileSet([])).toEqual({ filing: false, state: false });
+    expect(taxProfileSet([])).toEqual({ filing: false, state: false, wages: false });
     const entry = { id: 's', kind: 'settings', at: '2026-01-01T00:00:00Z', tz: 'UTC', patch: { filingStatus: 'single' } } as const;
-    expect(taxProfileSet([entry])).toEqual({ filing: true, state: false });
+    expect(taxProfileSet([entry])).toEqual({ filing: true, state: false, wages: false });
+  });
+  it('income starts empty until saved once; a saved $0 is an answer; the prompt asks only for what is missing', () => {
+    const unset = { filing: true, state: true, wages: false };
+    const d = draftFrom(DEFAULT_SETTINGS, 2026, unset);
+    expect(d.wages).toBe('');
+    // Left empty: nothing saved, no error.
+    expect(patchFrom(DEFAULT_SETTINGS, d, 2026, unset)).toEqual({ ok: true, patch: {} });
+    // 0 typed: saved, even though it equals the default.
+    expect(patchFrom(DEFAULT_SETTINGS, { ...d, wages: '0' }, 2026, unset)).toEqual({ ok: true, patch: { wagesCents: 0 } });
+    expect(patchFrom(DEFAULT_SETTINGS, { ...d, wages: '130000' }, 2026, unset)).toEqual({ ok: true, patch: { wagesCents: 13_000_000 } });
+    expect(patchFrom(DEFAULT_SETTINGS, { ...d, wages: 'x' }, 2026, unset)).toMatchObject({ ok: false });
+    // Once saved, an empty box is a mistake, as before.
+    expect(patchFrom(DEFAULT_SETTINGS, { ...d, wages: '' }, 2026)).toMatchObject({ ok: false });
+    // An amount saved before (an older book) shows even if no settings entry is found.
+    expect(draftFrom({ ...DEFAULT_SETTINGS, wagesCents: 500 }, 2026, unset).wages).toBe('5');
+    const wages = { id: 'w', kind: 'settings', at: '2026-01-01T00:00:00Z', tz: 'UTC', patch: { wagesCents: 0 } } as const;
+    expect(taxProfileSet([wages])).toEqual({ filing: false, state: false, wages: true });
+    expect(assumesNoIncome({ filing: true, state: true, wages: false }, { wagesCents: 0 })).toBe(true);
+    expect(assumesNoIncome({ filing: true, state: true, wages: true }, { wagesCents: 0 })).toBe(false);
+    expect(assumesNoIncome({ filing: true, state: true, wages: false }, { wagesCents: 1 })).toBe(false);
+    expect(taxProfileMissing({ filing: false, state: false, wages: false })).toBe('filing status, state and income');
+    expect(taxProfileMissing({ filing: true, state: false, wages: false })).toBe('state and income');
+    expect(taxProfileMissing({ filing: true, state: true, wages: false })).toBe('income');
+    expect(taxProfileMissing({ filing: true, state: true, wages: true })).toBeNull();
   });
   it('a state with graduated rates saves the rate typed for it, and nothing until one is typed', () => {
     const d = { ...draftFrom(DEFAULT_SETTINGS), stateChoice: 'CA', stateRate: '' };

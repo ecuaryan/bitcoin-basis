@@ -1,5 +1,6 @@
 import { parseBtc, parseDollars, planBorrow, taxContext, yearOf } from '@bitcoin-basis/engine';
 import { TaxTableNotice } from '../../ui/TaxTableNotice.tsx';
+import { NoIncomeNote } from '../tax/TaxProfilePrompt.tsx';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
@@ -14,10 +15,10 @@ import { PriceUnavailable } from '../../ui/PriceProblem.tsx';
 import { BtcInput, MoneyInput, PercentInput } from '../../ui/formatted-inputs.tsx';
 import { SelectBox } from '../../ui/Field.tsx';
 import { useToast } from '../../ui/Toast.tsx';
-import { loadScenarios, parsePercentBp, priceScale, roomPercent, saveScenarios, type SavedScenario } from './borrow-logic.ts';
+import { lenderRoom, loadScenarios, parsePercentBp, priceScale, saveScenarios, type SavedScenario } from './borrow-logic.ts';
 import { hasLosses } from '../../lib/losses.ts';
 import { Note } from './sell-parts.tsx';
-import { percentFromBp, rangeLabel } from './sell-logic.ts';
+import { percentFromBp, rangeLabel, taxEffectLabel } from './sell-logic.ts';
 import { useHelp } from '../../ui/Help.tsx';
 
 function Bar({ plan, todayCents }: { plan: { liquidationPriceCents: number; marginCallPriceCents: number }; todayCents: number }) {
@@ -170,6 +171,8 @@ export function Borrow() {
     const { plan } = outcome;
     const sale = plan.liquidation.sale;
     const covered = sale.totalTaxCents === 0 && sale.gainCents > 0 && hasLosses(state.settings, year, today);
+    const room = lenderRoom(plan);
+    const saleTax = taxEffectLabel(sale.totalTaxCents, 'Tax that sale would add', 'Tax that sale would save');
     const rows: [string, ReactNode][] = [
       ['Interest a year', <Money key="i" cents={plan.interestPerYearCents} precision="dollars" />],
       [
@@ -179,9 +182,9 @@ export function Borrow() {
         </span>,
       ],
       [
-        'Tax that sale would add',
+        saleTax.label,
         <span key="t">
-          <Money cents={sale.totalTaxCents} precision="dollars" /> · {sale.gainCents < 0 ? 'loss' : 'gain'} <Money cents={Math.abs(sale.gainCents)} precision="dollars" />
+          <Money cents={saleTax.cents} precision="dollars" /> · {sale.gainCents < 0 ? 'loss' : 'gain'} <Money cents={Math.abs(sale.gainCents)} precision="dollars" />
           {covered ? ' covered by losses from past years' : ''}
         </span>,
       ],
@@ -194,12 +197,19 @@ export function Borrow() {
               <span className="text-xs font-semibold tracking-[0.02em] text-amber">LOAN VS. COIN VALUE TODAY</span>
               <span className="font-display text-[34px] font-semibold leading-[1.1]">{percentFromBp(plan.ltvBp)}</span>
             </div>
-            <div className="flex flex-col items-end gap-0.5">
-              <span className="text-xs text-soft">Price could fall</span>
-              <span className="text-xl font-bold">{roomPercent(plan.dropToLiquidationBp)}%</span>
-              <span className="text-xs text-soft">before the lender sells</span>
-            </div>
+            {room.kind === 'sells' ? (
+              <div className="flex max-w-[55%] flex-col items-end gap-0.5 text-right">
+                <span className="text-[15px] font-bold leading-snug text-loss">The lender would already sell at this price</span>
+              </div>
+            ) : (
+              <div className="flex flex-col items-end gap-0.5">
+                <span className="text-xs text-soft">Price could fall</span>
+                <span className="text-xl font-bold">{room.percent}</span>
+                <span className="text-xs text-soft">before the lender sells</span>
+              </div>
+            )}
           </div>
+          {room.kind === 'room' && room.marginCallNow ? <p className="m-0 text-[13px] font-semibold text-amber">Already past the margin call: the lender would ask you to add coins or pay some back.</p> : null}
           <Bar plan={plan} todayCents={price} />
         </section>
         <section aria-label="Costs" className="rounded-[18px] border border-line bg-surface px-4 py-0.5">
@@ -222,6 +232,7 @@ export function Borrow() {
       <div className="flex flex-col gap-3">
         {results}
         <TaxTableNotice year={year} />
+        <NoIncomeNote />
         <Note>Planning only. If the lender sells your coins, that is a sale, so it uses them up and can create tax. Lenders differ: check how yours picks coins. Estimates, not tax advice.</Note>
         <div className="flex gap-2.5">
           <Button className="min-h-[54px] flex-1 !rounded-2xl" onClick={save} disabled={outcome.kind !== 'plan'}>

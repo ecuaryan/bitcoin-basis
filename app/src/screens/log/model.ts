@@ -10,6 +10,7 @@ import {
   giftsOverExclusion,
   incrementalTax,
   lowestCostOrder,
+  mulDivOrNull,
   mulDivRoundHalfUp,
   oldestFirstOrder,
   parseBtc,
@@ -50,7 +51,8 @@ export function parseAmount(text: string, unit: AmountUnit, priceCents: number |
   }
   if (priceCents === null || priceCents <= 0) return null;
   const cents = parseDollars(t);
-  return cents === null ? null : mulDivRoundHalfUp(cents, SATS_PER_BTC, priceCents);
+  // An absurd amount at the price cannot be represented: no amount (the field says so), never a crash.
+  return cents === null ? null : mulDivOrNull(cents, SATS_PER_BTC, priceCents);
 }
 
 /** Sats as text in a unit (used when switching units so the number stays the same amount). */
@@ -58,7 +60,8 @@ export function amountText(sats: number | null, unit: AmountUnit, priceCents: nu
   if (sats === null) return '';
   if (unit === 'btc') return formatBtc(sats);
   if (unit === 'sats') return String(sats);
-  return priceCents === null || priceCents <= 0 ? '' : formatCents(mulDivRoundHalfUp(sats, priceCents, SATS_PER_BTC));
+  const cents = priceCents === null || priceCents <= 0 ? null : mulDivOrNull(sats, priceCents, SATS_PER_BTC);
+  return cents === null ? '' : formatCents(cents);
 }
 
 export function centsText(cents: number | null): string {

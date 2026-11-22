@@ -1,4 +1,5 @@
 import { type Entry } from '@bitcoin-basis/engine';
+import { NoIncomeNote } from '../tax/TaxProfilePrompt.tsx';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -76,6 +77,7 @@ function EffectCard({ effect }: { effect: Effect }) {
           {n}
         </p>
       ))}
+      {tax !== null ? <NoIncomeNote link={false} /> : null}
       {tax !== null || effect.tone !== 'none' ? <p className="m-0 text-xs text-muted">Estimates only. Not tax advice.</p> : null}
     </section>
   );

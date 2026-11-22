@@ -1,5 +1,5 @@
 import { lossesForYear } from '../../lib/losses.ts';
-import { federalTableFor, taxForYear, yearOf, yearSummary, type Cents, type Entry, type LedgerState, type Netting, type Settings, type Wallet, stateChoiceFromSettings, giftsOverExclusion, type RecipientTotal, type YearSummary } from '@bitcoin-basis/engine';
+import { federalTableFor, localDate, taxForYear, yearOf, yearSummary, type Cents, type Term, type Entry, type LedgerState, type Netting, type Settings, type Wallet, stateChoiceFromSettings, giftsOverExclusion, type RecipientTotal, type YearSummary } from '@bitcoin-basis/engine';
 
 /** Years worth choosing: any with activity or a closing, plus this year; newest first. */
 export function yearsAvailable(state: LedgerState, today: string): number[] {
@@ -88,6 +88,52 @@ export function totalsByKind(s: YearSummary): { sales: KindTotals; spending: Kin
   return out;
 }
 
+/** `short`, `long` or `both` from the holding periods actually used (a $0 gain keeps its real term). */
+export function termWord(terms: readonly Term[]): 'short' | 'long' | 'both' {
+  const short = terms.includes('short');
+  const long = terms.includes('long');
+  return short && long ? 'both' : long ? 'long' : 'short';
+}
+
+/** One line of the CPA summary's Form 8949 detail: a disposal, a frozen-platform close-out or a payout after one. */
+export interface DetailRow {
+  key: string;
+  date: string;
+  wallet: string;
+  /** As in the 8949 CSV's kind column: `sell`, `spend`, `fee`, `close-out`, `recovery`. */
+  kind: string;
+  /** Null for a payout after a close-out (a gain on $0 basis, not coins disposed of). */
+  sats: number | null;
+  proceedsCents: Cents;
+  costCents: Cents;
+  gainCents: Cents;
+  term: 'short' | 'long' | 'both';
+}
+
+/**
+ * Everything the 8949 CSV lists for the year, one row per entry, oldest first: disposals, close-out losses (proceeds =
+ * what was recovered by the loss date) and payouts after a close-out ($0 cost). The terms come from the lots' holding
+ * periods, so a $0 gain says long or short as it is.
+ */
+export function form8949Detail(s: YearSummary): DetailRow[] {
+  const rows: DetailRow[] = [
+    ...s.disposals.map((d) => ({ key: d.entryId, date: d.date, wallet: d.wallet, kind: d.kind as string, sats: d.sats, proceedsCents: d.proceedsCents, costCents: d.costCents, gainCents: d.gainCents, term: termWord(d.picks.map((p) => p.term)) })),
+    ...s.closeOuts.map((c) => ({ key: c.entryId, date: c.lossDate, wallet: c.wallet, kind: 'close-out', sats: c.sats, proceedsCents: c.recoveredCents, costCents: c.costCents, gainCents: c.gainCents, term: termWord(c.pieces.map((p) => p.term)) })),
+    ...s.recoveries.map((r) => ({
+      key: r.entryId,
+      date: r.date,
+      wallet: r.wallet,
+      kind: 'recovery',
+      sats: null,
+      proceedsCents: r.gainCents,
+      costCents: 0,
+      gainCents: r.gainCents,
+      term: termWord([...(r.stGainCents !== 0 ? ['short' as const] : []), ...(r.ltGainCents !== 0 || r.stGainCents === 0 ? ['long' as const] : [])]),
+    })),
+  ];
+  return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
 export interface YearTaxView {
   /** Totals before losses from past years. */
   stCents: Cents;
@@ -141,7 +187,8 @@ export interface Form1099Row {
  */
 export function form1099Rows(state: LedgerState, year: number, entries: readonly Entry[] = []): Form1099Row[] {
   const touched = new Set<string>();
-  for (const e of entries) if ('wallet' in e && typeof e.wallet === 'string' && Number(e.at.slice(0, 4)) === year) touched.add(e.wallet);
+  // The tax year of an entry is its local date (as everywhere), not the UTC year of its instant.
+  for (const e of entries) if ('wallet' in e && typeof e.wallet === 'string' && yearOf(localDate(e.at, e.tz)) === year) touched.add(e.wallet);
   const rows: Form1099Row[] = [];
   for (const w of state.wallets) {
     if (w.type !== 'exchange') continue;

@@ -40,7 +40,7 @@ Do not run `npm install` to change dependencies unless asked. Versions are exact
 6. **CSP and Trusted Types stay strict.** `script-src 'self'`, `style-src 'self'`, `require-trusted-types-for 'script'`. No inline scripts or `style=` attributes in markup strings, no remote fonts or images, no new origins in `connect-src`. `app/public/_headers` and `worker/src/headers.ts` must match (a test checks).
 7. **No fake code in production.** The fake server and authenticator exist only in `--mode fake`; `app/e2e/prod-bundle.spec.ts` checks the production bundle.
 8. **Synthetic data only.** Never add real balances, dates, wallet names, keys or personal data to the repo, tests, screenshots or docs. Use the numbers in [docs/engine-spec.md](docs/engine-spec.md) and `app/src/demo/`. Gitleaks runs on every push.
-9. **Money shown through `<Money>` and `<Amount>`** so Hide amounts works. Whole-dollar display rounds toward zero.
+9. **Money shown through `<Money>` and `<Amount>`** so Hide amounts works. Whole-dollar display rounds toward zero (under $1 keeps its cents). Coins are valued lot by lot (`valueOfPieces`), so parts add up to totals.
 10. **No tax claims without a source.** Tax tables carry their source and tests. Label estimates as estimates.
 
 ## How to verify

@@ -21,6 +21,18 @@ export function roomPercent(bp: number): number {
   return Math.max(0, Math.floor(bp / 100));
 }
 
+/**
+ * How close the lender is to acting at today's price, in words. Past (or at) the sell line: the lender would already
+ * sell. Otherwise the room left, rounded down (`under 1%` rather than 0%), and whether a margin call is already due.
+ */
+export type LenderRoom = { kind: 'sells' } | { kind: 'room'; percent: string; marginCallNow: boolean };
+
+export function lenderRoom(plan: Pick<BorrowPlan, 'dropToLiquidationBp' | 'dropToMarginCallBp'>): LenderRoom {
+  if (plan.dropToLiquidationBp <= 0) return { kind: 'sells' };
+  const whole = roomPercent(plan.dropToLiquidationBp);
+  return { kind: 'room', percent: whole === 0 ? 'under 1%' : `${whole}%`, marginCallNow: plan.dropToMarginCallBp <= 0 };
+}
+
 export interface PriceScale {
   /** Left-to-right positions in percent for the markers. */
   liquidation: number;

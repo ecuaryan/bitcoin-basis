@@ -11,10 +11,11 @@ import { useHelp } from '../../ui/Help.tsx';
 import { ChevronRightIcon } from '../../ui/icons.tsx';
 import { PlainMoney } from '../../ui/plain-money.tsx';
 import { SectionHeader } from '../../ui/SectionHeader.tsx';
+import { usePrefs } from '../../ui/prefs.tsx';
 
 /** What the "≈" means, for the "?" next to loan figures. */
 export const LOAN_ESTIMATE_HELP =
-  '≈ marks an estimate. Interest since your last payment is worked out from your rate until a statement shows it, and each purchase’s share of the interest is split by how long its money was borrowed. Everything else comes from what you entered.';
+  '≈ marks an estimate. Interest you have not paid yet (since your last payment, or left over from a statement paid in part) is worked out from your rate, and each purchase’s share of the interest is split by how long its money was borrowed. Everything else comes from what you entered.';
 
 /** The break-even label everywhere, and what its "?" says. */
 export const BREAK_EVEN_LABEL = 'Break-even price (with interest paid so far)';
@@ -23,7 +24,7 @@ export const BREAK_EVEN_HELP =
 
 /** What the "?" beside "If you paid it off today" says. */
 export const PAYOFF_HELP =
-  'Uses the Bitcoin from this loan’s purchases that you still hold, at today’s price, against what you owe now: the balance plus interest since your last payment that has not been billed yet (an estimate, marked ≈).';
+  'Uses the Bitcoin from this loan’s purchases that you still hold, at today’s price, against what you owe now: the balance plus interest not paid yet, billed or not (an estimate, marked ≈).';
 
 /** A quiet "≈" before an estimated figure (read as "about"). */
 export function Approx() {
@@ -33,6 +34,32 @@ export function Approx() {
         ≈{' '}
       </span>
       <span className="sr-only">about </span>
+    </>
+  );
+}
+
+/**
+ * What "Owed now" adds to the balance, each part labeled: interest billed for days a payment covered but left unpaid,
+ * and interest since the last day paid (billed by a statement that closed since, or not billed yet).
+ */
+export function OwedNowParts({ s, today }: { s: Pick<LoanSummary, 'unpaidBilledInterestCents' | 'accruedInterestCents' | 'accruedFrom' | 'accruedBilledThrough'>; today: string }) {
+  const unpaid = s.unpaidBilledInterestCents > 0;
+  const accrued = s.accruedInterestCents > 0;
+  return (
+    <>
+      Includes{' '}
+      {unpaid ? (
+        <>
+          about <Money cents={s.unpaidBilledInterestCents} /> interest billed but not yet paid
+        </>
+      ) : null}
+      {unpaid && accrued ? ' and ' : null}
+      {accrued ? (
+        <>
+          about <Money cents={s.accruedInterestCents} /> {unpaid ? '' : 'interest '}since {shortDate(s.accruedFrom ?? today)},{' '}
+          {s.accruedBilledThrough === null ? 'not billed yet' : `not paid yet (statement closed ${shortDate(s.accruedBilledThrough)})`}
+        </>
+      ) : null}
     </>
   );
 }
@@ -49,8 +76,9 @@ export function SignedMoney({ cents, plain = false, precision = 'dollars', class
 }
 
 /** The loan figures every view shares, as plain lines. Values come straight from the engine's summary. */
-export function loanLines(s: LoanSummary, plain: boolean): { key: string; node: ReactNode }[] {
-  const M = ({ cents }: { cents: number }) => (plain ? <PlainMoney cents={cents} precision="dollars" /> : <Money cents={cents} precision="dollars" />);
+export function loanLines(s: LoanSummary, plain: boolean, masked: boolean): { key: string; node: ReactNode }[] {
+  // Cents, as on the loan page: Owed and Available add up to the credit limit exactly, and the break-even is never cut short.
+  const M = ({ cents }: { cents: number }) => (plain ? <PlainMoney cents={cents} /> : <Money cents={cents} />);
   const lines: { key: string; node: ReactNode }[] = [];
   lines.push({
     key: 'owed',
@@ -94,7 +122,7 @@ export function loanLines(s: LoanSummary, plain: boolean): { key: string; node: 
     ),
   });
   if (s.breakEvenPriceCents !== null) {
-    const words = breakEvenWords(s.priceCents, s.breakEvenPriceCents);
+    const words = breakEvenWords(s.priceCents, s.breakEvenPriceCents, masked);
     lines.push({
       key: 'break-even',
       node: (
@@ -158,7 +186,8 @@ export function useLoanSummaries(): LoanSummary[] {
 
 /** One loan on Holdings: the whole block opens the loan page. */
 function LoanBlock({ s }: { s: LoanSummary }) {
-  const lines = loanLines(s, true);
+  const { masked } = usePrefs();
+  const lines = loanLines(s, true, masked);
   return (
     <Link
       to={`/loans/${s.loanId}`}

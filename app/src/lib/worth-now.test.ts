@@ -1,3 +1,4 @@
+import { replay, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { entryWorth, sumWorth, worthNow } from './worth-now.ts';
 
@@ -72,9 +73,28 @@ describe('entryWorth', () => {
   it('works for gift and inherited coins (carried cost) and skips frozen wallets', () => {
     const state = ledger({ lots: [lot('G', 'w1', 100_000, 0, 'G'), lot('G:G', 'fz', 100_000, 0, 'G')] });
     expect(entryWorth(state, ['G'], P).held).toMatchObject({ sats: 100_000, costCents: 0, valueCents: 10_000, percent: null });
+    // The frozen part is reported as frozen, not held and not gone.
+    expect(entryWorth(state, ['G'], P)).toMatchObject({ frozen: { sats: 100_000, costCents: 0 }, gone: [] });
   });
   it('is masked-agnostic and shows no value without a price', () => {
     const state = ledger({ lots: [lot('A', 'w1', 1, 1, 'A')] });
     expect(entryWorth(state, ['A'], null).held).toMatchObject({ valueCents: null, gainCents: null });
+  });
+});
+
+describe('entryWorth on a frozen platform (real replay)', () => {
+  const TZ = 'America/Boise';
+  const base: Entry[] = [
+    { id: 'w', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'bad', name: 'Bad', type: 'exchange', defaultProof: '' },
+    { id: 'A', kind: 'buy', at: '2024-01-10T19:00:00Z', tz: TZ, wallet: 'bad', sats: 50_000_000, costCents: 2_000_000, tier: 'documented' },
+    { id: 'F', kind: 'wallet-freeze', at: '2024-03-01T19:00:00Z', tz: TZ, wallet: 'bad' },
+  ];
+  it('says the coins are frozen, not gone', () => {
+    const w = entryWorth(replay(base), ['A'], P);
+    expect(w).toMatchObject({ held: { sats: 0 }, frozen: { sats: 50_000_000, costCents: 2_000_000 }, gone: [] });
+  });
+  it('after the close-out, says they were closed out', () => {
+    const w = entryWorth(replay([...base, { id: 'C', kind: 'wallet-close-out', at: '2026-05-01T19:00:00Z', tz: TZ, wallet: 'bad', reason: 'Failed' }]), ['A'], P);
+    expect(w).toMatchObject({ held: { sats: 0 }, frozen: { sats: 0 }, gone: [{ kind: 'closed-out', sats: 50_000_000, date: '2026-05-01' }] });
   });
 });

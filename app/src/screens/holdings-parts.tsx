@@ -1,10 +1,10 @@
-import { mulDivRoundHalfUp, SATS_PER_BTC, type Lot, type Tier, type Worth } from '@bitcoin-basis/engine';
+import { averageCostPerBtc, type Lot, type Tier, type Worth } from '@bitcoin-basis/engine';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { dayChangeTenthsPercent } from '../data/price.ts';
 import { cx } from '../lib/cx.ts';
 import { countOf, formatMoney, shortDate } from '../lib/format.ts';
-import type { HoldingsView, StackYear, WalletCard } from '../lib/holdings-view.ts';
+import { tierShares, type HoldingsView, type StackYear, type WalletCard } from '../lib/holdings-view.ts';
 import { describeOrigin, TIER_HELP, TIER_LABEL } from '../lib/origin.ts';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { Amount, Money } from '../ui/Amount.tsx';
@@ -32,9 +32,22 @@ const TIER_ORDER: Tier[] = ['documented', 'reconstructed', 'estimated', 'unknown
 
 // ---- Hero ------------------------------------------------------------------------------
 
+/** The 24-hour change: an arrow and color by its sign; one that rounds to 0.0% is plain (`0.0% in 24h`). */
+export function DayChange({ tenths, className }: { tenths: number; className?: string | undefined }) {
+  const text = `${(Math.abs(tenths) / 10).toFixed(1)}% in 24h`;
+  if (tenths === 0) return <span className={cx('text-muted', className)}>{text}</span>;
+  return (
+    <span className={cx(tenths > 0 ? 'text-amber' : 'text-loss', className)}>
+      <span aria-hidden="true">{tenths > 0 ? '▲' : '▼'} </span>
+      <span className="sr-only">{tenths > 0 ? 'Up ' : 'Down '}</span>
+      {text}
+    </span>
+  );
+}
+
 /**
- * The price under the Holdings hero: `at $95,000.00`, the change today, and a small refresh button. A price that is
- * not current says when it is from (`· as of 3:12 PM`); a failed refresh keeps the price it had.
+ * The price under the Holdings hero: `at $95,000.00`, the change over the past 24 hours, and a small refresh button. A
+ * price that is not current says when it is from (`· as of 3:12 PM`); a failed refresh keeps the price it had.
  */
 export function PriceLine({ className }: { className?: string }) {
   const { quote, status } = usePrice();
@@ -54,9 +67,7 @@ export function PriceLine({ className }: { className?: string }) {
       ) : (
         // The change and the button wrap together, so the button never sits alone on a line.
         <span className="inline-flex items-baseline gap-x-2.5 whitespace-nowrap">
-          <span className={cx(tenths >= 0 ? 'text-amber' : 'text-loss', className)}>
-            {tenths >= 0 ? '▲' : '▼'} {(Math.abs(tenths) / 10).toFixed(1)}% today
-          </span>
+          <DayChange tenths={tenths} className={className} />
           <PriceRefreshButton />
         </span>
       )}
@@ -64,9 +75,10 @@ export function PriceLine({ className }: { className?: string }) {
   );
 }
 
-export function GainText({ cents, className }: { cents: number | null; className?: string }) {
+/** A gain or loss with its sign and color. Whole dollars by default; `precision="cents"` where it sits beside parts in cents. */
+export function GainText({ cents, precision = 'dollars', className }: { cents: number | null; precision?: 'cents' | 'dollars'; className?: string }) {
   if (cents === null) return <span className={className}>—</span>;
-  return <Money cents={cents} precision="dollars" signed className={cx(cents < 0 && 'text-loss', cents >= 0 && 'text-accent', className)} />;
+  return <Money cents={cents} precision={precision} signed className={cx(cents < 0 && 'text-loss', cents >= 0 && 'text-accent', className)} />;
 }
 
 // ---- Stack -----------------------------------------------------------------------------
@@ -135,14 +147,14 @@ export function StackColumns({ stack, onPick }: { stack: StackYear[]; onPick(yea
 
 /** What the colors mean. With `mix` it also says how much of your stack each one is (so there is no separate card for it on a phone). */
 export function TierLegend({ tiers, mix, className }: { tiers: Tier[]; mix?: Record<Tier, number>; className?: string }) {
-  const total = mix ? Math.max(1, TIER_ORDER.reduce((n, t) => n + mix[t], 0)) : 1;
+  const shares = mix ? tierShares(mix) : null;
   return (
     <div className={cx('flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-muted lg:text-xs lg:gap-x-4', className)}>
       {tiers.map((t) => (
         <span key={t} className="flex items-center gap-1.5">
           <span className={cx('size-2.5 rounded-[3px]', TIER_BG[t])} aria-hidden="true" />
           {TIER_LABEL[t]}
-          {mix ? ` ${Math.round((mix[t] * 100) / total)}%` : ''}
+          {shares ? ` ${shares[t]}` : ''}
         </span>
       ))}
     </div>
@@ -166,7 +178,8 @@ function CoinRow({ lot, priceCents }: { lot: Lot; priceCents: number | null }) {
   const origin = entries.find((e) => e.id === lot.originEntryId);
   const wallets = new Map(state.wallets.map((w) => [w.id, w]));
   const wallet = wallets.get(lot.wallet);
-  const perBtc = lot.sats === 0 ? null : mulDivRoundHalfUp(lot.costCents, SATS_PER_BTC, lot.sats);
+  // Null (shown as —) when nothing is held or the figure is too large to represent, never a crash.
+  const perBtc = averageCostPerBtc(lot.costCents, lot.sats);
   const loan = loanTagFor(state, lot.id);
   return (
     <li className="border-b border-line last:border-b-0">
@@ -298,13 +311,14 @@ const TAXABLE_ID = 'taxable';
 export function DocumentationCard({ view }: { view: HoldingsView }) {
   const total = Math.max(1, view.totalSats);
   const tiers = TIER_ORDER.filter((t) => view.mix[t] > 0);
+  const share = view.tierShares;
   return (
     <Card as="section" aria-label="How well your coins are documented" className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="m-0 text-[15px] font-semibold">How well it is documented</h2>
-        <span className="text-xs text-muted">{view.documentedPercent}%</span>
+        <span className="text-xs text-muted">{share.documented}</span>
       </div>
-      <div className="flex h-3.5 overflow-hidden rounded-[7px] bg-surface-2" role="img" aria-label={tiers.map((t) => `${TIER_LABEL[t]} ${Math.round((view.mix[t] * 100) / total)} percent`).join(', ')}>
+      <div className="flex h-3.5 overflow-hidden rounded-[7px] bg-surface-2" role="img" aria-label={tiers.map((t) => `${TIER_LABEL[t]} ${share[t].replace('%', ' percent')}`).join(', ')}>
         {tiers.map((t) => (
           <span key={t} className={cx('h-full', TIER_BG[t])} style={{ width: `${(view.mix[t] * 100) / total}%` }} />
         ))}
@@ -317,7 +331,7 @@ export function DocumentationCard({ view }: { view: HoldingsView }) {
               {TIER_LABEL[t]}
             </span>
             <span>
-              <Amount sats={view.mix[t]} interactive={false} /> · {Math.round((view.mix[t] * 100) / total)}%
+              <Amount sats={view.mix[t]} interactive={false} /> · {share[t]}
             </span>
           </li>
         ))}
@@ -366,21 +380,21 @@ export function RetirementCard({ view }: { view: HoldingsView }) {
         {view.retirement.map((r) => (
           <HeldApartRow key={r.id} id={r.id} name={r.name} sats={r.sats}>
             <span className="text-xs text-muted">{walletKindLabel({ type: 'retirement', frozen: false, archived: false })}</span>
-            {r.worth.valueCents !== null && (
+            {r.shown.valueCents !== null && (
               <span className="text-xs text-muted">
-                Worth <PlainMoney cents={r.worth.valueCents} precision="dollars" />
+                Worth <PlainMoney cents={r.shown.valueCents} precision="dollars" />
               </span>
             )}
             {r.costKnown ? (
               <span className="text-xs text-muted">
                 <span className="whitespace-nowrap">
-                  Cost <PlainMoney cents={r.worth.costCents} precision="dollars" />
-                  {r.worth.gainCents !== null ? ' ·' : ''}
+                  Cost <PlainMoney cents={r.shown.costCents} precision="dollars" />
+                  {r.shown.gainCents !== null ? ' ·' : ''}
                 </span>
-                {r.worth.gainCents !== null ? (
+                {r.shown.gainCents !== null ? (
                   <>
                     {' '}
-                    <GainWords worth={r.worth} plain precision="dollars" className="font-semibold" />
+                    <GainWords worth={r.shown} plain precision="dollars" className="font-semibold" />
                   </>
                 ) : null}
               </span>
@@ -432,15 +446,16 @@ export function HeroGainLine({ view, className }: { view: HoldingsView; classNam
 }
 
 /**
- * `Average cost $43,450.12 per BTC` for all your Bitcoin (taxable and retirement), under the all-Bitcoin hero. Shown only
- * when every coin's cost is known, so it never mixes in coins without a cost.
+ * `Average cost of all your Bitcoin: $43,450.12 per BTC` (taxable and retirement), under the all-Bitcoin hero, so it is
+ * never mistaken for the taxable average cost below. Shown only when every coin's cost is known.
  */
 export function HeroAverageLine({ view, className }: { view: HoldingsView; className?: string }) {
   const total = view.all?.total;
   if (total === undefined || total.sats <= 0 || total.unknownCostSats > 0) return null;
+  const average = averageCostPerBtc(total.costCents, total.sats);
   return (
     <span className={cx('text-muted', className)}>
-      Average cost <Money cents={mulDivRoundHalfUp(total.costCents, SATS_PER_BTC, total.sats)} className="font-semibold text-soft" /> per BTC
+      Average cost of all your Bitcoin: {average === null ? <span className="font-semibold text-soft">—</span> : <Money cents={average} className="font-semibold text-soft" />} per BTC
     </span>
   );
 }
@@ -469,6 +484,7 @@ function SplitRowBody({ swatch, label, what, btc, worth, wide }: { swatch: strin
         )}
       </span>
       <span className="flex flex-none flex-col items-end gap-0.5 text-right">
+        {/* Whole dollars that add up to the total at the top (`view.split`). */}
         <span className="text-[15px] font-semibold">{worth.valueCents === null ? '—' : <PlainMoney cents={worth.valueCents} precision="dollars" />}</span>
         {worth.valueCents === null ? null : worth.gainCents === null ? (
           <span className="text-xs text-muted">Gain not known</span>
@@ -489,7 +505,7 @@ const SPLIT_ROW = 'press-soft flex min-h-11 w-full items-center gap-3 rounded-xl
  * there are several. Only with retirement coins.
  */
 export function SplitCard({ view, wide }: { view: HoldingsView; wide: boolean }) {
-  const all = view.all;
+  const all = view.split;
   if (all === null) return null;
   const unknown = all.retirement.unknownCostSats > 0;
   const only = view.retirement.length === 1 ? view.retirement[0] : undefined;

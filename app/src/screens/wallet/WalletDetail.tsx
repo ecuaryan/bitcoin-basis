@@ -1,4 +1,4 @@
-import { mulDivRoundHalfUp, oneYearAnniversary, retirementPurchases, SATS_PER_BTC, termFor, uuidv7, worthOf, type BalanceConfirmEntry, type Entry, type Lot, type RetirementHolding, type RetirementPurchaseView, type RetirementSnapshotCheck, type RetirementSnapshotEntry, type Wallet, type Worth } from '@bitcoin-basis/engine';
+import { averageCostPerBtc, oneYearAnniversary, retirementPurchases, retirementWorth, termFor, uuidv7, valueOfPieces, worthOf, type BalanceConfirmEntry, type Entry, type Lot, type RetirementHolding, type RetirementPurchaseView, type RetirementSnapshotCheck, type RetirementSnapshotEntry, type Wallet, type Worth } from '@bitcoin-basis/engine';
 import { BackLink } from '../../ui/BackLink.tsx';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -6,7 +6,7 @@ import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { confirmedLabel, countOf, heldLabel, satsToCents, shortDate } from '../../lib/format.ts';
+import { confirmedLabel, countOf, heldLabel, shortDate } from '../../lib/format.ts';
 import { describeOrigin, TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
@@ -71,9 +71,11 @@ function Header({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): void; wide
 
 // ---- Balance ---------------------------------------------------------------------------
 
-function Balance({ wallet, sats, costCents, avg, priceCents }: { wallet: Wallet; sats: number; costCents: number; avg: number | null; priceCents: number | null }) {
-  const worth = priceCents === null ? null : satsToCents(sats, priceCents);
-  const counted = !wallet.frozen && !wallet.archived;
+function Balance({ wallet, lots, sats, costCents, avg, priceCents }: { wallet: Wallet; lots: readonly Lot[]; sats: number; costCents: number; avg: number | null; priceCents: number | null }) {
+  // Lot by lot, so the lots listed on this page add up to it exactly.
+  const worth = valueOfPieces(lots, priceCents);
+  // Archived wallets still count (their coins are in your totals); only frozen wallets are left out.
+  const counted = !wallet.frozen;
   return (
     <section aria-label="Balance" className="flex flex-col gap-1.5">
       <span className="text-xs normal-nums tracking-[0.06em] text-muted">
@@ -81,7 +83,7 @@ function Balance({ wallet, sats, costCents, avg, priceCents }: { wallet: Wallet;
         {wallet.archived ? ' · ARCHIVED' : ''}
       </span>
       <span className="font-display text-[34px] font-semibold leading-none tracking-[-0.02em] lg:text-5xl">
-        <Amount sats={sats} showUnit />
+        <Amount sats={sats} showUnit valueCents={wallet.frozen ? null : worth} />
       </span>
       {wallet.frozen ? (
         <span className="text-[13px] text-muted">
@@ -336,7 +338,7 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
 
 // ---- Lots ------------------------------------------------------------------------------
 
-function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots: Lot[]; today: string; entries: readonly Entry[]; walletsById: ReadonlyMap<string, Wallet>; priceCents: number | null }) {
+function CoinsSection({ lots, today, entries, walletsById, priceCents, frozen = false }: { lots: Lot[]; today: string; entries: readonly Entry[]; walletsById: ReadonlyMap<string, Wallet>; priceCents: number | null; frozen?: boolean }) {
   const [all, setAll] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   // Newest first: the lot you just added is the one you look for.
@@ -353,7 +355,7 @@ function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots:
       <ul className="m-0 flex list-none flex-col p-0">
         {shown.map((l) => {
           const long = termFor(l, today) === 'long';
-          const perBtc = l.sats === 0 ? null : mulDivRoundHalfUp(l.costCents, SATS_PER_BTC, l.sats);
+          const perBtc = averageCostPerBtc(l.costCents, l.sats);
           const open = openId === l.id;
           const origin = entries.find((e) => e.id === l.originEntryId);
           const loan = loanTagFor(state, l.id);
@@ -369,7 +371,12 @@ function CoinsSection({ lots, today, entries, walletsById, priceCents }: { lots:
                     {shortDate(l.acquiredDate)} · {TIER_LABEL[l.tier]}
                     {loan ? <LoanBadge tag={loan.tag} /> : null}
                   </span>
-                  <WorthLine worth={worthNow(l.sats, l.costCents, priceCents)} className="mt-0.5 text-xs" />
+                  {frozen ? (
+                    // As in the wallet's header: frozen coins have no value now, only their cost (and the loss once closed out).
+                    <span className="mt-0.5 text-xs text-muted">Frozen · not counted in what your Bitcoin is worth</span>
+                  ) : (
+                    <WorthLine worth={worthNow(l.sats, l.costCents, priceCents)} className="mt-0.5 text-xs" />
+                  )}
                 </span>
                 <span className="flex flex-col items-end text-right">
                   <span className="text-sm font-semibold">{perBtc === null ? '—' : <Money cents={perBtc} />}</span>
@@ -654,7 +661,7 @@ function RetirementPurchases({ wallet, purchases, onLog }: { wallet: Wallet; pur
                 <span className="text-sm font-semibold">
                   <PlainMoney cents={p.costCents} />
                 </span>
-                <span className="text-xs text-muted">{p.averageCostCentsPerBtc === null ? 'paid' : <><PlainMoney cents={p.averageCostCentsPerBtc} precision="dollars" /> per BTC</>}</span>
+                <span className="text-xs text-muted">{p.averageCostCentsPerBtc === null ? 'paid' : <><PlainMoney cents={p.averageCostCentsPerBtc} /> per BTC</>}</span>
               </span>
             </button>
           </li>
@@ -679,7 +686,8 @@ function RetirementDetail({ wallet, onMenu, wide }: { wallet: Wallet; onMenu(): 
   const priceCents = quote?.usdCents ?? null;
   const holding = holdings.retirement.find((r) => r.wallet === wallet.id);
   const purchases = useMemo(() => retirementPurchases(state, wallet.id, priceCents, today), [state, wallet.id, priceCents, today]);
-  const worth = holding === undefined ? worthOf(0, 0, priceCents) : worthOf(holding.sats, holding.costCents, priceCents);
+  // Purchase by purchase, so the purchases listed on this page add up to it exactly.
+  const worth = holding === undefined ? worthOf(0, 0, priceCents) : retirementWorth(state, holding, priceCents);
   const log = (sats?: number) => open({ kind: 'retirement-buy', wallet: wallet.id, ...(sats === undefined ? {} : { sats }) });
   const differs = holding?.balanceFrom === 'purchases' && holding.snapshot !== null && !holding.snapshot.matches ? holding.snapshot : null;
   const left = (
@@ -785,14 +793,14 @@ export function WalletDetail() {
       {frozenView ? (
         <FrozenSections wallet={wallet} sats={holdingSats} costCents={costCents} rows={rows} onCloseOut={() => setCloseOut(true)} />
       ) : (
-        <Balance wallet={wallet} sats={holdingSats} costCents={costCents} avg={holding?.averageCostCentsPerBtc ?? null} priceCents={priceCents} />
+        <Balance wallet={wallet} lots={lots} sats={holdingSats} costCents={costCents} avg={holding?.averageCostCentsPerBtc ?? null} priceCents={priceCents} />
       )}
       {!frozenView ? <ConfirmBalance wallet={wallet} sats={holdingSats} inputRef={confirmRef} onLost={openLost} /> : null}
     </>
   );
   const right = (
     <>
-      <CoinsSection lots={lots} today={today} entries={entries} walletsById={walletsById} priceCents={priceCents} />
+      <CoinsSection lots={lots} today={today} entries={entries} walletsById={walletsById} priceCents={priceCents} frozen={frozenView} />
       <History wallet={wallet} />
     </>
   );

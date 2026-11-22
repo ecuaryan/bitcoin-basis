@@ -62,7 +62,7 @@ function taxView(state: LedgerState): unknown {
     lots: state.lots,
     disposals: state.disposals,
     taxable,
-    allTaxable: allBitcoin(holdings(state), 7_500_000).taxable,
+    allTaxable: allBitcoin(state, holdings(state), 7_500_000).taxable,
     years: YEARS.map((y) => ({ s: yearSummary(state, y), f8949: form8949Csv(state, y), tax: taxForYear(taxInput(taxContext(state, state.settings, y, `${y}-12-31`), 0, 0)) })),
     plan: planSale(state, state.settings, { wallet: 'ex', sats: 1_000_000, priceCents: 7_500_000, onDate: '2026-12-31', year: 2026 }),
     cpa: state.cpaFlags,

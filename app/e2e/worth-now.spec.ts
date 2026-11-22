@@ -12,6 +12,19 @@ test('Wallet: each coin shows what it is worth now, up or down', async ({ page }
   await expectNoViolations(page);
 });
 
+test('Frozen wallet: its lots show no worth or gain, and its purchase says the coins are frozen, not gone', async ({ page }) => {
+  await openDemo(page);
+  await go(page, '/wallet/wallet-harbor');
+  const coins = page.getByRole('region', { name: 'Lots in this wallet' });
+  await expect(coins).toContainText('Frozen · not counted in what your Bitcoin is worth');
+  await expect(coins.getByText(NOW_LINE)).toHaveCount(0);
+  await page.getByRole('region', { name: 'Entries' }).getByRole('button', { name: /Bought/ }).first().click();
+  const block = page.getByRole('dialog').getByRole('region', { name: 'What these coins are worth now' });
+  await expect(block).toContainText('0.5000 0000 BTC of it is in a frozen wallet');
+  await expect(block).not.toContainText('None of these coins are left');
+  await expectNoViolations(page);
+});
+
 test('Entry: what these coins are worth now, and what already left', async ({ page }) => {
   await openDemo(page);
   await go(page, '/records?v=entries');

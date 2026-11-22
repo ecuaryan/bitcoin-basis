@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanDecimal, countOf, formatDay, formatMoney, formatWhen, groupedBtc, groupedSats, maskDigits, prettyBtc, prettyDollars, satsToCents, shortBtc, shortDate, shortWhen } from './format.ts';
+import { cleanDecimal, countOf, formatDay, formatMoney, formatWhen, groupedBtc, groupedSats, maskDigits, prettyBtc, prettyDollars, satsToCents, sharePercents, shortBtc, wholeDollarParts, shortDate, shortWhen } from './format.ts';
 
 describe('format', () => {
   it('groups BTC in fours', () => {
@@ -13,13 +13,24 @@ describe('format', () => {
   it('shortens BTC to four places', () => {
     expect(shortBtc(118_018_000)).toBe('1.1802');
     expect(shortBtc(50_135_105)).toBe('0.5014');
+    // Too small for 4 decimals: all 8, never 0.0000.
+    expect(shortBtc(4_999)).toBe('0.0000 4999');
+    expect(shortBtc(1)).toBe('0.0000 0001');
+    expect(shortBtc(5_000)).toBe('0.0001');
+    expect(shortBtc(0)).toBe('0.0000');
   });
   it('formats money', () => {
     expect(formatMoney(123_456)).toBe('$1,234.56');
     expect(formatMoney(-123_456)).toBe('\u2212$1,234.56');
     expect(formatMoney(31_920_690, { precision: 'dollars' })).toBe('$319,206');
     expect(formatMoney(18_032_905, { precision: 'dollars', signed: true })).toBe('+$180,329');
-    expect(formatMoney(-50, { precision: 'dollars' })).toBe('$0');
+    // Under $1 keeps its cents, so a small gain or loss is never shown as $0.
+    expect(formatMoney(-50, { precision: 'dollars' })).toBe('\u2212$0.50');
+    expect(formatMoney(40, { precision: 'dollars', signed: true })).toBe('+$0.40');
+    expect(formatMoney(-40, { precision: 'dollars', signed: true })).toBe('\u2212$0.40');
+    expect(formatMoney(0, { precision: 'dollars', signed: true })).toBe('$0');
+    expect(formatMoney(100, { precision: 'dollars' })).toBe('$1');
+    expect(formatMoney(-150, { precision: 'dollars' })).toBe('\u2212$1');
     expect(formatMoney(5)).toBe('$0.05');
   });
   it('masks every amount to one fixed shape, so size never shows', () => {
@@ -73,5 +84,41 @@ describe('format', () => {
     expect(prettyBtc('1')).toBe('1.0000 0000');
     expect(prettyBtc('1234.5')).toBe('1,234.5000 0000');
     expect(prettyBtc('')).toBe('');
+  });
+});
+
+describe('shares of a total', () => {
+  it('add up to 100% (largest remainder)', () => {
+    expect(sharePercents([1, 1, 1])).toEqual(['34%', '33%', '33%']);
+    expect(sharePercents([316_472_105, 20_200_000, 0, 0])).toEqual(['94%', '6%', '0%', '0%']);
+    expect(sharePercents([125, 125, 750])).toEqual(['13%', '12%', '75%']);
+  });
+  it('shows 100% only for all of it, and never 0% for a part that is not zero', () => {
+    // 99.6% documented and 0.4% unknown: not 100% and 0%.
+    expect(sharePercents([99_600_000, 400_000])).toEqual(['99%', '1%']);
+    expect(sharePercents([99_800, 100, 100])).toEqual(['99%', '1%', 'under 1%']);
+    expect(sharePercents([5, 0])).toEqual(['100%', '0%']);
+    expect(sharePercents([0, 0])).toEqual(['0%', '0%']);
+    expect(sharePercents([2_100_000_000_000_000, 1])).toEqual(['99%', '1%']);
+  });
+});
+
+describe('whole-dollar parts under a whole-dollar total', () => {
+  it('add up to the total: the dollar they fall short goes to the part closest to its next dollar', () => {
+    // $319,206.94 + $33,184.34 = $352,391.28: toward zero $319,206 + $33,184 = $352,390, a dollar short of $352,391.
+    expect(wholeDollarParts([31_920_694, 3_318_434], 35_239_128)).toEqual([31_920_700, 3_318_400]);
+    // Nothing short: each part toward zero.
+    expect(wholeDollarParts([18_032_905, 1_727_434], 19_760_339)).toEqual([18_032_900, 1_727_400]);
+  });
+  it('works for gains and losses, in the total’s direction', () => {
+    // +$100.60 and −$50.70 = +$49.90: $100 − $51 = $49 (the loss rounds away from zero, never a gain up).
+    expect(wholeDollarParts([10_060, -5_070], 4_990)).toEqual([10_000, -5_100]);
+    // −$100.60 and −$50.70 = −$151.30: −$100 − $51 = −$151.
+    expect(wholeDollarParts([-10_060, -5_070], -15_130)).toEqual([-10_000, -5_100]);
+  });
+  it('keeps a part under $1 in cents and leaves null parts out', () => {
+    expect(wholeDollarParts([40, 1_000], 1_040)).toEqual([40, 1_000]);
+    expect(wholeDollarParts([10_060, null], 10_060)).toEqual([10_000, null]);
+    expect(wholeDollarParts([], 0)).toEqual([]);
   });
 });

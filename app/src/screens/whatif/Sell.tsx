@@ -14,7 +14,7 @@ import { Button } from '../../ui/Button.tsx';
 import { PlusIcon } from '../../ui/icons.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { PriceUnavailable } from '../../ui/PriceProblem.tsx';
-import { TaxProfilePrompt } from '../tax/TaxProfilePrompt.tsx';
+import { NoIncomeNote, TaxProfilePrompt } from '../tax/TaxProfilePrompt.tsx';
 import { BtcInput } from '../../ui/formatted-inputs.tsx';
 import { ChevronDownIcon } from '../../ui/more-icons.tsx';
 import { Note, PlanCard, PlanChoice, Sentence } from './sell-parts.tsx';
@@ -189,6 +189,7 @@ export function Sell() {
             </Note>
           )}
           <TaxTableNotice year={year} />
+          <NoIncomeNote />
           {active.headsUp && <Note tone="warn">This sale adds more than $1,000 of estimated tax. You may need to make an estimated payment before filing.</Note>}
           {closed && <Note tone="warn">{year} is closed. Unlock it in Tax season before logging a sale in it.</Note>}
           <details className="group">

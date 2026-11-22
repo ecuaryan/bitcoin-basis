@@ -2,8 +2,9 @@ import { LOAN_INTEREST_CPA_NOTE, loanInterestByYear, yearSummary } from '@bitcoi
 import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { formatMoney } from '../../lib/format.ts';
-import { answerReason, flagsForYear, overExclusion, totalsByKind, yearTaxView } from './tax-logic.ts';
+import { answerReason, flagsForYear, form8949Detail, overExclusion, totalsByKind, yearTaxView } from './tax-logic.ts';
 import { useTitle } from '../../ui/use-title.ts';
+import { assumesNoIncome, taxProfileSet } from '../records/settings-logic.ts';
 
 const FILING: Record<string, string> = {
   single: 'Single',
@@ -17,11 +18,13 @@ const FILING: Record<string, string> = {
 export function TaxSummary() {
   const { year: yearParam } = useParams();
   const year = Number(yearParam);
-  const { state, today } = useLedger();
+  const { state, today, entries } = useLedger();
+  const noIncome = assumesNoIncome(taxProfileSet(entries), state.settings);
   const wallets = new Map(state.wallets.map((w) => [w.id, w.name]));
   const s = yearSummary(state, year);
   const v = yearTaxView(state, state.settings, year, today);
   const t = totalsByKind(s);
+  const detail = form8949Detail(s);
   const gifts = overExclusion(state, year);
   const flags = flagsForYear(state, year);
   const loanInterest = loanInterestByYear(state).find((y) => y.year === year) ?? null;
@@ -53,7 +56,7 @@ export function TaxSummary() {
         <section className="flex flex-col gap-1">
           <h2 className="m-0 text-base font-semibold">Assumptions used</h2>
           <p className="m-0">
-            {FILING[state.settings.filingStatus] ?? state.settings.filingStatus} · wages {m(state.settings.wagesCents)} · {v.fellBack ? `${v.tableYear} tax table used (no ${year} table yet)` : `${year} tax table`}
+            {FILING[state.settings.filingStatus] ?? state.settings.filingStatus} · {noIncome ? 'wages and other income not entered ($0 assumed)' : `wages ${m(state.settings.wagesCents)}`} · {v.fellBack ? `${v.tableYear} tax table used (no ${year} table yet)` : `${year} tax table`}
           </p>
         </section>
 
@@ -65,6 +68,8 @@ export function TaxSummary() {
                 ['Sales', t.sales],
                 ['Spending', t.spending],
                 ['Network fees paid in BTC', t.fees],
+                // As on Tax season: only when the year has a close-out or a payout after one.
+                ...(t.other.count > 0 ? [['Frozen platform loss or payout', t.other]] : []),
               ].map(([label, k]) => (
                 <tr key={String(label)}>
                   <td className={td}>{String(label)}</td>
@@ -96,6 +101,13 @@ export function TaxSummary() {
                   {m(v.netting.st)} / {m(v.netting.lt)}
                 </td>
               </tr>
+              {v.netting.lossDeduction > 0 && (
+                <tr>
+                  <td className={td}>Used against other income</td>
+                  <td className={td} />
+                  <td className={`${td} text-right`}>{m(v.netting.lossDeduction)}</td>
+                </tr>
+              )}
               <tr>
                 <td className={td}>Losses left for {year + 1}</td>
                 <td className={td} />
@@ -107,7 +119,10 @@ export function TaxSummary() {
 
         <section>
           <h2 className="mb-1 mt-0 text-base font-semibold">Disposals (Form 8949 detail)</h2>
-          {s.disposals.length === 0 ? (
+          {detail.some((d) => d.kind === 'close-out' || d.kind === 'recovery') ? (
+            <p className="m-0 mb-1 text-neutral-600">close-out: a frozen platform&apos;s loss (proceeds are what it paid back by the loss date). recovery: a payout after the close-out, a gain on $0 cost.</p>
+          ) : null}
+          {detail.length === 0 ? (
             <p className="m-0">None.</p>
           ) : (
             <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Disposals table">
@@ -122,16 +137,16 @@ export function TaxSummary() {
                 </tr>
               </thead>
               <tbody>
-                {s.disposals.map((d) => (
-                  <tr key={d.entryId}>
+                {detail.map((d) => (
+                  <tr key={d.key}>
                     <td className={td}>{d.date}</td>
                     <td className={td}>{wallets.get(d.wallet) ?? d.wallet}</td>
                     <td className={td}>{d.kind}</td>
-                    <td className={td}>{d.sats.toLocaleString('en-US')}</td>
+                    <td className={td}>{d.sats === null ? '—' : d.sats.toLocaleString('en-US')}</td>
                     <td className={td}>{m(d.proceedsCents)}</td>
                     <td className={td}>{m(d.costCents)}</td>
                     <td className={td}>{m(d.gainCents)}</td>
-                    <td className={td}>{d.stGainCents !== 0 && d.ltGainCents !== 0 ? 'both' : d.ltGainCents !== 0 ? 'long' : 'short'}</td>
+                    <td className={td}>{d.term}</td>
                   </tr>
                 ))}
               </tbody>

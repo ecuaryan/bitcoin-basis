@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMempoolPriceService, type FetchLike, parsePriceCents, parsePriceSeries, PriceError, PRICE_API, quoteAsOf } from './price.ts';
+import { createMempoolPriceService, dayChangeTenthsPercent, type FetchLike, parsePriceCents, parsePriceSeries, PriceError, PRICE_API, quoteAsOf } from './price.ts';
 
 function fakeFetch(answers: Record<string, { status: number; body: unknown }>) {
   const urls: string[] = [];
@@ -92,5 +92,21 @@ describe('price series (one request for the chart)', () => {
     for (const bad of [null, {}, { points: {} }, { points: [[D, 1]] }, { points: [[D + 1, 1, 1]] }, { points: [[D, 1.5, 2]] }, { points: [[D, 2, 1]] }, { points: [[D, 0, 1]] }, { points: [[D, 1, 1], [D, 1, 1]] }, { points: ['x'] }]) {
       expect(parsePriceSeries(bad), JSON.stringify(bad)).toBeNull();
     }
+  });
+});
+
+describe('24-hour change', () => {
+  it('rounds half away from zero, the same for a fall as for a rise', () => {
+    expect(dayChangeTenthsPercent({ usdCents: 10_005, prevDayUsdCents: 10_000 })).toBe(1);
+    expect(dayChangeTenthsPercent({ usdCents: 9_995, prevDayUsdCents: 10_000 })).toBe(-1);
+    expect(dayChangeTenthsPercent({ usdCents: 10_004, prevDayUsdCents: 10_000 })).toBe(0);
+    expect(dayChangeTenthsPercent({ usdCents: 9_996, prevDayUsdCents: 10_000 })).toBe(0);
+    expect(Object.is(dayChangeTenthsPercent({ usdCents: 9_996, prevDayUsdCents: 10_000 }), -0)).toBe(false);
+    expect(dayChangeTenthsPercent({ usdCents: 10_180, prevDayUsdCents: 10_000 })).toBe(18);
+    expect(dayChangeTenthsPercent({ usdCents: 9_820, prevDayUsdCents: 10_000 })).toBe(-18);
+  });
+  it('is null without a price from 24 hours ago', () => {
+    expect(dayChangeTenthsPercent({ usdCents: 10_000, prevDayUsdCents: null })).toBeNull();
+    expect(dayChangeTenthsPercent({ usdCents: 10_000, prevDayUsdCents: 0 })).toBeNull();
   });
 });

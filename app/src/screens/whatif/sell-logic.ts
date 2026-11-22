@@ -52,10 +52,19 @@ export function percentFromBp(bp: number): string {
   return `${bp < 0 ? '\u2212' : ''}${Math.floor(tenths / 10)}.${tenths % 10}%`;
 }
 
-/** Whole percent from 1/10000ths, rounded down when it is not 0 or 100 (never overstates a share). */
-export function shortPercentFromBp(bp: number): string {
-  const whole = Math.floor(bp / 100);
-  return `${bp > 0 && whole === 0 ? '<1' : whole}%`;
+/**
+ * A risky share (sats on Estimated or Unknown cost) as a whole percent from 1/10000ths, rounded UP so a warning never
+ * understates it: 19.99% is `20%`, 0.5% is `1%`. Only all of it is `100%` (99.01% is `99%`).
+ */
+export function riskPercentFromBp(bp: number): string {
+  if (bp <= 0) return '0%';
+  if (bp >= 10_000) return '100%';
+  return `${Math.min(99, Math.ceil(bp / 100))}%`;
+}
+
+/** What a plan does to this year's tax, worded the same as the Log review: `Tax this adds` or `Tax this saves`, and how much. */
+export function taxEffectLabel(taxCents: number, adds = 'Tax this adds', saves = 'Tax this saves'): { label: string; cents: number } {
+  return taxCents < 0 ? { label: saves, cents: -taxCents } : { label: adds, cents: taxCents };
 }
 
 export type Segment = string | { cents: number; bold?: boolean } | { bold: string };
@@ -67,7 +76,10 @@ export function summarize(oldest: SalePlan, lowest: SalePlan): Segment[] {
   const out: Segment[] = [];
   const carryDiff = carriedOut(lowest) - carriedOut(oldest);
   if (oldest.totalTaxCents <= 0 && lowest.totalTaxCents <= 0) {
-    out.push('Neither choice owes tax this year. ');
+    // Neither adds tax: compare what each saves this year, then the losses each leaves for next year.
+    if (oldest.totalTaxCents === lowest.totalTaxCents) out.push(oldest.totalTaxCents === 0 ? 'Neither choice adds tax this year. ' : 'Both choices save the same tax this year. ');
+    else if (lowest.totalTaxCents < oldest.totalTaxCents) out.push({ bold: 'Lowest tax saves ' }, { cents: oldest.totalTaxCents - lowest.totalTaxCents, bold: true }, { bold: ' more this year' }, ' than oldest first. ');
+    else out.push({ bold: 'Oldest first saves ' }, { cents: lowest.totalTaxCents - oldest.totalTaxCents, bold: true }, { bold: ' more this year' }, ' than lowest tax. ');
     if (carryDiff > 0) out.push({ bold: 'Lowest tax keeps ' }, { cents: carryDiff, bold: true }, { bold: ' more losses' }, ' for next year. ');
     else if (carryDiff < 0) out.push({ bold: 'Oldest first keeps ' }, { cents: -carryDiff, bold: true }, { bold: ' more losses' }, ' for next year. ');
   } else if (oldest.totalTaxCents === lowest.totalTaxCents) {
@@ -83,7 +95,7 @@ export function summarize(oldest: SalePlan, lowest: SalePlan): Segment[] {
 /** How well documented the coins used are (the detail behind the verdict). */
 export function documentationNote(oldest: SalePlan, lowest: SalePlan): string {
   const rough = Math.max(oldest.estimatedShareBp, lowest.estimatedShareBp);
-  return rough === 0 ? 'All coins used are Documented.' : `Part of the sale uses Estimated or Unknown cost (up to ${shortPercentFromBp(rough)}): confirm with your CPA.`;
+  return rough === 0 ? 'All coins used are Documented.' : `Part of the sale uses Estimated or Unknown cost (up to ${riskPercentFromBp(rough)}): confirm with your CPA.`;
 }
 
 /** The exchange follows its own default (oldest first) unless told which coins to sell. */
