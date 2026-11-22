@@ -124,7 +124,8 @@ export function createMempoolPriceService(fetchFn: FetchLike = (url, init) => fe
   }
 
   async function historical(unixSeconds: number, signal?: AbortSignal): Promise<number> {
-    const ts = Math.floor(unixSeconds);
+    // Whole hours only (the Worker rounds down to the hour anyway), so the exact time of a purchase never leaves the device.
+    const ts = Math.floor(unixSeconds / 3600) * 3600;
     if (!Number.isSafeInteger(ts) || ts <= 0) throw new PriceError('No price for that date.');
     const cents = parsePriceCents(await get(`${PRICE_API}/history?ts=${ts}`, signal));
     if (cents === null) throw new PriceError('No price for that date.');

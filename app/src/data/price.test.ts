@@ -17,14 +17,16 @@ describe('price service (through the Worker)', () => {
     const svc = createMempoolPriceService(fn, () => 1_700_000_000_000);
     const q = await svc.current();
     expect(q).toMatchObject({ usdCents: 10_000_000, prevDayUsdCents: 9_800_000, source: 'live' });
-    expect(urls).toEqual(['/api/price', '/api/price/history?ts=1699913600']);
+    expect(urls).toEqual(['/api/price', '/api/price/history?ts=1699912800']);
     for (const u of urls) expect(u.startsWith('/')).toBe(true);
   });
 
-  it('historical passes whole seconds', async () => {
+  it('historical sends whole hours only, so the exact time of an entry never leaves the device', async () => {
     const { fn, urls } = fakeFetch({ [`${PRICE_API}/history`]: { status: 200, body: { ts: 1, usdCents: 42 } } });
-    expect(await createMempoolPriceService(fn).historical(1_600_000_000.9)).toBe(42);
-    expect(urls).toEqual(['/api/price/history?ts=1600000000']);
+    const svc = createMempoolPriceService(fn);
+    expect(await svc.historical(1_600_000_000.9)).toBe(42);
+    expect(await svc.historical(1_599_998_400)).toBe(42);
+    expect(urls).toEqual(['/api/price/history?ts=1599998400', '/api/price/history?ts=1599998400']);
   });
 
   it('errors are PriceErrors; a missing yesterday price just hides the change', async () => {

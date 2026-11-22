@@ -13,6 +13,12 @@
 - **Import and export**: rows in the coins spreadsheet whose wallet is one of your retirement wallets become retirement purchases (leave tier and the loan columns empty on those rows; if the wallet is new, the preview asks whether it is a retirement account and never assumes it). The spreadsheet export includes them, and the backup file carries them with their history.
 - The demo's retirement account has three made-up purchases.
 
+### Security
+
+- **Lock locks every window**: pressing Lock in the installed app now also locks a browser tab open on the same device, and the other way round (before, the other window kept showing your records until its own auto-lock). Idle and background locks still stay in their own window.
+- **Past-price lookups send the hour only**: the app rounds the time down to the hour before asking for a past price, so the exact time of an entry never leaves the device.
+- A recovery-code version number from the server that jumps far beyond any real rotation can no longer stall the app or bloat its local record.
+
 ### Changed
 
 - **Gifts use your lowest-cost lots first** (within the sending wallet), instead of oldest first: you keep your higher-cost Bitcoin, so a later sale is taxed less, and the person you give to takes on your cost. The Gave tab says so in one line beside the choice. Lots that cost less than they are worth that day always come first, so a gift only uses a lot below cost when the others cannot cover it, and then it says so ("Nobody can claim the loss on that part"). Pick lots is still there; ticked lots are used lowest cost first too. Sales, moves and losses keep oldest first. Engine: `lowestCostOrder`, `lowestCostFirst`, `satsGivenBelowCost`. Editing a gift without changing its amount or lots keeps its saved split exactly.

@@ -16,6 +16,7 @@ import { useTitle } from '../../ui/use-title.ts';
 export function lockReasonText(reason: LockReason | null, minutes: number): string | null {
   if (reason === 'idle') return `Locked after ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} of no activity.`;
   if (reason === 'hidden') return 'Locked while the app was in the background.';
+  if (reason === 'other-window') return 'Locked from another window.';
   return null;
 }
 

@@ -125,7 +125,8 @@ export class EncryptedLedgerStore implements LedgerStore {
   private seq = 0;
   private lastFullCompare: number | null = null;
   private current: SyncStatus = OFF;
-  private readonly onMessage = () => {
+  private readonly onMessage = (e: MessageEvent) => {
+    if ((e.data as { type?: unknown } | null)?.type !== 'changed') return;
     if (this.keys !== null) void this.reload(this.gen);
   };
 

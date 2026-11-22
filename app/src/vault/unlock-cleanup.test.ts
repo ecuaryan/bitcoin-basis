@@ -200,3 +200,62 @@ describe('idle auto-lock', () => {
     expect(d.vault.holdsKeyMaterial()).toBe(false);
   });
 });
+
+/** A channel shared by two windows: what one posts, the other hears (never the sender itself). */
+function sharedChannel() {
+  const windows: Set<(e: MessageEvent) => void>[] = [];
+  const open = (): BroadcastLike => {
+    const mine = new Set<(e: MessageEvent) => void>();
+    windows.push(mine);
+    return {
+      postMessage: (data) => windows.filter((w) => w !== mine).forEach((w) => w.forEach((l) => l({ data } as MessageEvent))),
+      addEventListener: (_t, l) => void mine.add(l),
+      removeEventListener: (_t, l) => void mine.delete(l),
+    };
+  };
+  return open;
+}
+
+describe('Lock in one window', () => {
+  test('locks every other window too; idle and background locks stay in their own window', async () => {
+    const open = sharedChannel();
+    const server = new FakeServer(SETUP);
+    const auth = new FakeAuthenticator('mac');
+    const a = await makeDevice(server, auth, { channel: open() });
+    await a.vault.create({ setupCode: SETUP });
+    await a.vault.store.append(BOOK);
+    expect((await a.vault.sync()).ok).toBe(true);
+    const b = await makeDevice(server, auth, { channel: open(), db: a.db });
+    await b.vault.unlockWithPasskey();
+    expect(b.vault.status.state).toBe('unlocked');
+
+    // An idle lock in A must not lock B, which may be the window in use.
+    a.vault.lock('idle');
+    await settle();
+    expect(b.vault.status.state).toBe('unlocked');
+
+    await a.vault.unlockWithPasskey();
+    const revoked = server.revoked.size;
+    a.vault.lock('user');
+    await settle();
+    expect(b.vault.status.state).toBe('locked');
+    expect(b.vault.status.lockReason).toBe('other-window');
+    expect(b.vault.holdsKeyMaterial()).toBe(false);
+    // Only the window that pressed Lock signs out (the session cookie is shared).
+    expect(server.revoked.size).toBe(revoked + 1);
+  });
+});
+
+describe('an epoch number from the server', () => {
+  test('a huge jump (not from rotations) cannot stall the tab or bloat the record', async () => {
+    const { emptyRecord, withEpoch } = await import('./vault.ts');
+    const started = Date.now();
+    const r = withEpoch(emptyRecord('v1', 'https://example.test', 0), Number.MAX_SAFE_INTEGER, 5);
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(r.epoch).toBe(Number.MAX_SAFE_INTEGER);
+    expect(Object.keys(r.learned).length).toBeLessThanOrEqual(65);
+    // Ordinary rotations are still all noted.
+    const r2 = withEpoch(emptyRecord('v1', 'https://example.test', 0), 4, 5);
+    expect(Object.keys(r2.learned).sort()).toEqual(['1', '2', '3', '4']);
+  });
+});

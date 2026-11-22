@@ -55,7 +55,7 @@ import { RECORD_FORMAT, RECORD_KEY, parseRecord, type StoredCredential, type Sto
 import { generateRecoveryCode, parseRecoveryCode } from './recovery-code.ts';
 
 export type VaultState = 'empty' | 'locked' | 'unlocked';
-export type LockReason = 'user' | 'idle' | 'hidden';
+export type LockReason = 'user' | 'idle' | 'hidden' | 'other-window';
 
 /** What an unlock is doing right now, for the Unlock screen. */
 export type UnlockStep =
@@ -201,6 +201,11 @@ export class Vault {
   private refreshing: Promise<void> | null = null;
   private readonly listeners = new Set<(s: VaultStatus) => void>();
   private lockReason: LockReason | null = null;
+  private readonly channel: BroadcastLike | null;
+  /** Another window's Lock button locks this one too (its logout already ended the shared session). */
+  private readonly onChannel = (e: MessageEvent) => {
+    if ((e.data as { type?: unknown } | null)?.type === 'locked') this.lock('other-window');
+  };
   private autoLockMinutes: number;
   private lastActivity = 0;
   private hiddenAt: number | null = null;
@@ -244,13 +249,14 @@ export class Vault {
       options.environment === undefined
         ? { document: typeof document === 'undefined' ? null : document, window: typeof window === 'undefined' ? null : window }
         : options.environment;
+    this.channel = options.channel === undefined ? defaultChannel() : options.channel;
     this.store = new EncryptedLedgerStore({
       db,
       api: this.api,
       scheduler: this.scheduler,
       isOnline: this.isOnline,
       pollIntervalMs: options.pollIntervalMs ?? 60_000,
-      channel: options.channel === undefined ? defaultChannel() : options.channel,
+      channel: this.channel,
       onStatus: () => this.emit(),
       beforeSync: () => this.refresh(),
       beforeSeal: () => this.ensureNewestKey(),
@@ -258,6 +264,7 @@ export class Vault {
     for (const t of ACTIVITY_EVENTS) this.env?.document?.addEventListener(t, this.onActivity, { passive: true });
     this.env?.document?.addEventListener('visibilitychange', this.onVisibility);
     this.env?.window?.addEventListener('online', this.onOnline);
+    this.channel?.addEventListener('message', this.onChannel);
   }
 
   // --- Status ------------------------------------------------------------------------------------
@@ -873,6 +880,9 @@ export class Vault {
    * server; queued until the next time online if offline). A lock during an unlock wins.
    */
   lock(reason: LockReason = 'user'): void {
+    // Lock means every window: tell the others (the app and a browser tab share one session cookie).
+    // Only for the Lock button: idle and hidden are per window, and must not lock a window in use.
+    if (reason === 'user') this.channel?.postMessage({ type: 'locked' });
     this.lockGen++;
     const session = this.session;
     // Also when no session is open: an unlock in flight (or one that failed) may already hold keys in
@@ -887,7 +897,8 @@ export class Vault {
     this.clearIdle();
     this.hiddenAt = null;
     if (session !== null) this.lockReason = reason;
-    if (session !== null || signedIn) this.endServerSession();
+    // The window that pressed Lock ends the shared session; a second logout here could only misfire later.
+    if ((session !== null || signedIn) && reason !== 'other-window') this.endServerSession();
     this.emit();
   }
 
@@ -922,6 +933,7 @@ export class Vault {
     for (const t of ACTIVITY_EVENTS) this.env?.document?.removeEventListener(t, this.onActivity);
     this.env?.document?.removeEventListener('visibilitychange', this.onVisibility);
     this.env?.window?.removeEventListener('online', this.onOnline);
+    this.channel?.removeEventListener('message', this.onChannel);
   }
 
   // --- Internals: keys ---------------------------------------------------------------------------
@@ -1397,7 +1409,8 @@ async function makeCredentialKeys(vaultId: string, credentialId: string, kek: Cr
   };
 }
 
-function emptyRecord(vaultId: string, origin: string, now: number, epoch = 1): VaultRecord {
+/** @internal Exported for tests. */
+export function emptyRecord(vaultId: string, origin: string, now: number, epoch = 1): VaultRecord {
   return { format: RECORD_FORMAT, vaultId, recovery: null, credentials: [], epoch, histories: {}, learned: { [String(epoch)]: now }, recoveryChanged: false, logoutPending: false, cursor: null, origin };
 }
 
@@ -1405,10 +1418,14 @@ function emptyRecord(vaultId: string, origin: string, now: number, epoch = 1): V
  * Raise the known epoch (noting when each new one was first heard of); a recovery wrapping older
  * than it is outdated and dropped (with the notice).
  */
-function withEpoch(r: VaultRecord, epoch: number, now: number): VaultRecord {
+const MAX_EPOCHS_LEARNED = 64;
+
+/** @internal Exported for tests. */
+export function withEpoch(r: VaultRecord, epoch: number, now: number): VaultRecord {
   const e = Math.max(r.epoch, epoch);
   const learned = { ...r.learned };
-  for (let n = r.epoch + 1; n <= e; n++) learned[String(n)] ??= now;
+  // Each rotation adds one; a jump bigger than this is not from rotations, and must not stall the tab or bloat the record.
+  for (let n = Math.max(r.epoch + 1, e - MAX_EPOCHS_LEARNED + 1); n <= e; n++) learned[String(n)] ??= now;
   const out = { ...r, epoch: e, learned };
   if (r.recovery !== null && r.recovery.version < e) return { ...out, recovery: null, recoveryChanged: true };
   return out;
