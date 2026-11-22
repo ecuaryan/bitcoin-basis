@@ -8,6 +8,7 @@ import { cx } from '../lib/cx.ts';
 import { averageLines, buildHoldingsView, type AverageBasis, type HoldingsView } from '../lib/holdings-view.ts';
 import { BalanceNudge } from './BalanceNudge.tsx';
 import { LoanNudge, LoansSection } from './loans/loan-parts.tsx';
+import { RecentPurchases } from './RecentPurchases.tsx';
 import { LOSSES_HELP, LOSSES_TITLE } from '../lib/losses.ts';
 import { useHelp } from '../ui/Help.tsx';
 import { AddWalletButton, AddWalletSheet } from './wallet/AddWallet.tsx';
@@ -373,6 +374,7 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
       <StackCard view={view} wide={false} onPick={setYear} />
       <AverageChartCard view={view} wide={false} />
       <RetirementCard view={view} />
+      <RecentPurchases />
       <LoansSection />
 
       <TaxableDivider view={view} />
@@ -439,6 +441,8 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
         <AverageChartCard view={view} wide />
         <RetirementCard view={view} />
       </div>
+
+      <RecentPurchases />
 
       <LoansSection />
 

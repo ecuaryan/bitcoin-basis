@@ -147,7 +147,7 @@ test('Your stack, by year bought is all your Bitcoin: above the taxable figures,
   // The chart, retirement and loans are the whole picture too; wallets and the taxable figures count for tax.
   const y = async (l: Locator) => (await l.boundingBox())?.y ?? NaN;
   const d = await y(divider);
-  for (const above of ['Average cost versus price', 'Retirement accounts']) expect(await y(page.getByRole('region', { name: above }))).toBeLessThan(d);
+  for (const above of ['Average cost versus price', 'Retirement accounts', 'Recent purchases']) expect(await y(page.getByRole('region', { name: above }))).toBeLessThan(d);
   expect(await y(page.getByRole('region', { name: 'Wallets' }))).toBeGreaterThan(d);
   await expect(page.getByText('Held apart')).toHaveCount(0);
 
@@ -182,6 +182,26 @@ test('Your stack, by year bought is all your Bitcoin: above the taxable figures,
   await sheet.getByRole('button').filter({ hasText: 'Jan 18, 2024 · Retirement account' }).click();
   await expect(sheet).toContainText('Kept apart from tax.');
   await expect(sheet).not.toContainText(/\$\d|\d\.\d{4}|\d%/);
+});
+
+test('Recent purchases: the latest five, newest first, with worth now and the percent; a row opens the purchase', async ({ page }) => {
+  await openHoldingsWithDemo(page);
+  const card = page.getByRole('region', { name: 'Recent purchases' });
+  const list = card.getByRole('list', { name: 'Purchases, newest first' });
+  await expect(list.getByRole('listitem')).toHaveCount(5);
+  // Under the chart and the retirement accounts, above the loans and the taxable figures.
+  const y = async (l: Locator) => (await l.boundingBox())?.y ?? NaN;
+  expect(await y(card)).toBeGreaterThan(await y(page.getByRole('region', { name: 'Retirement accounts' })));
+  const rows = list.getByRole('button');
+  await expect(rows.first()).toHaveAccessibleName(/Paid \$[\d,]+\.\d\d .*now \$[\d,]+\.\d\d (up|down) [+−]\$[\d,]+\.\d\d [+−]\d+%.*Strike/);
+  await expect(card.getByText(/^[+−]\d+%$/).first()).toBeVisible();
+  await card.getByRole('button', { name: 'Show 10 more' }).click();
+  await expect(list.getByRole('listitem')).toHaveCount(15);
+  await rows.first().click();
+  await expect(page.getByRole('dialog')).toContainText('Bought');
+  await page.keyboard.press('Escape');
+  const results = await new AxeBuilder({ page }).include('section[aria-label="Recent purchases"]').analyze();
+  expect(results.violations).toEqual([]);
 });
 
 test('the chart’s average-cost line switches between all your Bitcoin, taxable and retirement, and says which it is', async ({ page }) => {
