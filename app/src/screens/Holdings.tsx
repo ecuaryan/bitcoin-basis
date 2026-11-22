@@ -212,13 +212,13 @@ function isYoung(view: HoldingsView, today: string): boolean {
   return Date.parse(`${today}T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`) < 30 * 86_400_000;
 }
 
-function ChartFooter({ points, className }: { points: PricePoint[]; className?: string }) {
+function ChartFooter({ points, averageCostCents, className }: { points: PricePoint[]; averageCostCents: number | null; className?: string }) {
   const first = points[0];
   return (
-    <div className={cx('flex justify-between text-muted', className)}>
-      <span>{first ? new Date(first.ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : ''}</span>
-      <span>Dashed line: your average cost</span>
-      <span>Today</span>
+    <div className={cx('flex justify-between gap-2 text-muted', className)}>
+      <span className="whitespace-nowrap">{first ? new Date(first.ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : ''}</span>
+      <span className="text-center">Dashed: your average cost, {averageCostCents === null ? '—' : <Money cents={averageCostCents} />}</span>
+      <span className="whitespace-nowrap">Today</span>
     </div>
   );
 }
@@ -277,8 +277,12 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
           </div>
         </div>
         {gainHelp.panel}
+        <div className="flex items-baseline justify-between border-t border-line pt-3">
+          <h2 className="m-0 text-sm font-semibold">Price vs. your average cost</h2>
+          <span className="text-xs text-muted">{YEARS_BACK} years</span>
+        </div>
         <PriceChart points={series} averageCostCents={view.averageCostCentsPerBtc} width={320} height={96} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} markHigh={daily} />
-        <ChartFooter points={series} className="text-[11px]" />
+        <ChartFooter points={series} averageCostCents={view.averageCostCentsPerBtc} className="text-[11px]" />
         <LossesStat view={view} variant="row" />
       </Card>
 
@@ -290,7 +294,12 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
           {tierHelp.button}
         </div>
         {tierHelp.panel}
+        <span className="text-xs text-muted">
+          {view.documentedPercent}% documented. Pick a year to see each lot and where it came from.
+        </span>
       </Card>
+
+      <DocumentationCard view={view} />
 
       <section aria-label="Wallets" className="flex flex-col gap-2">
         <div className="flex items-center justify-between px-0.5 pt-1">

@@ -35,6 +35,7 @@
 
 ### Fixed
 
+- **Phone shows what desktop shows on Holdings**: the chart's title, its 3-year span and the average cost on the dashed line, the stack's documentation hint, and the How well it is documented card.
 - The Taxable and Retirement rows show their gain percent on phones too; with Hide amounts the percent's digits are masked instead of removed, so nothing moves.
 - **Import from a spreadsheet** is short and scannable: one line, two buttons (Download the template, Choose your spreadsheet), and a column-by-column table instead of a paragraph.
 - **Choosing Idaho (or Single) now saves.** A first choice equal to the built-in default was dropped as "no change" while the screen said Saved; it is now recorded, and Saved only shows when something was written.
