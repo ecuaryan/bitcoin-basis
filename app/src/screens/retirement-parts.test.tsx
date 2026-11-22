@@ -51,7 +51,7 @@ describe('Hero: all your Bitcoin', () => {
 });
 
 describe('Taxable and retirement split', () => {
-  it('labels both parts with their BTC, worth and gain; the phone leaves out the percent', async () => {
+  it('labels both parts with their BTC, worth, gain and gain percent', async () => {
     app = await renderApp(
       <MemoryRouter>
         <SplitCard view={viewOf([...base, ...ira])} wide={false} />
@@ -61,12 +61,11 @@ describe('Taxable and retirement split', () => {
     expect(taxable).toContain('Taxable');
     expect(taxable).toContain('Counts for tax · 0.5000 BTC');
     expect(taxable).toContain('$50,000');
-    expect(taxable).toContain('up $30,000');
+    expect(taxable).toContain('up $30,000 (+150%)');
     expect(retirement).toContain('Retirement');
     expect(retirement).toContain('Kept apart from tax · 0.1000 BTC');
     expect(retirement).toContain('$10,000');
-    expect(retirement).toContain('up $5,000');
-    expect(text()).not.toContain('%');
+    expect(retirement).toContain('up $5,000 (+100%)');
   });
   it('shows the gain percent on a wide screen', async () => {
     app = await renderApp(

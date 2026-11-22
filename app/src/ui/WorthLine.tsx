@@ -1,3 +1,4 @@
+import { maskDigits } from '../lib/format.ts';
 import { cx } from '../lib/cx.ts';
 import type { WorthNow } from '../lib/worth-now.ts';
 import { Money } from './Amount.tsx';
@@ -15,7 +16,9 @@ export function GainWords({ worth, plain = false, precision = 'cents', showPerce
   if (gainCents === null) return <span className={className}>—</span>;
   if (gainCents === 0) return <span className={className}>even</span>;
   const up = gainCents > 0;
-  const pct = percent === null || masked || !showPercent ? '' : percent === 0 ? ' (under 1%)' : ` (${up ? '+' : '−'}${Math.abs(percent)}%)`;
+  const shown = percent === null || !showPercent ? '' : percent === 0 ? ' (under 1%)' : ` (${up ? '+' : '−'}${Math.abs(percent)}%)`;
+  // Hidden amounts hide the digits but keep the room, so nothing on the screen moves.
+  const pct = masked ? maskDigits(shown) : shown;
   const dollars = Math.abs(gainCents);
   return (
     <span className={cx('whitespace-nowrap', up ? 'text-accent' : 'text-loss', className)}>

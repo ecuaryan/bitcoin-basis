@@ -445,7 +445,7 @@ export function HeroAverageLine({ view, className }: { view: HoldingsView; class
   );
 }
 
-function SplitRowBody({ swatch, label, sub, worth, wide }: { swatch: string; label: string; sub: ReactNode; worth: Worth; wide: boolean }) {
+function SplitRowBody({ swatch, label, what, btc, worth, wide }: { swatch: string; label: string; what: string; btc: ReactNode; worth: Worth; wide: boolean }) {
   return (
     <>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -453,14 +453,27 @@ function SplitRowBody({ swatch, label, sub, worth, wide }: { swatch: string; lab
           <span className={cx('size-2.5 flex-none rounded-[3px]', swatch)} aria-hidden="true" />
           {label}
         </span>
-        <span className="text-xs text-muted">{sub}</span>
+        {wide ? (
+          <span className="text-xs text-muted">
+            {what} · {btc}
+          </span>
+        ) : (
+          // Phone: two short lines, so neither breaks in an odd place.
+          <span className="flex flex-col text-xs text-muted">
+            <span>
+              {what}
+              <span className="sr-only"> · </span>
+            </span>
+            <span>{btc}</span>
+          </span>
+        )}
       </span>
       <span className="flex flex-none flex-col items-end gap-0.5 text-right">
         <span className="text-[15px] font-semibold">{worth.valueCents === null ? '—' : <PlainMoney cents={worth.valueCents} precision="dollars" />}</span>
         {worth.valueCents === null ? null : worth.gainCents === null ? (
           <span className="text-xs text-muted">Gain not known</span>
         ) : (
-          <GainWords worth={worth} plain precision="dollars" showPercent={wide} className="text-xs font-semibold" />
+          <GainWords worth={worth} plain precision="dollars" className="text-xs font-semibold" />
         )}
       </span>
       <ChevronRightIcon size={16} className="-ml-1 flex-none text-muted" />
@@ -486,11 +499,8 @@ export function SplitCard({ view, wide }: { view: HoldingsView; wide: boolean })
     <SplitRowBody
       swatch="bg-cream"
       label="Retirement"
-      sub={
-        <>
-          {unknown ? 'Some cost not logged' : 'Kept apart from tax'} · {satsLine(all.retirement.sats)}
-        </>
-      }
+      what={unknown ? 'Some cost not logged' : 'Kept apart from tax'}
+      btc={satsLine(all.retirement.sats)}
       worth={all.retirement}
       wide={wide}
     />
@@ -505,7 +515,7 @@ export function SplitCard({ view, wide }: { view: HoldingsView; wide: boolean })
       <ul className={cx('m-0 list-none p-0', wide ? 'grid grid-cols-2 gap-2' : 'flex flex-col divide-y divide-line')}>
         <li className={cx(!wide && 'pb-0.5')}>
           <button type="button" onClick={() => jumpTo(TAXABLE_ID)} className={SPLIT_ROW}>
-            <SplitRowBody swatch="bg-accent" label="Taxable" sub={<>Counts for tax · {satsLine(all.taxable.sats)}</>} worth={all.taxable} wide={wide} />
+            <SplitRowBody swatch="bg-accent" label="Taxable" what="Counts for tax" btc={satsLine(all.taxable.sats)} worth={all.taxable} wide={wide} />
             <span className="sr-only">Go to the taxable figures.</span>
           </button>
         </li>
