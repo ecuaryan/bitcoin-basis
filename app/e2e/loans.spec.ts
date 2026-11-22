@@ -216,7 +216,7 @@ test('Import: a funded_by column creates the loan in the preview and links its r
   await setUp(page);
   await page.getByRole('link', { name: 'Records', exact: true }).click();
   await page.getByRole('link', { name: /^Import and/ }).click();
-  await page.getByLabel('Choose a spreadsheet (CSV)').setInputFiles(new URL('./fixtures/opening-lots-funded-by.csv', import.meta.url).pathname);
+  await page.getByLabel('Choose your spreadsheet').setInputFiles(new URL('./fixtures/opening-lots-funded-by.csv', import.meta.url).pathname);
   const status = page.getByRole('status').filter({ hasText: 'will be created' });
   await expect(status).toContainText('1 loan will be created');
   await expect(status).toContainText('2 lots paid with a loan');

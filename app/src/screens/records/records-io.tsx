@@ -1,6 +1,6 @@
 import { exportEntriesJson, exportOpeningLotsCsv, form8949Csv, TIERS, yearOf, type WalletType } from '@bitcoin-basis/engine';
 import { useSubmit } from '../../ui/use-submit.ts';
-import { useMemo, useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { countOf } from '../../lib/format.ts';
 import { TIER_LABEL } from '../../lib/origin.ts';
@@ -62,6 +62,19 @@ const KIND_OPTIONS: readonly SegmentedOption<WalletType>[] = [
 const KIND_OPTIONS_WITH_RETIREMENT: readonly SegmentedOption<WalletType>[] = [...KIND_OPTIONS, { value: 'retirement', label: 'Retirement', sub: '(IRA, Roth)' }];
 const BATCH = 200;
 
+/** The template's columns in plain words. The first six are needed on every row. */
+const TEMPLATE_COLUMNS: readonly (readonly [string, string])[] = [
+  ['wallet', 'Where it is held, like Strike. A new name becomes a new wallet.'],
+  ['acquired_utc', 'When you got it, like 2023\u201101\u201120 14:02:11.'],
+  ['sats', 'How much, in sats (100,000,000 sats = 1 BTC).'],
+  ['cost_usd', 'What you paid, fees included.'],
+  ['tier', 'How well the cost is backed up: Documented, Reconstructed, Estimated or Unknown. Leave it empty for a retirement account.'],
+  ['origin', 'Where the proof is, like Email receipt.'],
+  ['btc, cost_per_btc', 'Optional. Only used to double-check the row.'],
+  ['tz', 'Optional time zone, like America/Boise.'],
+  ['funded_by', 'Optional. The loan that paid for it, like HELOC.'],
+];
+
 function ImportLots() {
   const { entries, state, append } = useLedger();
   const toast = useToast();
@@ -114,24 +127,25 @@ function ImportLots() {
   });
   const add = adder.run;
   return (
-    <Card as="section" aria-label="Bring in your lots" className="flex flex-col gap-3 !rounded-[18px] !p-4">
-      <h2 className="m-0 text-[15px] font-semibold">Bring in your lots from a spreadsheet</h2>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <FilePicker label="Choose a spreadsheet (CSV)" accept=".csv,text/csv" onText={read} />
-        <button
-          type="button"
-          className="flex min-h-11 items-center gap-1.5 bg-transparent text-sm font-semibold text-amber underline-offset-2 hover:underline"
-          onClick={() => downloadText('bitcoin-basis-template.csv', lotsTemplateCsv(state.wallets.find((w) => !w.archived)?.name ?? 'My exchange', tz))}
-        >
-          <DownloadIcon size={16} /> Download a blank template
-        </button>
+    <Card as="section" aria-label="Import from a spreadsheet" className="flex flex-col gap-3 !rounded-[18px] !p-4">
+      <h2 className="m-0 text-[15px] font-semibold">Import from a spreadsheet</h2>
+      <p className="m-0 text-[13px] leading-[1.45] text-muted">Fill in the template, one row per purchase, then choose it here. You&apos;ll see a preview before anything is added.</p>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Button onClick={() => downloadText('bitcoin-basis-template.csv', lotsTemplateCsv(state.wallets.find((w) => !w.archived)?.name ?? 'My exchange', tz))}>
+          <DownloadIcon size={16} /> Download the template
+        </Button>
+        <FilePicker label="Choose your spreadsheet" accept=".csv,text/csv" onText={read} />
       </div>
-      <p className="m-0 text-[13px] leading-[1.45] text-muted">One row per purchase. A wallet name that is new gets created for you. Rows for a retirement account leave the tier empty and become retirement purchases, kept apart from tax math. You&apos;ll see a preview before anything is added.</p>
       <details className="text-[13px] text-muted">
-        <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-soft">What columns?</summary>
-        <p className="m-0 pb-1 leading-[1.5]">
-          wallet (a name you have, or a new one), acquired_utc (like 2023-01-20 14:02:11), btc, sats, cost_usd, cost_per_btc, tier (Documented, Reconstructed, Estimated or Unknown) and origin. A tz column (like America/Boise) is optional. Sats is the number that counts; btc and cost_per_btc are only checked. An optional funded_by column names the loan that paid for a row, like HELOC. A row whose wallet is a retirement account is saved as a retirement purchase, kept apart from tax math: leave its tier and funded_by empty. If that wallet is new, the preview asks whether it is a retirement account.
-        </p>
+        <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-soft">What goes in each column?</summary>
+        <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 pb-1 leading-[1.45]">
+          {TEMPLATE_COLUMNS.map(([name, what]) => (
+            <Fragment key={name}>
+              <dt className="font-mono text-xs text-soft">{name}</dt>
+              <dd className="m-0">{what}</dd>
+            </Fragment>
+          ))}
+        </dl>
       </details>
       {file && preview && (
         <div role="status" className="flex flex-col gap-3 rounded-2xl border border-line bg-bg p-3 text-sm">
@@ -381,7 +395,7 @@ export function ImportExportView() {
       <h2 className="m-0 hidden font-display text-2xl font-semibold lg:block">Import and export</h2>
       {isDemo ? (
         <>
-          <NotInDemo title="Bring in your lots from a spreadsheet" label="Bring in your lots" />
+          <NotInDemo title="Import from a spreadsheet" label="Import from a spreadsheet" />
           <NotInDemo title="Restore from a backup file" label="Restore from a backup" />
         </>
       ) : (

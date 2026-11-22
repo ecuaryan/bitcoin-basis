@@ -31,7 +31,7 @@ test('Records: import creates the new wallets, then adds the coins', async ({ pa
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('link', { name: 'Records', exact: true }).click();
   await page.getByRole('link', { name: /^Import and/ }).click();
-  await page.getByLabel('Choose a spreadsheet (CSV)').setInputFiles(NEW_WALLETS);
+  await page.getByLabel('Choose your spreadsheet').setInputFiles(NEW_WALLETS);
   const status = page.getByRole('status').filter({ hasText: 'will be created' });
   await expect(status).toContainText('2 wallets will be created');
   const made = page.getByRole('list', { name: 'New wallets' });
@@ -60,7 +60,7 @@ test('Records: import opening lots with one bad row (a real book; the demo has n
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('link', { name: 'Records', exact: true }).click();
   await page.getByRole('link', { name: /^Import and/ }).click();
-  await page.getByLabel('Choose a spreadsheet (CSV)').setInputFiles(FIXTURE);
+  await page.getByLabel('Choose your spreadsheet').setInputFiles(FIXTURE);
   const problems = page.getByRole('list', { name: 'Problems' });
   await expect(problems).toContainText('Row 4');
   await expect(problems).toContainText('sats "abc"');
@@ -73,7 +73,7 @@ test('Records: the demo has no import or restore, and says so', async ({ page })
   await openDemo(page);
   await go(page, '/records?v=io');
   await expect(page.getByText('Not in the demo.')).toHaveCount(2);
-  await expect(page.getByLabel('Choose a spreadsheet (CSV)')).toHaveCount(0);
+  await expect(page.getByLabel('Choose your spreadsheet')).toHaveCount(0);
   await expect(page.getByLabel('Choose a backup file')).toHaveCount(0);
   expect(await page.evaluate(() => Object.keys(window.localStorage).filter((k) => !['bb.hide', 'bb.kit-first-seen'].includes(k)))).toEqual([]);
 });

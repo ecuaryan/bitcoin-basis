@@ -35,6 +35,7 @@
 
 ### Fixed
 
+- **Import from a spreadsheet** is short and scannable: one line, two buttons (Download the template, Choose your spreadsheet), and a column-by-column table instead of a paragraph.
 - **Choosing Idaho (or Single) now saves.** A first choice equal to the built-in default was dropped as "no change" while the screen said Saved; it is now recorded, and Saved only shows when something was written.
 - Holdings shows the **average cost of all your Bitcoin** (taxable and retirement) under the total, when every cost is known.
 - Reminder banners on Holdings no longer stretch across wide screens.
