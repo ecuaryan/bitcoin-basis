@@ -26,10 +26,10 @@ function valueAt(sats: Sats, priceCents: Cents | null): Cents | null {
   return priceCents === null ? null : mulDivOrNull(sats, priceCents, SATS_PER_BTC);
 }
 
-/** Whole percent of `gainCents` over `costCents`, toward zero; null when the cost is $0. */
+/** Whole percent of `gainCents` over `costCents`, rounded to the nearest (half away from zero); null when the cost is $0. */
 function percentOf(gainCents: Cents, costCents: Cents): number | null {
   if (costCents <= 0) return null;
-  const magnitude = Number((BigInt(Math.abs(gainCents)) * 100n) / BigInt(costCents));
+  const magnitude = Number((BigInt(Math.abs(gainCents)) * 200n + BigInt(costCents)) / (2n * BigInt(costCents)));
   return gainCents < 0 ? -magnitude : magnitude;
 }
 

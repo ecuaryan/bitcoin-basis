@@ -15,11 +15,12 @@ describe('loan words', () => {
     expect(loanTag('Home equity line')).toBe('HELOC');
     expect(loanTag('Margin loan')).toBe('Loan');
   });
-  it('says how far the price is from break-even in whole percent toward zero', () => {
+  it('says how far the price is from break-even in the nearest whole percent', () => {
     expect(breakEvenWords(7_000_000, 10_000_000)).toBe('Price is 30% below break-even');
-    expect(breakEvenWords(12_299_999, 10_000_000)).toBe('Price is 22% above break-even');
+    expect(breakEvenWords(12_299_999, 10_000_000)).toBe('Price is 23% above break-even');
     expect(breakEvenWords(10_000_000, 10_000_000)).toBe('Price is at break-even');
-    expect(breakEvenWords(10_050_000, 10_000_000)).toBe('Price is within 1% of break-even');
+    expect(breakEvenWords(10_049_999, 10_000_000)).toBe('Price is within 1% of break-even');
+    expect(breakEvenWords(10_050_000, 10_000_000)).toBe('Price is 1% above break-even');
     expect(breakEvenWords(null, 10_000_000)).toBeNull();
     expect(breakEvenWords(10_000_000, null)).toBeNull();
   });
@@ -92,10 +93,10 @@ describe('purchases to link', () => {
 });
 
 describe('a purchase as worth-now', () => {
-  it('uses the engine figures and a whole percent toward zero', () => {
+  it('uses the engine figures and the nearest whole percent', () => {
     const base = { heldSats: 1, heldCostCents: 30_000, valueCents: 10_000 };
-    expect(purchaseWorth({ ...base, upDownCents: -20_000 } as never).percent).toBe(-66);
-    expect(purchaseWorth({ ...base, upDownCents: 3_299 } as never).percent).toBe(10);
+    expect(purchaseWorth({ ...base, upDownCents: -20_000 } as never).percent).toBe(-67);
+    expect(purchaseWorth({ ...base, upDownCents: 3_299 } as never).percent).toBe(11);
     expect(purchaseWorth({ ...base, valueCents: null, upDownCents: null } as never).percent).toBeNull();
   });
 });

@@ -21,7 +21,8 @@ function fromParts(sats: number, costCents: number, valueCents: number | null): 
   const gainCents = valueCents - costCents;
   let percent: number | null = null;
   if (costCents > 0) {
-    const magnitude = Number((BigInt(Math.abs(gainCents)) * 100n) / BigInt(costCents));
+    // Nearest whole percent (half away from zero), the same rule as the engine's.
+    const magnitude = Number((BigInt(Math.abs(gainCents)) * 200n + BigInt(costCents)) / (2n * BigInt(costCents)));
     percent = gainCents < 0 ? -magnitude : magnitude;
   }
   return { sats, costCents, valueCents, gainCents, percent };

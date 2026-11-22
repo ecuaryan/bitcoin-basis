@@ -47,13 +47,13 @@ export function loanTagFor(state: LedgerState, lotId: LotId): LoanTagInfo | null
 // ---- Words -----------------------------------------------------------------------------------
 
 /**
- * How far the price is from break-even, in whole percent toward zero (never overstates): `Price is 22% below
+ * How far the price is from break-even, in the nearest whole percent (under half a percent says within 1%): `Price is 22% below
  * break-even`. Null when either is unknown.
  */
 export function breakEvenWords(priceCents: number | null, breakEvenCents: number | null): string | null {
   if (priceCents === null || breakEvenCents === null || breakEvenCents <= 0) return null;
   const diff = BigInt(priceCents - breakEvenCents);
-  const pct = Number(((diff < 0n ? -diff : diff) * 100n) / BigInt(breakEvenCents));
+  const pct = Number(((diff < 0n ? -diff : diff) * 200n + BigInt(breakEvenCents)) / (2n * BigInt(breakEvenCents)));
   if (pct === 0) return priceCents === breakEvenCents ? 'Price is at break-even' : 'Price is within 1% of break-even';
   return `Price is ${pct}% ${diff < 0n ? 'below' : 'above'} break-even`;
 }
@@ -66,10 +66,10 @@ export function statementDayText(day: number | null): string {
   return `The ${day}${suffix}`;
 }
 
-/** A loan purchase's coins still held as `WorthNow` (the engine's value and up/down; percent toward zero). */
+/** A loan purchase's coins still held as `WorthNow` (the engine's value and up/down; percent to the nearest whole). */
 export function purchaseWorth(p: LoanPurchase): WorthNow {
   const gain = p.upDownCents;
-  const percent = gain === null || p.heldCostCents <= 0 ? null : Math.sign(gain) * Number((BigInt(Math.abs(gain)) * 100n) / BigInt(p.heldCostCents));
+  const percent = gain === null || p.heldCostCents <= 0 ? null : Math.sign(gain) * Number((BigInt(Math.abs(gain)) * 200n + BigInt(p.heldCostCents)) / (2n * BigInt(p.heldCostCents)));
   return { sats: p.heldSats, costCents: p.heldCostCents, valueCents: p.valueCents, gainCents: gain, percent };
 }
 

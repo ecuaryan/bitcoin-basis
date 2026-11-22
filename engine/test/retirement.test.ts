@@ -158,10 +158,10 @@ describe('per purchase and all Bitcoin', () => {
     snapshot('S', 'old', '2025-12-31', sats('0.5')),
   ]);
 
-  test('worth now, gain, percent toward zero and days held', () => {
+  test('worth now, gain, percent to the nearest whole and days held', () => {
     const list = retirementPurchases(state, 'ira', PRICE, '2026-11-15');
     expect(list.map((p) => [p.id, p.valueCents, p.gainCents, p.percent, p.heldDays, p.averageCostCentsPerBtc, p.proof])).toEqual([
-      ['R1', cents('7500'), cents('3500'), 87, 1018, cents('40000'), ''],
+      ['R1', cents('7500'), cents('3500'), 88, 1018, cents('40000'), ''],
       ['R2', cents('15000'), cents('-1000'), -6, 0, cents('80000'), 'Statement'],
     ]);
     // All wallets; a later date than today counts as 0 days; a $0 cost has no percent.
@@ -180,7 +180,8 @@ describe('per purchase and all Bitcoin', () => {
     expect(all.total.costCents).toBe(cents('85300'));
     expect(all.total.valueCents).toBe((all.taxable.valueCents as number) + cents('60750'));
     expect(all.total.gainCents).toBe((all.taxable.gainCents as number) + cents('3250'));
-    expect(all.total.percent).toBe(Math.trunc(((all.total.gainCents as number) * 100) / cents('85300')));
+    const g = all.total.gainCents as number;
+    expect(all.total.percent).toBe(Math.sign(g) * Math.round((Math.abs(g) * 100) / cents('85300')));
     expect(all.total.unknownCostSats).toBe(sats('0.5'));
   });
 

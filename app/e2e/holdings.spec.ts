@@ -25,7 +25,7 @@ test('Holdings loads with demo data and has no accessibility violations', async 
   const hero = page.getByRole('region', { name: 'What all your Bitcoin is worth' });
   await expect(hero.getByText('$352,391')).toBeVisible();
   await expect(hero.getByText('3.7167 2105 BTC')).toBeVisible();
-  await expect(hero).toContainText('up $197,603 (+127%) unrealized');
+  await expect(hero).toContainText('up $197,603 (+128%) unrealized');
   await expect(page.getByRole('heading', { name: 'Your stack, by year bought' })).toBeVisible();
 
   const results = await new AxeBuilder({ page }).analyze();

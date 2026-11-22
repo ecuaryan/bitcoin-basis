@@ -4,11 +4,11 @@ import { entryWorth, sumWorth, worthNow } from './worth-now.ts';
 const P = 10_000_000; // $100,000.00 per BTC, in cents
 
 describe('worthNow', () => {
-  it('shows a gain and a loss in cents, with the percent toward zero', () => {
+  it('shows a gain and a loss in cents, with the percent to the nearest whole', () => {
     const gain = worthNow(1_000_000, 72_000, P); // 0.01 BTC = $1,000.00 against $720.00
-    expect(gain).toMatchObject({ gainCents: 28_000, percent: 38 }); // 38.88 -> 38
+    expect(gain).toMatchObject({ gainCents: 28_000, percent: 39 }); // 38.88 -> 39
     const loss = worthNow(1_000_000, 104_000, P);
-    expect(loss).toMatchObject({ gainCents: -4_000, percent: -3 }); // -3.85 -> -3
+    expect(loss).toMatchObject({ gainCents: -4_000, percent: -4 }); // -3.85 -> -4
   });
   it('rounds the value half-up and never uses floats for money', () => {
     expect(worthNow(5, 0, 10_000_000).valueCents).toBe(1); // 0.5 cent

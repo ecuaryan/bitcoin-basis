@@ -15,11 +15,11 @@ const text = () => app?.container.textContent ?? '';
 describe('WorthLine', () => {
   it('says up with the percent', async () => {
     app = await renderApp(<WorthLine worth={worthNow(1_000_000, 72_000, 10_000_000)} />);
-    expect(text()).toBe('Now $1,000.00 · up $280.00 (+38%)');
+    expect(text()).toBe('Now $1,000.00 · up $280.00 (+39%)');
   });
   it('says down with a real minus', async () => {
     app = await renderApp(<WorthLine worth={worthNow(1_000_000, 104_000, 10_000_000)} />);
-    expect(text()).toBe('Now $1,000.00 · down $40.00 (−3%)');
+    expect(text()).toBe('Now $1,000.00 · down $40.00 (−4%)');
   });
   it('shows a dash, never a zero, with no price', async () => {
     app = await renderApp(<WorthLine worth={worthNow(1_000_000, 104_000, null)} />);

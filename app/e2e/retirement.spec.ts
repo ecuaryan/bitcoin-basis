@@ -21,7 +21,7 @@ test('Retirement: log a purchase, see its gain, edit and remove it; Holdings sho
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(purchases).toContainText('4 purchases');
   const row = purchases.getByRole('button').filter({ hasText: 'Bought today' });
-  await expect(row).toContainText('up $448.12 (+89%)');
+  await expect(row).toContainText('up $448.12 (+90%)');
 
   // Edit through the usual entry sheet, with a reason.
   await row.click();
