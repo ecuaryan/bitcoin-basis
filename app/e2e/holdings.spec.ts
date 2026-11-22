@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { setUp } from './fake.ts';
 import { go, openDemo } from './helpers.ts';
 
@@ -144,7 +144,12 @@ test('Your stack, by year bought is all your Bitcoin: above the taxable figures,
   expect((await stack.boundingBox())?.y ?? Infinity).toBeLessThan((await divider.boundingBox())?.y ?? 0);
   const docs = page.getByRole('region', { name: 'How well your taxable coins are documented' });
   expect((await docs.boundingBox())?.y ?? 0).toBeGreaterThan((await divider.boundingBox())?.y ?? Infinity);
-  await expect(docs).toContainText('Taxable Bitcoin only.');
+  // The chart, retirement and loans are the whole picture too; wallets and the taxable figures count for tax.
+  const y = async (l: Locator) => (await l.boundingBox())?.y ?? NaN;
+  const d = await y(divider);
+  for (const above of ['Average cost versus price', 'Retirement accounts']) expect(await y(page.getByRole('region', { name: above }))).toBeLessThan(d);
+  expect(await y(page.getByRole('region', { name: 'Wallets' }))).toBeGreaterThan(d);
+  await expect(page.getByText('Held apart')).toHaveCount(0);
 
   await expect(stack).toContainText('Retirement');
   await expect(stack).toContainText('Taxable: 94% documented.');
@@ -177,4 +182,17 @@ test('Your stack, by year bought is all your Bitcoin: above the taxable figures,
   await sheet.getByRole('button').filter({ hasText: 'Jan 18, 2024 · Retirement account' }).click();
   await expect(sheet).toContainText('Kept apart from tax.');
   await expect(sheet).not.toContainText(/\$\d|\d\.\d{4}|\d%/);
+});
+
+test('the chart’s average-cost line switches between all your Bitcoin, taxable and retirement, and says which it is', async ({ page }) => {
+  await openHoldingsWithDemo(page);
+  const card = page.getByRole('region', { name: 'Average cost versus price' });
+  const pick = card.getByRole('radiogroup', { name: 'Average cost line for' });
+  await expect(pick.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true');
+  await expect(card).toContainText('Average cost of all your Bitcoin: $41,646.35');
+  await pick.getByRole('radio', { name: 'Taxable' }).click();
+  await expect(card).toContainText('Average cost of your taxable Bitcoin: $41,250.18');
+  await pick.getByRole('radio', { name: 'Retirement' }).click();
+  await expect(card).toContainText('Average cost of your retirement Bitcoin: $45,457.14');
+  expect((await new AxeBuilder({ page }).include('section[aria-label="Average cost versus price"]').analyze()).violations).toEqual([]);
 });

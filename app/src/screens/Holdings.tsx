@@ -5,7 +5,7 @@ import { createLocalPriceCache, createLocalSeriesCache, floorToHour, loadChartHi
 import { usePrice } from '../data/price-provider.tsx';
 import { demoPriceSeries } from '../demo/demo-data.ts';
 import { cx } from '../lib/cx.ts';
-import { buildHoldingsView, type HoldingsView } from '../lib/holdings-view.ts';
+import { averageLines, buildHoldingsView, type AverageBasis, type HoldingsView } from '../lib/holdings-view.ts';
 import { BalanceNudge } from './BalanceNudge.tsx';
 import { LoanNudge, LoansSection } from './loans/loan-parts.tsx';
 import { LOSSES_HELP, LOSSES_TITLE } from '../lib/losses.ts';
@@ -20,6 +20,7 @@ import { Card } from '../ui/Card.tsx';
 import { SyncIndicator } from '../ui/SyncIndicator.tsx';
 import { PageHeader } from '../ui/PageHeader.tsx';
 import { PriceChart } from '../ui/PriceChart.tsx';
+import { Segmented } from '../ui/Segmented.tsx';
 import {
   DocumentationCard,
   GainText,
@@ -218,27 +219,131 @@ function isYoung(view: HoldingsView, today: string): boolean {
   return Date.parse(`${today}T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`) < 30 * 86_400_000;
 }
 
-function ChartFooter({ points, averageCostCents, className }: { points: PricePoint[]; averageCostCents: number | null; className?: string }) {
+/** The switch's last choice, kept while the app is open (back from a wallet, it is still what was picked). */
+let chosenBasis: AverageBasis | null = null;
+
+/**
+ * "Price vs. your average cost": three years of price against a dashed average-cost line. With retirement coins a
+ * switch picks whose average the line is (All, the default, Taxable or Retirement), and the line under the chart says
+ * which one it is, so the card belongs with the whole picture above the Taxable label.
+ */
+function AverageChartCard({ view, wide }: { view: HoldingsView; wide: boolean }) {
+  const { today } = useLedger();
+  const { points, loading, daily } = usePriceSeries();
+  const lines = averageLines(view);
+  const [basis, setBasis] = useState<AverageBasis | null>(chosenBasis);
+  const line = lines.find((l) => l.basis === basis) ?? lines[0] ?? null;
   const first = points[0];
+  const from = first ? new Date(first.ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+  const choose = (b: AverageBasis) => {
+    chosenBasis = b;
+    setBasis(b);
+  };
+  const switcher =
+    line !== null && lines.length > 1 ? (
+      <Segmented options={lines.map((l) => ({ value: l.basis, label: l.label }))} value={line.basis} onChange={choose} label="Average cost line for" className={wide ? 'w-[300px]' : 'w-full'} />
+    ) : null;
+  const caption = (
+    <span className="inline-flex items-center gap-2">
+      <span className="w-4 flex-none border-t-2 border-dashed border-soft" aria-hidden="true" />
+      <span>
+        {line === null ? 'Your average cost' : line.caption}: {line === null ? '—' : <Money cents={line.centsPerBtc} className="font-semibold text-soft" />}
+      </span>
+    </span>
+  );
+  const chart = (
+    <PriceChart
+      points={points}
+      averageCostCents={line?.centsPerBtc ?? null}
+      width={wide ? 640 : 320}
+      height={wide ? 220 : 96}
+      {...(wide ? { strokeWidth: 2.5 } : {})}
+      label={`Bitcoin price over three years against ${line === null ? 'your average cost' : line.caption.replace(/^Average cost/, 'the average cost')}`}
+      status={loading ? 'loading' : 'ready'}
+      young={isYoung(view, today)}
+      markHigh={daily}
+    />
+  );
   return (
-    <div className={cx('flex justify-between gap-2 text-muted', className)}>
-      <span className="whitespace-nowrap">{first ? new Date(first.ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : ''}</span>
-      <span className="text-center">Dashed: your average cost, {averageCostCents === null ? '—' : <Money cents={averageCostCents} />}</span>
-      <span className="whitespace-nowrap">Today</span>
-    </div>
+    <Card as="section" aria-label="Average cost versus price" className={cx('flex flex-col gap-3', wide && 'col-span-2')}>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h2 className={cx('m-0 font-semibold', wide ? 'text-[15px]' : 'text-sm')}>Price vs. your average cost</h2>
+        <div className="flex items-center gap-3">
+          {wide ? switcher : null}
+          <span className={cx('text-muted', wide ? 'text-[13px]' : 'text-xs')}>{YEARS_BACK} years</span>
+        </div>
+      </div>
+      {wide ? null : switcher}
+      {chart}
+      <div className={cx('flex flex-col gap-1.5 text-muted', wide ? 'text-xs' : 'text-[11px]')}>
+        <div className="flex justify-between gap-2">
+          <span className="whitespace-nowrap">{from}</span>
+          {wide ? caption : null}
+          <span className="whitespace-nowrap">Today</span>
+        </div>
+        {wide ? null : caption}
+      </div>
+    </Card>
+  );
+}
+
+/** Your average cost, unrealized gain and losses from past years: what counts for tax. */
+function TaxableFigures({ view, wide }: { view: HoldingsView; wide: boolean }) {
+  const gainHelp = useUnrealizedHelp();
+  const avg = view.averageCostCentsPerBtc;
+  if (wide) {
+    return (
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
+          <span className="text-[13px] text-muted">Your average cost</span>
+          <span className="text-2xl font-semibold">{avg === null ? '—' : <Money cents={avg} />}</span>
+        </Card>
+        <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
+          <span className="flex items-baseline gap-1 text-[13px] text-muted">
+            Unrealized gain
+            {gainHelp.button}
+          </span>
+          <GainText cents={view.taxableGainShownCents} className="text-2xl font-semibold" />
+          {gainHelp.panel}
+        </Card>
+        <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
+          <LossesStat view={view} variant="tile" />
+        </Card>
+      </div>
+    );
+  }
+  return (
+    <Card as="section" aria-label="Your taxable figures" className="flex flex-col gap-3">
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-muted">Your average cost</span>
+          <span className="text-xl font-semibold">{avg === null ? '—' : <Money cents={avg} />}</span>
+        </div>
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="flex items-baseline gap-1 text-xs text-muted">
+            Unrealized gain
+            {gainHelp.button}
+          </span>
+          <GainText cents={view.taxableGainShownCents} className="text-xl font-semibold" />
+        </div>
+      </div>
+      {gainHelp.panel}
+      <LossesStat view={view} variant="row" />
+    </Card>
   );
 }
 
 // ---- Phone -----------------------------------------------------------------------------
 
+/**
+ * One order on both sizes. First the whole picture (taxable and retirement): the total, the split, your stack by year,
+ * the price against your average cost, your retirement accounts and loans. Then, under the Taxable label, only what
+ * counts for tax: average cost, unrealized gain, losses from past years, wallets, and how well it is documented.
+ */
 function PhoneHoldings({ view }: { view: HoldingsView }) {
   const { status } = usePrice();
-  const { today } = useLedger();
-  const { points: series, loading: seriesLoading, daily } = usePriceSeries();
-  const young = isYoung(view, today);
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
-  const gainHelp = useUnrealizedHelp();
   const hero = heroFigures(view);
   return (
     <div className="flex flex-col gap-4">
@@ -265,50 +370,26 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
       <BalanceNudge />
       <LoanNudge />
 
-      {/* All your Bitcoin, taxable and retirement, so it sits above the taxable figures. */}
       <StackCard view={view} wide={false} onPick={setYear} />
+      <AverageChartCard view={view} wide={false} />
+      <RetirementCard view={view} />
+      <LoansSection />
 
       <TaxableDivider view={view} />
 
-      <Card as="section" aria-label="Average cost versus price" className="flex flex-col gap-3">
-        <div className="flex items-start justify-between">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xs text-muted">Your average cost</span>
-            <span className="text-xl font-semibold">{view.averageCostCentsPerBtc === null ? '—' : <Money cents={view.averageCostCentsPerBtc} />}</span>
-          </div>
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="flex items-baseline gap-1 text-xs text-muted">
-              Unrealized gain
-              {gainHelp.button}
-            </span>
-            <GainText cents={view.taxableGainShownCents} className="text-xl font-semibold" />
-          </div>
-        </div>
-        {gainHelp.panel}
-        <div className="flex items-baseline justify-between border-t border-line pt-3">
-          <h2 className="m-0 text-sm font-semibold">Price vs. your average cost</h2>
-          <span className="text-xs text-muted">{YEARS_BACK} years</span>
-        </div>
-        <PriceChart points={series} averageCostCents={view.averageCostCentsPerBtc} width={320} height={96} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} markHigh={daily} />
-        <ChartFooter points={series} averageCostCents={view.averageCostCentsPerBtc} className="text-[11px]" />
-        <LossesStat view={view} variant="row" />
-      </Card>
-
-      <DocumentationCard view={view} />
+      <TaxableFigures view={view} wide={false} />
 
       <section aria-label="Wallets" className="flex flex-col gap-2">
         <div className="flex items-center justify-between px-0.5 pt-1">
           <h2 className="m-0 text-[15px] font-semibold">Wallets</h2>
           <AddWalletButton compact />
         </div>
-        {view.wallets.map((w) => (
+        {[...view.wallets, ...view.frozen].map((w) => (
           <WalletLinkCard key={w.id} w={w} />
         ))}
       </section>
 
-      <LoansSection />
-
-      <RetirementCard view={view} />
+      <DocumentationCard view={view} />
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>
   );
@@ -318,14 +399,10 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
 
 function DesktopHoldings({ view }: { view: HoldingsView }) {
   const { status } = usePrice();
-  const { today } = useLedger();
-  const { points: series, loading: seriesLoading, daily } = usePriceSeries();
-  const young = isYoung(view, today);
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
-  const avg = view.averageCostCentsPerBtc;
-  const gainHelp = useUnrealizedHelp();
   const hero = heroFigures(view);
+  const retirement = view.retirement.length > 0;
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -355,58 +432,29 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
       <BalanceNudge />
       <LoanNudge />
 
-      {/* All your Bitcoin, taxable and retirement, so it sits above the taxable figures. */}
       <StackCard view={view} wide onPick={setYear} />
 
-      <TaxableDivider view={view} />
-
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
-          <span className="text-[13px] text-muted">Your average cost</span>
-          <span className="text-2xl font-semibold">{avg === null ? '—' : <Money cents={avg} />}</span>
-        </Card>
-        <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
-          <span className="flex items-baseline gap-1 text-[13px] text-muted">
-            Unrealized gain
-            {gainHelp.button}
-          </span>
-          <GainText cents={view.taxableGainShownCents} className="text-2xl font-semibold" />
-          {gainHelp.panel}
-        </Card>
-        <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
-          <LossesStat view={view} variant="tile" />
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <Card as="section" aria-label="Average cost versus price" className="col-span-2 flex flex-col gap-3">
-          <div className="flex justify-between">
-            <h2 className="m-0 text-[15px] font-semibold">Price vs. your average cost</h2>
-            <span className="text-[13px] text-muted">{YEARS_BACK} years</span>
-          </div>
-          <PriceChart points={series} averageCostCents={avg} width={640} height={220} strokeWidth={2.5} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} markHigh={daily} />
-          <div className="flex justify-between text-xs text-muted">
-            <span>{series[0] ? new Date(series[0].ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : ''}</span>
-            <span>Dashed: your average cost, {avg === null ? '—' : <Money cents={avg} />}</span>
-            <span>Today</span>
-          </div>
-        </Card>
-
-        <Card as="section" aria-label="Wallets" className="flex flex-col gap-1">
-          <h2 className="m-0 mb-2 text-[15px] font-semibold">Wallets</h2>
-          {view.wallets.map((w) => (
-            <WalletRow key={w.id} w={w} />
-          ))}
-          <AddWalletButton className="mt-2 self-start" />
-        </Card>
+      {/* Cards keep their own height: a long list should not stretch the one beside it. */}
+      <div className={cx('grid items-start gap-4', retirement ? 'grid-cols-3' : 'grid-cols-1')}>
+        <AverageChartCard view={view} wide />
+        <RetirementCard view={view} />
       </div>
 
       <LoansSection />
 
-      {/* Cards keep their own height: a long Held apart list should not stretch the short ones. */}
+      <TaxableDivider view={view} />
+
+      <TaxableFigures view={view} wide />
+
       <div className="grid grid-cols-2 items-start gap-4">
+        <Card as="section" aria-label="Wallets" className="flex flex-col gap-1">
+          <h2 className="m-0 mb-2 text-[15px] font-semibold">Wallets</h2>
+          {[...view.wallets, ...view.frozen].map((w) => (
+            <WalletRow key={w.id} w={w} />
+          ))}
+          <AddWalletButton className="mt-2 self-start" />
+        </Card>
         <DocumentationCard view={view} />
-        <RetirementCard view={view} />
       </div>
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>

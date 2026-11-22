@@ -1,4 +1,4 @@
-import { allBitcoin, carryforwardFor, retirementPurchases, retirementWorth, TIERS, valueOfPieces, yearOf, type AllBitcoin, type Holdings, type LedgerState, type Lot, type RetirementHolding, type RetirementPurchaseView, type Tier, type WalletType, type Worth, type WorthWithUnknown } from '@bitcoin-basis/engine';
+import { allBitcoin, averageCostPerBtc, carryforwardFor, retirementPurchases, retirementWorth, TIERS, valueOfPieces, yearOf, type AllBitcoin, type Holdings, type LedgerState, type Lot, type RetirementHolding, type RetirementPurchaseView, type Tier, type WalletType, type Worth, type WorthWithUnknown } from '@bitcoin-basis/engine';
 import { confirmedLabel, sharePercents, wholeDollarParts } from './format.ts';
 import { staleLosses } from './losses.ts';
 import { WALLET_TYPE_LABEL } from './wallet-label.ts';
@@ -225,4 +225,35 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
     staleLossesFor: staleLosses(state.settings, yearOf(today))?.savedFor ?? null,
     isEmpty: state.wallets.length === 0 && state.lots.length === 0,
   };
+}
+
+/** Which coins the chart's average-cost line is for. */
+export type AverageBasis = 'all' | 'taxable' | 'retirement';
+
+export interface AverageLine {
+  basis: AverageBasis;
+  /** The switch's label. */
+  label: string;
+  /** What the dashed line is, in words: `Average cost of all your Bitcoin`. */
+  caption: string;
+  centsPerBtc: number;
+}
+
+/**
+ * The average-cost lines the price chart can draw, in switch order (All, Taxable, Retirement). With retirement coins:
+ * all of it, the taxable part and the retirement part, each only when every coin in it has a known cost. Without: just
+ * the taxable average, which is then all of it.
+ */
+export function averageLines(view: HoldingsView): AverageLine[] {
+  const all = view.all;
+  const known = (w: WorthWithUnknown) => (w.sats > 0 && w.unknownCostSats === 0 ? averageCostPerBtc(w.costCents, w.sats) : null);
+  const lines: AverageLine[] = [];
+  const total = all === null ? null : known(all.total);
+  if (total !== null) lines.push({ basis: 'all', label: 'All', caption: 'Average cost of all your Bitcoin', centsPerBtc: total });
+  if (view.averageCostCentsPerBtc !== null) {
+    lines.push({ basis: 'taxable', label: 'Taxable', caption: all === null ? 'Your average cost' : 'Average cost of your taxable Bitcoin', centsPerBtc: view.averageCostCentsPerBtc });
+  }
+  const retirement = all === null ? null : known(all.retirement);
+  if (retirement !== null) lines.push({ basis: 'retirement', label: 'Retirement', caption: 'Average cost of your retirement Bitcoin', centsPerBtc: retirement });
+  return lines;
 }

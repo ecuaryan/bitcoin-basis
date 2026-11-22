@@ -58,7 +58,7 @@ test('Retirement: log a purchase, see its gain, edit and remove it; Holdings sho
   await expect(retirement).toContainText('$33,184');
   await expect(retirement).toContainText('up $17,274');
   await expect(page.getByRole('region', { name: 'All your Bitcoin', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Held apart from tax' })).toContainText('up $17,274');
+  await expect(page.getByRole('region', { name: 'Retirement accounts' })).toContainText('up $17,274');
   await expectNoViolations(page);
 });
 

@@ -13,6 +13,12 @@
 - **Import and export**: rows in the coins spreadsheet whose wallet is one of your retirement wallets become retirement purchases (leave tier and the loan columns empty on those rows; if the wallet is new, the preview asks whether it is a retirement account and never assumes it). The spreadsheet export includes them, and the backup file carries them with their history.
 - The demo's retirement account has three made-up purchases.
 
+### Changed (Holdings)
+
+- **Holdings reads top to bottom as "all of it", then "taxable"**: the price chart, your retirement accounts and loans now sit with the whole picture, above the Taxable label; under it are only the figures that count for tax (average cost, unrealized gain, losses from past years), your wallets and how well it is documented. Same order on phone and desktop.
+- **The chart's average-cost line has a switch**: All (the average of all your Bitcoin, the default), Taxable or Retirement. The line under the chart says which average it is. Shown when you have retirement coins with their cost logged.
+- **"Held apart" is now "Retirement"**: one card for your retirement accounts (worth, cost and gain each). Frozen wallets moved into Wallets, listed last with their amount muted and "Frozen, not counted".
+
 ### Security
 
 - **Lock locks every window**: pressing Lock in the installed app now also locks a browser tab open on the same device, and the other way round (before, the other window kept showing your records until its own auto-lock). Idle and background locks still stay in their own window.

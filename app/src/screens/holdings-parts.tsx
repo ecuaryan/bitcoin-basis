@@ -16,7 +16,6 @@ import { ChevronRightIcon } from '../ui/icons.tsx';
 import { usePrice } from '../data/price-provider.tsx';
 import { PriceUnavailableLine, yourPriceText } from '../ui/PriceProblem.tsx';
 import { PriceAge, PriceRefreshButton } from '../ui/PriceFreshness.tsx';
-import { walletKindLabel } from '../lib/wallet-label.ts';
 import { sumWorth, worthNow } from '../lib/worth-now.ts';
 import { GainWords, WorthLine } from '../ui/WorthLine.tsx';
 import { loanTagFor } from '../lib/loans-view.ts';
@@ -378,16 +377,19 @@ function YearTotal({ row, priceCents }: { row: StackYear; priceCents: number | n
 
 // ---- Wallets ---------------------------------------------------------------------------
 
+/** A frozen wallet (a platform that stopped withdrawals) is listed with the others but never counted. */
+const FROZEN_LABEL = 'Frozen, not counted';
+
 export function WalletLinkCard({ w }: { w: WalletCard }) {
   return (
     <Link to={`/wallet/${w.id}`} className="press-soft flex min-h-11 items-center justify-between gap-3 rounded-2xl border border-line bg-surface py-3 pl-3.5 pr-2.5 text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2">
       <span className="flex flex-col gap-0.5">
         <span className="text-sm font-semibold">{w.name}</span>
-        <span className={cx('text-xs normal-nums', w.needsAttention ? 'text-amber' : 'text-muted')}>
-          {w.typeLabel} · {w.needsAttention ? 'Needs a check' : w.confirmedLabel}
+        <span className={cx('text-xs normal-nums', w.needsAttention && !w.frozen ? 'text-amber' : 'text-muted')}>
+          {w.typeLabel} · {w.frozen ? FROZEN_LABEL : w.needsAttention ? 'Needs a check' : w.confirmedLabel}
         </span>
       </span>
-      <span className="flex items-center gap-1.5 text-sm font-semibold">
+      <span className={cx('flex items-center gap-1.5 text-sm font-semibold', w.frozen && 'text-muted')}>
         <Amount sats={w.sats} interactive={false} />
         <ChevronRightIcon size={16} className="flex-none text-muted" />
       </span>
@@ -404,10 +406,10 @@ export function WalletRow({ w }: { w: WalletCard }) {
         <span className="text-xs normal-nums text-muted">{w.typeLabel}</span>
       </span>
       <span className="flex flex-col items-end gap-0.5 text-right">
-        <span className="text-sm font-semibold">
+        <span className={cx('text-sm font-semibold', w.frozen && 'text-muted')}>
           <Amount sats={w.sats} interactive={false} />
         </span>
-        <span className={cx('text-xs', w.needsAttention ? 'text-amber' : 'text-muted')}>{w.needsAttention ? 'Needs a check' : w.confirmedLabel}</span>
+        <span className={cx('text-xs', w.needsAttention && !w.frozen ? 'text-amber' : 'text-muted')}>{w.frozen ? FROZEN_LABEL : w.needsAttention ? 'Needs a check' : w.confirmedLabel}</span>
       </span>
       <ChevronRightIcon size={16} className="-ml-1 flex-none text-muted transition-transform group-hover:translate-x-0.5" />
     </Link>
@@ -417,7 +419,7 @@ export function WalletRow({ w }: { w: WalletCard }) {
 // ---- Extra cards (below the design's first screen) -------------------------------------
 
 /** Targets for the split rows under the hero. */
-const HELD_APART_ID = 'held-apart';
+const RETIREMENT_ID = 'retirement';
 const TAXABLE_ID = 'taxable';
 
 export function DocumentationCard({ view }: { view: HoldingsView }) {
@@ -431,8 +433,6 @@ export function DocumentationCard({ view }: { view: HoldingsView }) {
           <h2 className="m-0 text-[15px] font-semibold">How well it is documented</h2>
           <span className="text-xs text-muted">{share.documented}</span>
         </div>
-        {/* Only taxable lots carry a documentation tier; say so when retirement is in the total at the top. */}
-        {view.all === null ? null : <p className="m-0 text-xs text-muted">Taxable Bitcoin only. Retirement is kept apart from tax.</p>}
       </div>
       <div className="flex h-3.5 overflow-hidden rounded-[7px] bg-surface-2" role="img" aria-label={tiers.map((t) => `${TIER_LABEL[t]} ${share[t].replace('%', ' percent')}`).join(', ')}>
         {tiers.map((t) => (
@@ -456,8 +456,8 @@ export function DocumentationCard({ view }: { view: HoldingsView }) {
   );
 }
 
-/** One wallet held apart: name and BTC on the first line, then full-width detail lines (so none of them wrap early). */
-function HeldApartRow({ id, name, sats, children }: { id: string; name: string; sats: number; children: ReactNode }) {
+/** One retirement account: name and BTC on the first line, then full-width detail lines (so none of them wrap early). */
+function RetirementRow({ id, name, sats, children }: { id: string; name: string; sats: number; children: ReactNode }) {
   return (
     <li>
       <Link to={`/wallet/${id}`} className="flex flex-col gap-0.5 border-b border-line py-2.5 text-text no-underline last:border-b-0 hover:text-text">
@@ -474,28 +474,24 @@ function HeldApartRow({ id, name, sats, children }: { id: string; name: string; 
   );
 }
 
-/** What the Held apart card says it leaves out. With retirement coins the total at the top includes them; frozen wallets never. */
-function heldApartNote(view: HoldingsView): string {
-  if (view.all === null) return 'Not counted in what your Bitcoin is worth or in your average cost.';
-  return `Not counted in your taxable figures or average cost. Retirement is in the total at the top${view.frozen.length > 0 ? '; frozen wallets are not' : ''}.`;
-}
-
+/**
+ * Your retirement accounts (an IRA, a Roth): part of all your Bitcoin, never of the taxable figures, so the card sits
+ * with the whole picture, above the Taxable label. Each shows its worth and, with purchases logged, cost and gain.
+ */
 export function RetirementCard({ view }: { view: HoldingsView }) {
-  if (view.retirement.length === 0 && view.frozen.length === 0) return null;
+  if (view.retirement.length === 0) return null;
   return (
-    <Card
-      as="section"
-      id={HELD_APART_ID}
-      tabIndex={-1}
-      aria-label={view.all === null ? 'Held apart from your total' : 'Held apart from tax'}
-      className="flex scroll-mt-6 flex-col gap-3 outline-none focus-visible:ring-2 focus-visible:ring-accent"
-    >
-      <h2 className="m-0 text-[15px] font-semibold">Held apart</h2>
-      <p className="m-0 text-xs text-muted">{heldApartNote(view)}</p>
+    <Card as="section" id={RETIREMENT_ID} tabIndex={-1} aria-label="Retirement accounts" className="flex scroll-mt-6 flex-col gap-2 outline-none focus-visible:ring-2 focus-visible:ring-accent">
+      <div className="flex flex-col gap-0.5">
+        <h2 className="m-0 flex items-center gap-2 text-[15px] font-semibold">
+          <span className={cx('size-2.5 flex-none rounded-[3px]', RETIRE_BG)} aria-hidden="true" />
+          Retirement
+        </h2>
+        <p className="m-0 text-xs text-muted">{view.all === null ? 'Kept apart from tax.' : 'Kept apart from tax. Counted in all your Bitcoin at the top.'}</p>
+      </div>
       <ul className="m-0 flex list-none flex-col p-0">
         {view.retirement.map((r) => (
-          <HeldApartRow key={r.id} id={r.id} name={r.name} sats={r.sats}>
-            <span className="text-xs text-muted">{walletKindLabel({ type: 'retirement', frozen: false, archived: false })}</span>
+          <RetirementRow key={r.id} id={r.id} name={r.name} sats={r.sats}>
             {r.shown.valueCents !== null && (
               <span className="text-xs text-muted">
                 Worth <PlainMoney cents={r.shown.valueCents} precision="dollars" />
@@ -514,23 +510,16 @@ export function RetirementCard({ view }: { view: HoldingsView }) {
                   </>
                 ) : null}
               </span>
-            ) : null}
+            ) : (
+              <span className="text-xs text-muted">Cost not logged</span>
+            )}
             {r.noteDiffers ? <span className="text-xs text-amber">Balance note differs</span> : null}
-          </HeldApartRow>
-        ))}
-        {view.frozen.map((w) => (
-          <HeldApartRow key={w.id} id={w.id} name={w.name} sats={w.sats}>
-            <span className="text-xs text-muted">{walletKindLabel({ type: w.type, frozen: true, archived: false })}</span>
-            <span className="text-xs text-muted">
-              Cost <PlainMoney cents={w.costCents} precision="dollars" />
-            </span>
-          </HeldApartRow>
+          </RetirementRow>
         ))}
       </ul>
     </Card>
   );
 }
-
 
 // ---- All your Bitcoin: the hero total and its taxable / retirement split -------------------
 
@@ -617,7 +606,7 @@ const SPLIT_ROW = 'press-soft flex min-h-11 w-full items-center gap-3 rounded-xl
 
 /**
  * Right under the all-Bitcoin hero: how it splits into taxable and retirement, as a thin bar and two rows. Taxable
- * jumps to the taxable figures below; Retirement opens the one retirement wallet, or jumps to the Held apart list when
+ * jumps to the taxable figures below; Retirement opens the one retirement wallet, or jumps to the Retirement card when
  * there are several. Only with retirement coins.
  */
 export function SplitCard({ view, wide }: { view: HoldingsView; wide: boolean }) {
@@ -658,7 +647,7 @@ export function SplitCard({ view, wide }: { view: HoldingsView; wide: boolean })
               <span className="sr-only">Open {only.name}.</span>
             </Link>
           ) : (
-            <button type="button" onClick={() => jumpTo(HELD_APART_ID)} className={SPLIT_ROW}>
+            <button type="button" onClick={() => jumpTo(RETIREMENT_ID)} className={SPLIT_ROW}>
               {retirement}
               <span className="sr-only">Go to your retirement wallets.</span>
             </button>

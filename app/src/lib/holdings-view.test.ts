@@ -1,7 +1,7 @@
 import { holdings, loanPurchases, loanSummary, replay, retirementPurchases, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_PRICE_CENTS, DEMO_TODAY } from '../demo/demo-data.ts';
-import { buildHoldingsView } from './holdings-view.ts';
+import { averageLines, buildHoldingsView } from './holdings-view.ts';
 import { sumWorth } from './worth-now.ts';
 
 describe('Holdings: every worth is lot by lot, so the parts add up to the totals', () => {
@@ -35,7 +35,7 @@ describe('Holdings: every worth is lot by lot, so the parts add up to the totals
     // $319,206.94 + $33,184.34 = $352,391.28: $319,207 + $33,184 (was $319,206 + $33,184 under $352,391).
     expect([split.taxable.valueCents, split.retirement.valueCents]).toEqual([31_920_700, 3_318_400]);
     expect(view.taxableGainShownCents).toBe(split.taxable.gainCents);
-    // Held apart's one retirement wallet shows the Retirement row's figures.
+    // The Retirement card's one wallet shows the Retirement row's figures.
     expect(view.retirement.map((r) => [r.shown.valueCents, r.shown.gainCents])).toEqual([[split.retirement.valueCents, split.retirement.gainCents]]);
   });
 
@@ -149,5 +149,41 @@ describe('Holdings: retirement with balance notes only has no year', () => {
     const view = viewOf(base.filter((e) => e.kind !== 'retirement-snapshot'));
     expect(view.stackUndated).toBeNull();
     expect(view.all).toBeNull();
+  });
+});
+
+describe('Holdings: the chart’s average-cost lines', () => {
+  it('with retirement coins: all, taxable and retirement, each its own average, all first', () => {
+    const state = replay(buildDemoBook().entries);
+    const view = buildHoldingsView(state, holdings(state), DEMO_PRICE_CENTS, DEMO_TODAY);
+    const all = view.all;
+    if (all === null) throw new Error('the demo has a retirement wallet');
+    const lines = averageLines(view);
+    expect(lines.map((l) => [l.basis, l.label, l.caption])).toEqual([
+      ['all', 'All', 'Average cost of all your Bitcoin'],
+      ['taxable', 'Taxable', 'Average cost of your taxable Bitcoin'],
+      ['retirement', 'Retirement', 'Average cost of your retirement Bitcoin'],
+    ]);
+    const per = (cost: number, sats: number) => Math.round((cost * 100_000_000) / sats);
+    expect(lines[0]?.centsPerBtc).toBe(per(all.total.costCents, all.total.sats));
+    expect(lines[1]?.centsPerBtc).toBe(view.averageCostCentsPerBtc);
+    expect(lines[2]?.centsPerBtc).toBe(per(all.retirement.costCents, all.retirement.sats));
+    // Each is a weighted average, so all of it lies between the parts.
+    const [a, t, r] = lines.map((l) => l.centsPerBtc) as [number, number, number];
+    expect(a).toBeGreaterThanOrEqual(Math.min(t, r));
+    expect(a).toBeLessThanOrEqual(Math.max(t, r));
+  });
+
+  it('without retirement coins: just your average cost; with some retirement cost not logged, no All or Retirement line', () => {
+    const TZ = 'America/Boise';
+    const base: Entry[] = [
+      { id: 'w', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'ex', name: 'Exchange', type: 'exchange', defaultProof: '' },
+      { id: 'b', kind: 'buy', at: '2024-02-01T19:00:00Z', tz: TZ, wallet: 'ex', sats: 10_000_000, costCents: 400_000, tier: 'documented' } as Entry,
+      { id: 'w2', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'ira', name: 'IRA', type: 'retirement', defaultProof: '' },
+    ];
+    const plain = replay(base);
+    expect(averageLines(buildHoldingsView(plain, holdings(plain), DEMO_PRICE_CENTS, DEMO_TODAY)).map((l) => [l.basis, l.caption, l.centsPerBtc])).toEqual([['taxable', 'Your average cost', 4_000_000]]);
+    const notes = replay([...base, { id: 's', kind: 'retirement-snapshot', at: '2024-04-01T19:00:00Z', tz: TZ, wallet: 'ira', sats: 5_000_000 } as Entry]);
+    expect(averageLines(buildHoldingsView(notes, holdings(notes), DEMO_PRICE_CENTS, DEMO_TODAY)).map((l) => l.basis)).toEqual(['taxable']);
   });
 });

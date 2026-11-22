@@ -90,7 +90,7 @@ describe('Taxable and retirement split', () => {
     expect(document.activeElement?.tagName).toBe('H2');
     expect(document.activeElement?.textContent).toBe('Taxable');
   });
-  it('with several retirement wallets, Retirement jumps to the Held apart list', async () => {
+  it('with several retirement wallets, Retirement jumps to the Retirement card', async () => {
     const roth: Entry[] = [
       { id: 'w3', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'roth', name: 'Roth', type: 'retirement', defaultProof: '' },
       { id: 's2', kind: 'retirement-snapshot', at: '2024-04-01T19:00:00Z', tz: TZ, wallet: 'roth', sats: 5_000_000 },
@@ -109,7 +109,7 @@ describe('Taxable and retirement split', () => {
     expect(buttons[1]?.textContent).toContain('Some cost not logged · 0.1500 BTC');
     expect(text()).toContain('Gain counts only coins with a logged cost.');
     await click(buttons[1] as HTMLButtonElement);
-    expect(document.activeElement?.getAttribute('aria-label')).toBe('Held apart from tax');
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Retirement accounts');
   });
   it('is not shown without retirement coins, and neither is the Taxable label', async () => {
     const view = viewOf([...base, { id: 's0', kind: 'retirement-snapshot', at: '2024-04-01T19:00:00Z', tz: TZ, wallet: 'ira', sats: 0 }]);
@@ -139,7 +139,7 @@ describe('Taxable and retirement split', () => {
   });
 });
 
-describe('Held apart card', () => {
+describe('Retirement card', () => {
   it('shows a retirement wallet’s worth, cost and gain, and when its balance note differs', async () => {
     app = await renderApp(
       <MemoryRouter>
@@ -151,7 +151,7 @@ describe('Held apart card', () => {
     expect(text()).toContain('Cost $5,000 · up $5,000 (+100%)');
     expect(text()).not.toMatch(/\$5,000\.00/);
     expect(text()).toContain('Balance note differs');
-    expect(text()).toContain('Not counted in your taxable figures or average cost. Retirement is in the total at the top.');
+    expect(text()).toContain('Kept apart from tax. Counted in all your Bitcoin at the top.');
   });
   it('a wallet with balance notes only shows its worth, no gain', async () => {
     app = await renderApp(
@@ -160,7 +160,7 @@ describe('Held apart card', () => {
       </MemoryRouter>,
     );
     expect(text()).toContain('Worth $12,000');
-    expect(text()).not.toContain('Cost');
+    expect(text()).toContain('Cost not logged');
     expect(text()).not.toContain('up');
   });
 });
