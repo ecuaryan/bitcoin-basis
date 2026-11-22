@@ -1,4 +1,4 @@
-import { holdings, loanPurchases, loanSummary, replay, retirementPurchases } from '@bitcoin-basis/engine';
+import { holdings, loanPurchases, loanSummary, replay, retirementPurchases, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_PRICE_CENTS, DEMO_TODAY } from '../demo/demo-data.ts';
 import { buildHoldingsView } from './holdings-view.ts';
@@ -64,5 +64,90 @@ describe('Holdings: losses from past years', () => {
   it('asks to update them when only an earlier year’s are saved, as Sell and Tax season do', () => {
     expect(book({ carryforwardByYear: { '2025': { st: 0, lt: 100_000 } } })).toMatchObject({ carryforwardCents: 0, staleLossesFor: 2025 });
     expect(book({ carryforwardByYear: { '2026': { st: 0, lt: 100_000 } } })).toMatchObject({ carryforwardCents: 100_000, staleLossesFor: null });
+  });
+});
+
+describe('Holdings: your stack by year bought is all your Bitcoin, taxable and retirement', () => {
+  const state = replay(buildDemoBook().entries);
+  const view = buildHoldingsView(state, holdings(state), DEMO_PRICE_CENTS, DEMO_TODAY);
+  const all = view.all;
+  if (all === null) throw new Error('the demo has a retirement wallet');
+
+  it('each year has its retirement purchases, by their date, beside the taxable lots', () => {
+    const byYear = Object.fromEntries(view.stack.map((r) => [r.year, r.retirementSats]));
+    // The demo's three retirement purchases: 0.15 BTC in 2022, 0.165 in 2024, 0.035 in 2026.
+    expect(byYear).toEqual({ 2022: 15_000_000, 2023: 0, 2024: 16_500_000, 2025: 0, 2026: 3_500_000 });
+    for (const r of view.stack) {
+      expect(r.sats).toBe(r.taxableSats + r.retirementSats);
+      expect(r.taxableSats).toBe(r.lots.reduce((t, l) => t + l.sats, 0));
+      expect(r.retirementSats).toBe(r.retirement.reduce((t, p) => t + p.sats, 0));
+      // The tiers are the taxable lots only: retirement has no tax tier.
+      expect(Object.values(r.byTier).reduce((t, s) => t + s, 0)).toBe(r.taxableSats);
+      expect(r.pieces).toHaveLength(r.lots.length + r.retirement.length);
+    }
+    expect(view.stack.find((r) => r.year === 2024)?.retirement.map((p) => [p.date, p.walletName])).toEqual([['2024-01-18', 'Retirement account']]);
+  });
+
+  it('the year totals add up to the hero’s BTC; the taxable parts to the taxable total', () => {
+    expect(view.stackUndated).toBeNull();
+    expect(view.stack.reduce((t, r) => t + r.sats, 0)).toBe(all.total.sats);
+    expect(view.stack.reduce((t, r) => t + r.taxableSats, 0)).toBe(view.totalSats);
+    expect(view.stack.reduce((t, r) => t + r.retirementSats, 0)).toBe(all.retirement.sats);
+  });
+
+  it('each year sheet lists lots and retirement purchases together, newest first', () => {
+    for (const r of view.stack) {
+      const times = r.pieces.map((p) => Date.parse(p.kind === 'lot' ? p.lot.acquiredAt : p.purchase.at));
+      expect(times).toEqual([...times].sort((a, b) => b - a));
+    }
+    const kinds = view.stack.find((r) => r.year === 2026)?.pieces.map((p) => p.kind) ?? [];
+    expect(kinds).toContain('retirement');
+    expect(kinds.indexOf('retirement')).toBeGreaterThan(0);
+  });
+
+  it('the documented share stays about the taxable lots only', () => {
+    expect(view.tierShares.documented).toBe('94%');
+    expect(Object.values(view.mix).reduce((t, s) => t + s, 0)).toBe(view.totalSats);
+  });
+});
+
+describe('Holdings: retirement with balance notes only has no year', () => {
+  const TZ = 'America/Boise';
+  const base: Entry[] = [
+    { id: 'w1', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'ex', name: 'Exchange', type: 'exchange', defaultProof: '' },
+    { id: 'w2', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'ira', name: 'Old IRA', type: 'retirement', defaultProof: '' },
+    { id: 'w3', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'k', name: 'New 401k', type: 'retirement', defaultProof: '' },
+    { id: 'b1', kind: 'buy', at: '2024-02-01T19:00:00Z', tz: TZ, wallet: 'ex', sats: 50_000_000, costCents: 2_000_000, tier: 'reconstructed' },
+    { id: 's1', kind: 'retirement-snapshot', at: '2025-04-01T19:00:00Z', tz: TZ, wallet: 'ira', sats: 12_000_000 },
+  ];
+  const viewOf = (entries: Entry[]) => {
+    const state = replay(entries);
+    return buildHoldingsView(state, holdings(state), 10_000_000, '2026-11-20');
+  };
+
+  it('is set apart, with its wallets named, and the years plus it add up to the hero', () => {
+    const view = viewOf(base);
+    expect(view.stack.map((r) => [r.year, r.taxableSats, r.retirementSats])).toEqual([[2024, 50_000_000, 0]]);
+    expect(view.stackUndated).toEqual({ sats: 12_000_000, wallets: ['Old IRA'] });
+    expect(view.stack.reduce((t, r) => t + r.sats, 0) + (view.stackUndated?.sats ?? 0)).toBe(view.all?.total.sats);
+  });
+
+  it('a wallet with purchases goes by year; one with notes only stays apart', () => {
+    const view = viewOf([...base, { id: 'r1', kind: 'retirement-buy', at: '2025-03-01T19:00:00Z', tz: TZ, wallet: 'k', sats: 10_000_000, costCents: 500_000 }]);
+    expect(view.stack.map((r) => [r.year, r.taxableSats, r.retirementSats])).toEqual([
+      [2024, 50_000_000, 0],
+      [2025, 0, 10_000_000],
+    ]);
+    expect(view.stack[1]?.lots).toEqual([]);
+    expect(view.stackUndated).toEqual({ sats: 12_000_000, wallets: ['Old IRA'] });
+    expect(view.stack.reduce((t, r) => t + r.sats, 0) + (view.stackUndated?.sats ?? 0)).toBe(view.all?.total.sats);
+    // Retirement purchases never move the documented share: the taxable lot is reconstructed, so 0% documented.
+    expect(view.tierShares).toMatchObject({ documented: '0%', reconstructed: '100%' });
+  });
+
+  it('nothing is set apart without notes-only retirement coins', () => {
+    const view = viewOf(base.filter((e) => e.kind !== 'retirement-snapshot'));
+    expect(view.stackUndated).toBeNull();
+    expect(view.all).toBeNull();
   });
 });

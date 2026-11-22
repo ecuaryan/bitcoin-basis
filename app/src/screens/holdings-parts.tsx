@@ -4,14 +4,14 @@ import { Link } from 'react-router';
 import { dayChangeTenthsPercent } from '../data/price.ts';
 import { cx } from '../lib/cx.ts';
 import { countOf, formatMoney, shortDate } from '../lib/format.ts';
-import { tierShares, type HoldingsView, type StackYear, type WalletCard } from '../lib/holdings-view.ts';
+import { type HoldingsView, type StackRetirementPurchase, type StackYear, type WalletCard } from '../lib/holdings-view.ts';
 import { describeOrigin, TIER_HELP, TIER_LABEL } from '../lib/origin.ts';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { Amount, Money } from '../ui/Amount.tsx';
 import { PlainMoney } from '../ui/plain-money.tsx';
 import { Card } from '../ui/Card.tsx';
 import { Sheet } from '../ui/Sheet.tsx';
-import { useLotHelp } from '../ui/Help.tsx';
+import { useHelp, useLotHelp } from '../ui/Help.tsx';
 import { ChevronRightIcon } from '../ui/icons.tsx';
 import { usePrice } from '../data/price-provider.tsx';
 import { PriceUnavailableLine, yourPriceText } from '../ui/PriceProblem.tsx';
@@ -83,8 +83,16 @@ export function GainText({ cents, precision = 'dollars', className }: { cents: n
 
 // ---- Stack -----------------------------------------------------------------------------
 
+/** Retirement's own colour, wherever retirement Bitcoin is colour-coded (never cream: that is the Reconstructed tier). */
+export const RETIRE_BG = 'bg-retire';
+
 /** Largest year fills this share of the bar track (matches the design). */
 const MAX_BAR_PERCENT = 83;
+
+/** A year's segments in bar order: the taxable tiers, then retirement. Shares of the year's BTC. */
+function segments(row: StackYear): { key: string; bg: string; sats: number }[] {
+  return [...TIER_ORDER.map((t) => ({ key: t, bg: TIER_BG[t], sats: row.byTier[t] })), { key: 'retirement', bg: RETIRE_BG, sats: row.retirementSats }].filter((s) => s.sats > 0);
+}
 
 export function StackRows({ stack, onPick }: { stack: StackYear[]; onPick(year: number): void }) {
   const max = Math.max(1, ...stack.map((r) => r.sats));
@@ -100,7 +108,9 @@ export function StackRows({ stack, onPick }: { stack: StackYear[]; onPick(year: 
             <span className="w-9 text-xs text-muted">{row.year}</span>
             <span className="flex h-3.5 flex-1 overflow-hidden rounded-[7px] bg-surface-2" aria-hidden="true">
               <span className="flex h-full origin-left animate-grow" style={{ width: `${(row.sats / max) * MAX_BAR_PERCENT}%` }}>
-                {TIER_ORDER.map((t) => (row.byTier[t] > 0 ? <span key={t} className={cx('h-full', TIER_BG[t])} style={{ width: `${(row.byTier[t] / row.sats) * 100}%` }} /> : null))}
+                {segments(row).map((s) => (
+                  <span key={s.key} className={cx('h-full', s.bg)} style={{ width: `${(s.sats / row.sats) * 100}%` }} />
+                ))}
               </span>
             </span>
             <span className="w-16 text-right text-xs">
@@ -134,7 +144,12 @@ export function StackColumns({ stack, onPick }: { stack: StackYear[]; onPick(yea
               <ShortBtc sats={row.sats} />
             </span>
             <span className="flex w-[70%] flex-col overflow-hidden rounded-t-[10px] rounded-b-[4px]" style={{ height: (row.sats / max) * BAR }} aria-hidden="true">
-              {[...TIER_ORDER].reverse().map((t) => (row.byTier[t] > 0 ? <span key={t} className={cx('w-full', TIER_BG[t])} style={{ height: `${(row.byTier[t] / row.sats) * 100}%` }} /> : null))}
+              {/* Top to bottom: retirement, then the tiers with Documented at the base. */}
+              {segments(row)
+                .reverse()
+                .map((s) => (
+                  <span key={s.key} className={cx('w-full', s.bg)} style={{ height: `${(s.sats / row.sats) * 100}%` }} />
+                ))}
             </span>
             <span className="text-xs text-muted">{row.year}</span>
             <span className="sr-only">Show the {row.year} lots and where each came from.</span>
@@ -145,18 +160,22 @@ export function StackColumns({ stack, onPick }: { stack: StackYear[]; onPick(yea
   );
 }
 
-/** What the colors mean. With `mix` it also says how much of your stack each one is (so there is no separate card for it on a phone). */
-export function TierLegend({ tiers, mix, className }: { tiers: Tier[]; mix?: Record<Tier, number>; className?: string }) {
-  const shares = mix ? tierShares(mix) : null;
+/** What the colors mean: the documentation tiers given, then Retirement when `retirement`. */
+export function TierLegend({ tiers, retirement = false, className }: { tiers: Tier[]; retirement?: boolean; className?: string }) {
   return (
     <div className={cx('flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-muted lg:text-xs lg:gap-x-4', className)}>
       {tiers.map((t) => (
         <span key={t} className="flex items-center gap-1.5">
           <span className={cx('size-2.5 rounded-[3px]', TIER_BG[t])} aria-hidden="true" />
           {TIER_LABEL[t]}
-          {shares ? ` ${shares[t]}` : ''}
         </span>
       ))}
+      {retirement ? (
+        <span className="flex items-center gap-1.5">
+          <span className={cx('size-2.5 rounded-[3px]', RETIRE_BG)} aria-hidden="true" />
+          Retirement
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -164,10 +183,61 @@ export function TierLegend({ tiers, mix, className }: { tiers: Tier[]; mix?: Rec
 /** What the four colors mean, for a "?" next to a legend. */
 export const TIER_COLORS_HELP = 'The colour says how sure the cost is. Documented: a receipt or export backs it up. Reconstructed: rebuilt from statements. Estimated: a best guess. Unknown: no cost yet.';
 
+/** The stack's "?" when retirement is in it. */
+export const STACK_COLORS_HELP = `${TIER_COLORS_HELP} Retirement (blue): bought in a retirement account, kept apart from tax.`;
+
 /** Tiers that actually have coins, documented first. */
 export function tiersPresent(mix: Record<Tier, number>): Tier[] {
   const present = TIER_ORDER.filter((t) => mix[t] > 0);
   return present.length > 0 ? present : ['documented', 'reconstructed'];
+}
+
+/** `Fidelity IRA`, `Fidelity IRA and Old 401k`, `A, B and C`. */
+function namesList(names: readonly string[]): string {
+  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] as string}`;
+}
+
+/**
+ * "Your stack, by year bought": all your Bitcoin (taxable lots and retirement purchases) by the year it was bought.
+ * Phone: a row per year; desktop: a column per year. The documented share under it is the taxable lots' only.
+ */
+export function StackCard({ view, wide, onPick }: { view: HoldingsView; wide: boolean; onPick(year: number): void }) {
+  const retirement = view.stack.some((r) => r.retirementSats > 0);
+  const help = useHelp('What do the colors mean?', retirement ? STACK_COLORS_HELP : TIER_COLORS_HELP);
+  const legend = (
+    <div className={cx('flex items-center gap-1', !wide && 'mt-0.5')}>
+      <TierLegend tiers={tiersPresent(view.mix)} retirement={retirement} />
+      {help.button}
+    </div>
+  );
+  const undated = view.stackUndated;
+  return (
+    <Card as="section" aria-label="Your coins by year bought" className={cx('flex flex-col', wide ? 'gap-3.5' : 'gap-2.5')}>
+      {wide ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="m-0 text-[15px] font-semibold">Your stack, by year bought</h2>
+          {legend}
+        </div>
+      ) : (
+        <h2 className="m-0 text-[15px] font-semibold">Your stack, by year bought</h2>
+      )}
+      {wide ? <StackColumns stack={view.stack} onPick={onPick} /> : <StackRows stack={view.stack} onPick={onPick} />}
+      {wide ? null : legend}
+      {help.panel}
+      {undated ? (
+        <p className="m-0 flex items-baseline gap-1.5 text-xs text-muted">
+          <span className={cx('size-2.5 flex-none self-center rounded-[3px]', RETIRE_BG)} aria-hidden="true" />
+          <span>
+            Not in a year: <Amount sats={undated.sats} short showUnit alwaysBtc interactive={false} className="text-soft" /> in retirement, because no purchases are logged for {namesList(undated.wallets)}.
+          </span>
+        </p>
+      ) : null}
+      <span className="text-xs text-muted">
+        {view.all === null ? '' : 'Taxable: '}
+        {view.tierShares.documented} documented. Pick a year to see each lot and where it came from.
+      </span>
+    </Card>
+  );
 }
 
 // ---- Coins of one year, with their origin ----------------------------------------------
@@ -224,6 +294,47 @@ function CoinRow({ lot, priceCents }: { lot: Lot; priceCents: number | null }) {
   );
 }
 
+/** A retirement purchase in a year's lots: its own colour and "Retirement" where a lot shows its tier (no tax tier). */
+function RetirementPurchaseRow({ purchase: p }: { purchase: StackRetirementPurchase }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="border-b border-line last:border-b-0">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex min-h-14 w-full items-center gap-3 bg-transparent py-2 text-left text-text">
+        <span className={cx('h-8 w-1.5 flex-none rounded-full', RETIRE_BG)} aria-hidden="true" />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-semibold">
+            <Amount sats={p.sats} interactive={false} />
+          </span>
+          <span className="text-xs text-muted [overflow-wrap:anywhere]">
+            {shortDate(p.date)} · {p.walletName}
+          </span>
+          <WorthLine worth={p} className="truncate text-xs" />
+        </span>
+        <span className="text-xs text-muted">Retirement</span>
+        <ChevronRightIcon size={16} className={cx('flex-none text-muted transition-transform duration-150', open && 'rotate-90')} />
+      </button>
+      {open && (
+        <dl className="mb-3 ml-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl bg-bg px-3 py-2.5 text-xs">
+          <dt className="text-muted">Came from</dt>
+          <dd>Retirement purchase in {p.walletName}. Kept apart from tax.</dd>
+          <dt className="text-muted">Cost</dt>
+          <dd>
+            <Money cents={p.costCents} />
+            {p.averageCostCentsPerBtc !== null && (
+              <span className="text-muted">
+                {' '}
+                · <Money cents={p.averageCostCentsPerBtc} /> per BTC
+              </span>
+            )}
+          </dd>
+          <dt className="text-muted">Receipt</dt>
+          <dd>{p.proof || 'None yet'}</dd>
+        </dl>
+      )}
+    </li>
+  );
+}
+
 export function YearSheet({ row, onClose }: { row: StackYear | null; onClose(): void }) {
   const { quote } = usePrice();
   const priceCents = quote?.usdCents ?? null;
@@ -234,17 +345,17 @@ export function YearSheet({ row, onClose }: { row: StackYear | null; onClose(): 
         <>
           <p className="mb-2 flex items-baseline gap-1 text-sm text-muted">
             <span>
-              {countOf(row.lots.length, 'lot')}, newest first. Tap one to see where it came from.
+              {countOf(row.pieces.length, 'lot')}, newest first. Tap one to see where it came from.
             </span>
             {lotHelp.button}
           </p>
           {lotHelp.panel ? <div className="mb-2">{lotHelp.panel}</div> : null}
-          <TierLegend tiers={tiersPresent(row.byTier)} className="mb-2" />
-          <YearTotal lots={row.lots} year={row.year} priceCents={priceCents} />
+          <TierLegend tiers={row.lots.length > 0 ? tiersPresent(row.byTier) : []} retirement={row.retirementSats > 0} className="mb-2" />
+          <YearTotal row={row} priceCents={priceCents} />
           <ul className="m-0 list-none p-0">
-            {row.lots.map((l) => (
-              <CoinRow key={l.id} lot={l} priceCents={priceCents} />
-            ))}
+            {row.pieces.map((piece) =>
+              piece.kind === 'lot' ? <CoinRow key={piece.lot.id} lot={piece.lot} priceCents={priceCents} /> : <RetirementPurchaseRow key={piece.purchase.id} purchase={piece.purchase} />,
+            )}
           </ul>
         </>
       )}
@@ -252,11 +363,12 @@ export function YearSheet({ row, onClose }: { row: StackYear | null; onClose(): 
   );
 }
 
-function YearTotal({ lots, year, priceCents }: { lots: Lot[]; year: number; priceCents: number | null }) {
-  const w = sumWorth(lots, priceCents);
+/** What everything bought that year is worth now, taxable and retirement, each piece valued on its own. */
+function YearTotal({ row, priceCents }: { row: StackYear; priceCents: number | null }) {
+  const w = sumWorth([...row.lots, ...row.retirement], priceCents);
   return (
-    <p className="mb-2 mt-0 text-sm" aria-label={`${year} total`}>
-      <span className="text-soft">All {year} lots now </span>
+    <p className="mb-2 mt-0 text-sm" aria-label={`${row.year} total`}>
+      <span className="text-soft">All {row.year} lots now </span>
       {w.valueCents === null ? '—' : <Money cents={w.valueCents} />}
       <span className="text-soft"> · </span>
       <GainWords worth={w} className="font-semibold" />
@@ -313,10 +425,14 @@ export function DocumentationCard({ view }: { view: HoldingsView }) {
   const tiers = TIER_ORDER.filter((t) => view.mix[t] > 0);
   const share = view.tierShares;
   return (
-    <Card as="section" aria-label="How well your coins are documented" className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="m-0 text-[15px] font-semibold">How well it is documented</h2>
-        <span className="text-xs text-muted">{share.documented}</span>
+    <Card as="section" aria-label={view.all === null ? 'How well your coins are documented' : 'How well your taxable coins are documented'} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="m-0 text-[15px] font-semibold">How well it is documented</h2>
+          <span className="text-xs text-muted">{share.documented}</span>
+        </div>
+        {/* Only taxable lots carry a documentation tier; say so when retirement is in the total at the top. */}
+        {view.all === null ? null : <p className="m-0 text-xs text-muted">Taxable Bitcoin only. Retirement is kept apart from tax.</p>}
       </div>
       <div className="flex h-3.5 overflow-hidden rounded-[7px] bg-surface-2" role="img" aria-label={tiers.map((t) => `${TIER_LABEL[t]} ${share[t].replace('%', ' percent')}`).join(', ')}>
         {tiers.map((t) => (
@@ -513,7 +629,7 @@ export function SplitCard({ view, wide }: { view: HoldingsView; wide: boolean })
   const satsLine = (sats: number) => <Amount sats={sats} short showUnit alwaysBtc interactive={false} />;
   const retirement = (
     <SplitRowBody
-      swatch="bg-cream"
+      swatch={RETIRE_BG}
       label="Retirement"
       what={unknown ? 'Some cost not logged' : 'Kept apart from tax'}
       btc={satsLine(all.retirement.sats)}
@@ -526,7 +642,7 @@ export function SplitCard({ view, wide }: { view: HoldingsView; wide: boolean })
       {/* Shares by BTC. The rows below carry the figures, so the bar itself is decoration. */}
       <div className="mx-2 flex h-1.5 gap-0.5" aria-hidden="true">
         <span className="min-w-0.5 rounded-full bg-accent" style={{ flexGrow: all.taxable.sats, flexBasis: 0 }} />
-        <span className="min-w-0.5 rounded-full bg-cream" style={{ flexGrow: all.retirement.sats, flexBasis: 0 }} />
+        <span className={cx('min-w-0.5 rounded-full', RETIRE_BG)} style={{ flexGrow: all.retirement.sats, flexBasis: 0 }} />
       </div>
       <ul className={cx('m-0 list-none p-0', wide ? 'grid grid-cols-2 gap-2' : 'flex flex-col divide-y divide-line')}>
         <li className={cx(!wide && 'pb-0.5')}>

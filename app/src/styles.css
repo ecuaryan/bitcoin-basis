@@ -15,6 +15,8 @@
   --color-accent: #f7931a;
   --color-amber: #ffb547;
   --color-cream: #ffe2b8;
+  /* Retirement Bitcoin wherever it is colour-coded (split bar, stack): a cool slate blue, apart from the warm tiers. */
+  --color-retire: #8fb3d9;
   --color-loss: #d98578;
   --color-tier-estimated: #a8794a;
   --color-tier-unknown: #5d5750;

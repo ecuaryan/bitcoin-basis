@@ -29,12 +29,8 @@ import {
   PriceLine,
   RetirementCard,
   SplitCard,
-  StackColumns,
+  StackCard,
   TaxableDivider,
-  StackRows,
-  TIER_COLORS_HELP,
-  TierLegend,
-  tiersPresent,
   WalletLinkCard,
   WalletRow,
   YearSheet,
@@ -214,9 +210,10 @@ function WalletReady({ view }: { view: HoldingsView }) {
   );
 }
 
-/** Every coin was bought in the last month, so a short chart is expected. */
+/** Every taxable lot was bought in the last month, so a short chart is expected. */
 function isYoung(view: HoldingsView, today: string): boolean {
-  const first = view.stack[0]?.lots[0]?.acquiredDate;
+  // Lots are newest first in each year: the oldest year's last lot is the first ever bought.
+  const first = view.stack.find((r) => r.lots.length > 0)?.lots.at(-1)?.acquiredDate;
   if (first === undefined) return true;
   return Date.parse(`${today}T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`) < 30 * 86_400_000;
 }
@@ -241,7 +238,6 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
   const young = isYoung(view, today);
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
-  const tierHelp = useHelp('What do the colors mean?', TIER_COLORS_HELP);
   const gainHelp = useUnrealizedHelp();
   const hero = heroFigures(view);
   return (
@@ -269,6 +265,9 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
       <BalanceNudge />
       <LoanNudge />
 
+      {/* All your Bitcoin, taxable and retirement, so it sits above the taxable figures. */}
+      <StackCard view={view} wide={false} onPick={setYear} />
+
       <TaxableDivider view={view} />
 
       <Card as="section" aria-label="Average cost versus price" className="flex flex-col gap-3">
@@ -293,19 +292,6 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
         <PriceChart points={series} averageCostCents={view.averageCostCentsPerBtc} width={320} height={96} label="Bitcoin price over three years against your average cost line" status={seriesLoading ? 'loading' : 'ready'} young={young} markHigh={daily} />
         <ChartFooter points={series} averageCostCents={view.averageCostCentsPerBtc} className="text-[11px]" />
         <LossesStat view={view} variant="row" />
-      </Card>
-
-      <Card as="section" aria-label="Your coins by age" className="flex flex-col gap-2.5">
-        <h2 className="m-0 text-[15px] font-semibold">Your stack, by year bought</h2>
-        <StackRows stack={view.stack} onPick={setYear} />
-        <div className="mt-0.5 flex items-center gap-1">
-          <TierLegend tiers={tiersPresent(view.mix)} mix={view.mix} />
-          {tierHelp.button}
-        </div>
-        {tierHelp.panel}
-        <span className="text-xs text-muted">
-          {view.tierShares.documented} documented. Pick a year to see each lot and where it came from.
-        </span>
       </Card>
 
       <DocumentationCard view={view} />
@@ -338,7 +324,6 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
   const [year, setYear] = useState<number | null>(null);
   const picked = view.stack.find((r) => r.year === year) ?? null;
   const avg = view.averageCostCentsPerBtc;
-  const tierHelp = useHelp('What do the colors mean?', TIER_COLORS_HELP);
   const gainHelp = useUnrealizedHelp();
   const hero = heroFigures(view);
   return (
@@ -369,6 +354,9 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
 
       <BalanceNudge />
       <LoanNudge />
+
+      {/* All your Bitcoin, taxable and retirement, so it sits above the taxable figures. */}
+      <StackCard view={view} wide onPick={setYear} />
 
       <TaxableDivider view={view} />
 
@@ -414,21 +402,6 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
       </div>
 
       <LoansSection />
-
-      <Card as="section" aria-label="Your coins by age" className="flex flex-col gap-3.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="m-0 text-[15px] font-semibold">Your stack, by year bought</h2>
-          <div className="flex items-center gap-1">
-            <TierLegend tiers={tiersPresent(view.mix)} />
-            {tierHelp.button}
-          </div>
-        </div>
-        {tierHelp.panel}
-        <StackColumns stack={view.stack} onPick={setYear} />
-        <span className="text-xs text-muted">
-          {view.tierShares.documented} documented. Pick a year to see each lot and where it came from.
-        </span>
-      </Card>
 
       {/* Cards keep their own height: a long Held apart list should not stretch the short ones. */}
       <div className="grid grid-cols-2 items-start gap-4">

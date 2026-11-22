@@ -134,3 +134,47 @@ test('the all-Bitcoin hero shows the average cost of all your Bitcoin', async ({
   await openDemo(page);
   await expect(page.getByText(/Average cost of all your Bitcoin: \$[\d,]+\.\d\d per BTC/).first()).toBeVisible();
 });
+
+test('Your stack, by year bought is all your Bitcoin: above the taxable figures, retirement in its year and colour', async ({ page }) => {
+  await openHoldingsWithDemo(page);
+  const stack = page.getByRole('region', { name: 'Your coins by year bought' });
+  await expect(stack.getByRole('heading', { name: 'Your stack, by year bought' })).toBeVisible();
+  // Whole picture: above the Taxable label. The documentation card stays below it and says it is taxable only.
+  const divider = page.getByRole('heading', { name: 'Taxable', exact: true });
+  expect((await stack.boundingBox())?.y ?? Infinity).toBeLessThan((await divider.boundingBox())?.y ?? 0);
+  const docs = page.getByRole('region', { name: 'How well your taxable coins are documented' });
+  expect((await docs.boundingBox())?.y ?? 0).toBeGreaterThan((await divider.boundingBox())?.y ?? Infinity);
+  await expect(docs).toContainText('Taxable Bitcoin only.');
+
+  await expect(stack).toContainText('Retirement');
+  await expect(stack).toContainText('Taxable: 94% documented.');
+  await expect(stack).not.toContainText('Not in a year');
+  // 2024: the taxable lots (0.6911 2…) plus the retirement purchase of Jan 18 (0.1650): 0.8561 BTC.
+  const y2024 = stack.getByRole('button', { name: /Show the 2024 lots/ });
+  await expect(y2024).toContainText('0.8561');
+  await expect(y2024.locator('.bg-retire')).toHaveCount(1);
+  await expect(stack.getByRole('button', { name: /Show the 2023 lots/ }).locator('.bg-retire')).toHaveCount(0);
+  // Retirement has its own colour everywhere: the split bar and swatch too, never the Reconstructed cream.
+  await expect(page.getByRole('region', { name: 'Taxable and retirement' }).locator('.bg-retire')).toHaveCount(2);
+
+  await y2024.click();
+  const sheet = page.getByRole('dialog', { name: '2024 lots' });
+  const purchase = sheet.getByRole('button').filter({ hasText: 'Jan 18, 2024 · Retirement account' });
+  await expect(purchase).toContainText('0.1650 0000');
+  await expect(purchase).toContainText('Retirement');
+  await expect(purchase).toContainText(/Now \$[\d,]+\.\d\d · up \$[\d,]+\.\d\d \(\+\d+%\)/);
+  await purchase.click();
+  await expect(sheet).toContainText('Retirement purchase in Retirement account. Kept apart from tax.');
+  await expect(sheet.getByRole('img', { name: 'Amount hidden' })).toHaveCount(0);
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations.map((v) => v.id)).toEqual([]);
+
+  // Hide amounts masks the retirement figures in the sheet and on the card.
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Hide amounts' }).first().click();
+  await expect(stack).not.toContainText(/\d\.\d{4}/);
+  await y2024.click();
+  await sheet.getByRole('button').filter({ hasText: 'Jan 18, 2024 · Retirement account' }).click();
+  await expect(sheet).toContainText('Kept apart from tax.');
+  await expect(sheet).not.toContainText(/\$\d|\d\.\d{4}|\d%/);
+});

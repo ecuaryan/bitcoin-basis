@@ -1,14 +1,40 @@
-import { allBitcoin, carryforwardFor, retirementWorth, TIERS, valueOfPieces, yearOf, type AllBitcoin, type Holdings, type LedgerState, type Lot, type RetirementHolding, type Tier, type WalletType, type Worth, type WorthWithUnknown } from '@bitcoin-basis/engine';
+import { allBitcoin, carryforwardFor, retirementPurchases, retirementWorth, TIERS, valueOfPieces, yearOf, type AllBitcoin, type Holdings, type LedgerState, type Lot, type RetirementHolding, type RetirementPurchaseView, type Tier, type WalletType, type Worth, type WorthWithUnknown } from '@bitcoin-basis/engine';
 import { confirmedLabel, sharePercents, wholeDollarParts } from './format.ts';
 import { staleLosses } from './losses.ts';
 import { WALLET_TYPE_LABEL } from './wallet-label.ts';
 
+/** A retirement purchase in the stack: its own colour, no tax tier. */
+export interface StackRetirementPurchase extends RetirementPurchaseView {
+  walletName: string;
+}
+
+/** One row of a year's lots, taxable or retirement. */
+export type StackPiece = { kind: 'lot'; lot: Lot } | { kind: 'retirement'; purchase: StackRetirementPurchase };
+
+/** One year of "Your stack, by year bought": all your Bitcoin bought that year, taxable and retirement. */
 export interface StackYear {
   year: number;
+  /** Everything bought that year and still held: taxable lots plus retirement purchases. */
   sats: number;
+  /** The taxable lots' part of `sats`. */
+  taxableSats: number;
+  /** The retirement purchases' part of `sats`. */
+  retirementSats: number;
+  /** Taxable lots only, by documentation tier (retirement has no tier). */
   byTier: Record<Tier, number>;
-  /** The coins themselves, newest first. */
+  /** The taxable lots, newest first. */
   lots: Lot[];
+  /** The retirement purchases, newest first. */
+  retirement: StackRetirementPurchase[];
+  /** Lots and retirement purchases together, newest first (the year sheet's list). */
+  pieces: StackPiece[];
+}
+
+/** Retirement coins with no purchase dates (balance notes only): in the total, not in any year. */
+export interface StackUndated {
+  sats: number;
+  /** The wallets, by name, in creation order. */
+  wallets: string[];
 }
 
 export interface WalletCard {
@@ -53,7 +79,10 @@ export interface HoldingsView {
   /** Share of the taxable BTC in each tier (`sharePercents`: adds up to 100%, `under 1%` for a sliver, 100% only for all). */
   tierShares: Record<Tier, string>;
   mix: Record<Tier, number>;
+  /** Oldest year first; taxable lots and retirement purchases. With `stackUndated`, adds up to the hero's BTC. */
   stack: StackYear[];
+  /** Retirement balance with no purchase dates, or null. */
+  stackUndated: StackUndated | null;
   wallets: WalletCard[];
   frozen: WalletCard[];
   retirement: RetirementCard[];
@@ -87,24 +116,59 @@ export function tierShares(mix: Partial<Record<Tier, number>>): Record<Tier, str
   return Object.fromEntries(TIERS.map((t, i) => [t, shares[i] as string])) as Record<Tier, string>;
 }
 
+const newestFirst = (a: number, b: number) => b - a;
+const instant = (iso: string) => Date.parse(iso);
+
+/**
+ * "Your stack, by year bought": the taxable lots (wallets not frozen) and the retirement purchases, by the year they
+ * were bought. Retirement wallets with balance notes only have no purchase dates; their balance is `stackUndated`.
+ */
+function stackOf(state: LedgerState, h: Holdings, lots: readonly Lot[], priceCents: number | null, today: string): { stack: StackYear[]; stackUndated: StackUndated | null } {
+  const byYear = new Map<number, StackYear>();
+  const rowFor = (year: number): StackYear => {
+    let row = byYear.get(year);
+    if (!row) {
+      row = { year, sats: 0, taxableSats: 0, retirementSats: 0, byTier: Object.fromEntries(TIERS.map((t) => [t, 0])) as Record<Tier, number>, lots: [], retirement: [], pieces: [] };
+      byYear.set(year, row);
+    }
+    return row;
+  };
+  for (const l of lots) {
+    const row = rowFor(yearOf(l.acquiredDate));
+    row.sats += l.sats;
+    row.taxableSats += l.sats;
+    row.byTier[l.tier] += l.sats;
+    row.lots.push(l);
+  }
+  // The same wallets as the hero's retirement part: those whose balance comes from their purchases.
+  const dated = new Map(h.retirement.filter((r) => r.balanceFrom === 'purchases').map((r) => [r.wallet, r.name]));
+  for (const p of retirementPurchases(state, null, priceCents, today)) {
+    const walletName = dated.get(p.wallet);
+    if (walletName === undefined) continue;
+    const row = rowFor(yearOf(p.date));
+    row.sats += p.sats;
+    row.retirementSats += p.sats;
+    row.retirement.push({ ...p, walletName });
+  }
+  const stack = [...byYear.values()].sort((a, b) => a.year - b.year);
+  for (const row of stack) {
+    row.lots.sort((a, b) => newestFirst(instant(a.acquiredAt), instant(b.acquiredAt)));
+    row.retirement.sort((a, b) => newestFirst(instant(a.at), instant(b.at)));
+    row.pieces = [
+      ...row.lots.map((lot): StackPiece => ({ kind: 'lot', lot })),
+      ...row.retirement.map((purchase): StackPiece => ({ kind: 'retirement', purchase })),
+    ].sort((a, b) => newestFirst(instant(a.kind === 'lot' ? a.lot.acquiredAt : a.purchase.at), instant(b.kind === 'lot' ? b.lot.acquiredAt : b.purchase.at)));
+  }
+  const undated = h.retirement.filter((r) => r.balanceFrom === 'snapshot' && r.sats > 0);
+  const stackUndated = undated.length === 0 ? null : { sats: undated.reduce((t, r) => t + r.sats, 0), wallets: undated.map((r) => r.name) };
+  return { stack, stackUndated };
+}
+
 export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: number | null, today: string): HoldingsView {
   const live = new Set(h.wallets.filter((w) => !w.frozen).map((w) => w.wallet));
   const lots = state.lots.filter((l) => live.has(l.wallet));
 
-  const byYear = new Map<number, StackYear>();
-  for (const l of lots) {
-    const year = yearOf(l.acquiredDate);
-    let row = byYear.get(year);
-    if (!row) {
-      row = { year, sats: 0, byTier: Object.fromEntries(TIERS.map((t) => [t, 0])) as Record<Tier, number>, lots: [] };
-      byYear.set(year, row);
-    }
-    row.sats += l.sats;
-    row.byTier[l.tier] += l.sats;
-    row.lots.push(l);
-  }
-  const stack = [...byYear.values()].sort((a, b) => a.year - b.year);
-  for (const row of stack) row.lots.sort((a, b) => (a.acquiredAt > b.acquiredAt ? -1 : a.acquiredAt < b.acquiredAt ? 1 : 0));
+  const { stack, stackUndated } = stackOf(state, h, lots, priceCents, today);
 
   const card = (w: Holdings['wallets'][number]): WalletCard => {
     const checks = state.balanceChecks.filter((c) => c.wallet === w.wallet);
@@ -147,6 +211,7 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
     tierShares: tierShares(h.documentationMix),
     mix: h.documentationMix,
     stack,
+    stackUndated,
     wallets: h.wallets
       .filter((w) => !w.frozen && !(w.archived && w.sats === 0))
       .map(card)
