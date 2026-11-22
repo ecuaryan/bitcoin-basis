@@ -1,4 +1,4 @@
-import { averageCostPerBtc, oneYearAnniversary, retirementPurchases, retirementWorth, termFor, uuidv7, valueOfPieces, worthOf, type BalanceConfirmEntry, type Entry, type Lot, type RetirementHolding, type RetirementPurchaseView, type RetirementSnapshotCheck, type RetirementSnapshotEntry, type Wallet, type Worth } from '@bitcoin-basis/engine';
+import { retirementPurchases, retirementWorth, uuidv7, valueOfPieces, worthOf, type BalanceConfirmEntry, type Entry, type Lot, type RetirementHolding, type RetirementPurchaseView, type RetirementSnapshotCheck, type RetirementSnapshotEntry, type Wallet, type Worth } from '@bitcoin-basis/engine';
 import { BackLink } from '../../ui/BackLink.tsx';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -7,7 +7,6 @@ import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { confirmedLabel, countOf, heldLabel, shortDate } from '../../lib/format.ts';
-import { describeOrigin, TIER_LABEL } from '../../lib/origin.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide, useLogSheet } from '../../ui/AppShell.tsx';
 import { Button, buttonClasses } from '../../ui/Button.tsx';
@@ -17,26 +16,22 @@ import { Callout, TextField } from '../../ui/form-fields.tsx';
 import { ChevronLeftIcon } from '../../ui/more-icons.tsx';
 import { BtcInput } from '../../ui/formatted-inputs.tsx';
 import { useToast } from '../../ui/Toast.tsx';
-import { GainText, TIER_BG } from '../holdings-parts.tsx';
+import { GainText } from '../holdings-parts.tsx';
 import { useAmount } from '../log/hooks.ts';
 import { describeEntry } from '../../lib/describe-entry.ts';
 import { buildItems, entryRows, NO_FILTER, RECHECK_REASON } from '../../lib/entry-list.ts';
 import { EntryRow, EntrySheet } from '../entry-parts.tsx';
 import { entriesCount } from '../records/records-entries.tsx';
 import { EmptyLine, SectionCount, SectionHeader, ShowMore } from '../../ui/SectionHeader.tsx';
-import { localInputFor, longDate, nextDay, nowInstant, trialReplay } from '../log/model.ts';
+import { localInputFor, longDate, nowInstant, trialReplay } from '../log/model.ts';
 import { CloseOutSheet } from './CloseOut.tsx';
 import { checkHistory, lastConfirmed, walletEntries, walletLots } from './model.ts';
 import { WalletMenu, type WalletMenuStart } from './WalletMenu.tsx';
+import { LotsSection } from './LotsTable.tsx';
 import { useTitle } from '../../ui/use-title.ts';
-import { LOT_HELP, LOT_HELP_LABEL, TERM_HELP } from '../../lib/terms.ts';
-import { useHelp } from '../../ui/Help.tsx';
 import { GainWords, WorthLine } from '../../ui/WorthLine.tsx';
 import { PlainMoney } from '../../ui/plain-money.tsx';
 import { WALLET_TYPE_LABEL } from '../../lib/wallet-label.ts';
-import { worthNow } from '../../lib/worth-now.ts';
-import { loanTagFor } from '../../lib/loans-view.ts';
-import { LoanBadge } from '../loans/loan-parts.tsx';
 
 
 function DotsIcon() {
@@ -332,74 +327,6 @@ function ConfirmBalance({ wallet, sats, inputRef, onLost }: { wallet: Wallet; sa
           </ul>
         </details>
       ) : null}
-    </Card>
-  );
-}
-
-// ---- Lots ------------------------------------------------------------------------------
-
-function CoinsSection({ lots, today, entries, walletsById, priceCents, frozen = false }: { lots: Lot[]; today: string; entries: readonly Entry[]; walletsById: ReadonlyMap<string, Wallet>; priceCents: number | null; frozen?: boolean }) {
-  const [all, setAll] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
-  // Newest first: the lot you just added is the one you look for.
-  const sorted = useMemo(() => [...lots].sort((a, b) => (a.acquiredAt > b.acquiredAt ? -1 : a.acquiredAt < b.acquiredAt ? 1 : 0)), [lots]);
-  const shown = all ? sorted : sorted.slice(0, 5);
-  // One "?": what a lot is, then the two tax clocks each row shows.
-  const lotHelp = useHelp(`${LOT_HELP_LABEL.slice(0, -1)}, and what are short-term and long-term?`, `${LOT_HELP} ${TERM_HELP}`);
-  const { state } = useLedger();
-  return (
-    <Card as="section" aria-label="Lots in this wallet" className="flex flex-col">
-      <SectionHeader title="Lots, newest first" help={lotHelp.button} right={<span className="flex-none text-xs text-muted">Cost per BTC</span>} className="-mt-2" />
-      {lotHelp.panel}
-      {sorted.length === 0 ? <EmptyLine>No lots here.</EmptyLine> : null}
-      <ul className="m-0 flex list-none flex-col p-0">
-        {shown.map((l) => {
-          const long = termFor(l, today) === 'long';
-          const perBtc = averageCostPerBtc(l.costCents, l.sats);
-          const open = openId === l.id;
-          const origin = entries.find((e) => e.id === l.originEntryId);
-          const loan = loanTagFor(state, l.id);
-          return (
-            <li key={l.id} className="border-b border-line last:border-b-0">
-              <button type="button" aria-expanded={open} onClick={() => setOpenId(open ? null : l.id)} className="flex min-h-[54px] w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
-                <span className={cx('h-8 w-1.5 flex-none self-center rounded-full', TIER_BG[l.tier])} aria-hidden="true" />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-semibold">
-                    <Amount sats={l.sats} interactive={false} />
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs text-muted">
-                    {shortDate(l.acquiredDate)} · {TIER_LABEL[l.tier]}
-                    {loan ? <LoanBadge tag={loan.tag} /> : null}
-                  </span>
-                  {frozen ? (
-                    // As in the wallet's header: frozen coins have no value now, only their cost (and the loss once closed out).
-                    <span className="mt-0.5 text-xs text-muted">Frozen · not counted in what your Bitcoin is worth</span>
-                  ) : (
-                    <WorthLine worth={worthNow(l.sats, l.costCents, priceCents)} className="mt-0.5 text-xs" />
-                  )}
-                </span>
-                <span className="flex flex-col items-end text-right">
-                  <span className="text-sm font-semibold">{perBtc === null ? '—' : <Money cents={perBtc} />}</span>
-                  <span className={cx('text-xs normal-nums', long ? 'text-muted' : 'max-w-[7.5rem] font-semibold text-balance text-amber sm:max-w-none')}>{long ? 'Long-term' : `Long-term on ${shortDate(nextDay(oneYearAnniversary(l.acquiredDate)))}`}</span>
-                </span>
-              </button>
-              {open ? (
-                <dl className="mb-2 ml-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl bg-bg px-3 py-2.5 text-xs">
-                  <dt className="text-muted">Came from</dt>
-                  <dd className="m-0">{describeOrigin(l, origin, walletsById)}</dd>
-                  <dt className="text-muted">Cost</dt>
-                  <dd className="m-0">
-                    <Money cents={l.costCents} />
-                  </dd>
-                  <dt className="text-muted">Receipt</dt>
-                  <dd className="m-0">{l.proof || 'None yet'}</dd>
-                </dl>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-      {sorted.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {countOf(sorted.length, 'lot')}</ShowMore> : null}
     </Card>
   );
 }
@@ -798,26 +725,26 @@ export function WalletDetail() {
       {!frozenView ? <ConfirmBalance wallet={wallet} sats={holdingSats} inputRef={confirmRef} onLost={openLost} /> : null}
     </>
   );
-  const right = (
-    <>
-      <CoinsSection lots={lots} today={today} entries={entries} walletsById={walletsById} priceCents={priceCents} frozen={frozenView} />
-      <History wallet={wallet} />
-    </>
-  );
+  const lotsNode = <LotsSection lots={lots} today={today} entries={entries} walletsById={walletsById} priceCents={priceCents} frozen={frozenView} />;
 
   return (
     <div className="flex flex-col gap-5">
       <Header wallet={wallet} onMenu={openMenu} wide={wide} />
       {wallet.archived ? <Callout>This wallet is archived. Bring it back from its options (the three dots) to use it again.</Callout> : null}
       {wide ? (
-        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-6">
-          <div className="flex flex-col gap-5">{left}</div>
-          <div className="flex flex-col gap-5">{right}</div>
-        </div>
+        <>
+          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-6">
+            <div className="flex flex-col gap-5">{left}</div>
+            <History wallet={wallet} />
+          </div>
+          {/* The lots table gets the full width: one line per lot, every column. */}
+          {lotsNode}
+        </>
       ) : (
         <>
           {left}
-          {right}
+          {lotsNode}
+          <History wallet={wallet} />
         </>
       )}
       {menuNode}

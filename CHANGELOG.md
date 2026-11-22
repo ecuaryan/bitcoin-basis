@@ -13,6 +13,10 @@
 - **Import and export**: rows in the coins spreadsheet whose wallet is one of your retirement wallets become retirement purchases (leave tier and the loan columns empty on those rows; if the wallet is new, the preview asks whether it is a retirement account and never assumes it). The spreadsheet export includes them, and the backup file carries them with their history.
 - The demo's retirement account has three made-up purchases.
 
+### Changed (wallet page)
+
+- **Lots are a table**: Date, Paid, Bitcoin (with the cost per BTC under it), and Now (with the gain or loss and its percent under it). Short-term lots come first with the day each turns long-term, then long-term lots, each newest first. A Total row adds up every lot in the wallet (what you paid, BTC at your average cost, worth now, gain and percent). Loan and tier tags show only where they apply ("Documented" is no longer repeated on every row). Tap a row for where it came from, the exact cost per BTC and the receipt. On desktop the table spans the page, one line per lot, with Cost per BTC, Gain or loss and Term as their own columns.
+
 ### Changed (Holdings)
 
 - **Holdings reads top to bottom as "all of it", then "taxable"**: the price chart, your retirement accounts and loans now sit with the whole picture, above the Taxable label; under it are only the figures that count for tax (average cost, unrealized gain, losses from past years), your wallets and how well it is documented. Same order on phone and desktop.
