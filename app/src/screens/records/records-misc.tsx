@@ -12,7 +12,7 @@ import { AddWalletButton } from '../wallet/AddWallet.tsx';
 import { yearLockHistory } from '../tax/tax-logic.ts';
 import { ChevronRightIcon } from '../../ui/icons.tsx';
 
-/** Years that were closed after filing, with their history. Unlocking needs a reason. */
+/** Years that were closed after filing (newest first), with their history. Unlocking needs a reason. */
 export function ClosedYearsView() {
   const { state, entries } = useLedger();
   const [unlocking, setUnlocking] = useState<number | null>(null);
@@ -24,7 +24,7 @@ export function ClosedYearsView() {
         {state.closedYears.length === 0 ? (
           <p className="m-0 text-sm text-muted">No year is closed. Close a year in Tax season once it is filed, so its numbers cannot drift.</p>
         ) : (
-          state.closedYears.map((y) => (
+          [...state.closedYears].sort((a, b) => b - a).map((y) => (
             <div key={y} className="flex min-h-12 items-center justify-between gap-3 border-b border-line-soft last:border-0">
               <span className="text-[15px] font-semibold">{y}</span>
               <Button onClick={() => setUnlocking(y)}>Unlock {y}…</Button>

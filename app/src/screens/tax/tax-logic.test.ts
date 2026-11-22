@@ -1,7 +1,7 @@
-import { createUuidV7, replay, type Entry } from '@bitcoin-basis/engine';
+import { createUuidV7, federalTableFor, giftAnnualExclusionFor, replay, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_TODAY } from '../../demo/demo-data.ts';
-import { answerReason, feeOnlyYes, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, form8949Detail, joinWords, overExclusion, termWord, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory, nextYearLosses } from './tax-logic.ts';
+import { answerReason, charityRows, feeOnlyYes, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, form8949Detail, joinWords, overExclusion, termWord, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory, nextYearLosses } from './tax-logic.ts';
 import { yearSummary } from '@bitcoin-basis/engine';
 
 const state = replay(buildDemoBook().entries);
@@ -176,5 +176,79 @@ describe('defaultTaxYear', () => {
   it('a year is over only after it ends', () => {
     expect(yearIsOver(2026, '2026-12-31')).toBe(false);
     expect(yearIsOver(2025, '2026-01-01')).toBe(true);
+  });
+});
+
+describe('gift limit per year', () => {
+  const TZ = 'America/Boise';
+  const giftOf = (date: string, cents: number): Entry[] => [
+    { id: 'w', kind: 'wallet', at: '2015-01-01T00:00:00Z', tz: TZ, wallet: 'ex', name: 'Exchange', type: 'exchange', defaultProof: '' },
+    { id: 'b', kind: 'buy', at: '2015-01-02T19:00:00Z', tz: TZ, wallet: 'ex', sats: 100_000_000, costCents: 30_000, tier: 'documented' },
+    { id: 'g', kind: 'give', at: `${date}T19:00:00Z`, tz: TZ, wallet: 'ex', sats: 1_000_000, valueCents: cents, to: 'person', recipient: 'Mom', picks: [{ lotId: 'b', sats: 1_000_000 }] },
+  ];
+  it('uses each year’s own annual exclusion, not the earliest table’s', () => {
+    const limits = [2016, 2017, 2018, 2021, 2022, 2023, 2024, 2025, 2026, 2027].map((y) => giftAnnualExclusionFor(y) / 100);
+    expect(limits).toEqual([14_000, 14_000, 15_000, 15_000, 16_000, 17_000, 18_000, 19_000, 19_000, 20_000]);
+    // The Log review reads the limit through federalTableFor.
+    expect(federalTableFor(2024).table.giftAnnualExclusion).toBe(1_800_000);
+    expect(federalTableFor(2009).table.giftAnnualExclusion).toBe(1_300_000);
+    expect(federalTableFor(2001).table.giftAnnualExclusion).toBe(1_300_000);
+    expect(federalTableFor(2030).table.giftAnnualExclusion).toBe(2_000_000);
+  });
+  it('an $18,500 gift on Jun 1, 2024 is over that year’s $18,000 limit', () => {
+    const s = replay(giftOf('2024-06-01', 1_850_000));
+    expect(overExclusion(s, 2024)).toEqual({ over: [expect.objectContaining({ recipient: 'Mom', valueCents: 1_850_000 })], limitCents: 1_800_000 });
+    expect(yearTaxView(s, s.settings, 2024, '2026-11-21').giftExclusionCents).toBe(1_800_000);
+    // The same gift in 2025 is under $19,000.
+    expect(overExclusion(replay(giftOf('2025-06-01', 1_850_000)), 2025).over).toEqual([]);
+  });
+});
+
+describe('dual basis: flagged in the year the coins are sold', () => {
+  const TZ = 'America/Boise';
+  const noon = (d: string) => `${d}T19:00:00Z`;
+  const base: Entry[] = [
+    { id: 'w', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'ex', name: 'Exchange', type: 'exchange', defaultProof: '' },
+    { id: 'w2', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'cold', name: 'Cold', type: 'self-custody', defaultProof: '' },
+    // Worth $50 when received; the giver paid $9,000.
+    { id: 'G', kind: 'receive', at: noon('2024-03-01'), tz: TZ, wallet: 'ex', sats: 100_000, valueCents: 5_000, source: { type: 'gift', giverCostCents: 900_000, giverAcquiredAt: noon('2021-11-01') } },
+  ];
+  it('a 2026 sale for $70 in the no-gain region is flagged in 2026, as well as the gift in 2024', () => {
+    const s = replay([...base, { id: 'S', kind: 'sell', at: noon('2026-02-01'), tz: TZ, wallet: 'ex', sats: 100_000, proceedsCents: 7_000, spent: false, picks: [{ lotId: 'G', sats: 100_000 }] }]);
+    expect(form8949Detail(yearSummary(s, 2026))).toEqual([expect.objectContaining({ key: 'S', costCents: 7_000, gainCents: 0 })]);
+    expect(flagsForYear(s, 2026)).toEqual([{ entryId: 'S', code: 'dual-basis', message: expect.stringMatching(/^Sale on 2026-02-01 .*dual basis.*Confirm with your CPA\.$/) as string }]);
+    expect(flagsForYear(s, 2024).map((f) => [f.entryId, f.code])).toEqual([['G', 'dual-basis']]);
+  });
+  it('spending, a network fee and a close-out of those coins are flagged in their own years; other sales are not', () => {
+    const s = replay([
+      ...base,
+      { id: 'B', kind: 'buy', at: noon('2024-04-01'), tz: TZ, wallet: 'ex', sats: 100_000, costCents: 7_000, tier: 'documented' },
+      { id: 'P', kind: 'sell', at: noon('2025-01-10'), tz: TZ, wallet: 'ex', sats: 10_000, proceedsCents: 900, spent: false, picks: [{ lotId: 'B', sats: 10_000 }] },
+      { id: 'X', kind: 'sell', at: noon('2025-02-01'), tz: TZ, wallet: 'ex', sats: 10_000, proceedsCents: 900, spent: true, picks: [{ lotId: 'G', sats: 10_000 }] },
+      { id: 'M', kind: 'move', at: noon('2025-03-01'), tz: TZ, from: 'ex', to: 'cold', sats: 10_000, feeSats: 1_000, feeValueCents: 90, picks: [{ lotId: 'G', sats: 11_000 }] },
+      { id: 'F', kind: 'wallet-freeze', at: noon('2026-01-05'), tz: TZ, wallet: 'ex' },
+      { id: 'C', kind: 'wallet-close-out', at: noon('2027-02-01'), tz: TZ, wallet: 'ex', reason: 'Failed', lossDate: '2026-12-30' },
+    ]);
+    expect(s.errors).toEqual([]);
+    expect(flagsForYear(s, 2025).map((f) => f.message.split(' used')[0])).toEqual(['Spending on 2025-02-01', 'Network fee on 2025-03-01']);
+    expect(flagsForYear(s, 2026).map((f) => [f.entryId, f.message.split(' used')[0]])).toEqual([['C', 'Close-out on 2026-12-30']]);
+  });
+});
+
+describe('charity gifts', () => {
+  const TZ = 'America/Boise';
+  it('lists each one newest first with its value, deduction and term (spec example 23: $9,000 to a church)', () => {
+    const s = replay([
+      { id: 'w', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: TZ, wallet: 'ex', name: 'Exchange', type: 'exchange', defaultProof: '' },
+      { id: 'b', kind: 'buy', at: '2024-01-02T19:00:00Z', tz: TZ, wallet: 'ex', sats: 100_000_000, costCents: 2_000_000, tier: 'documented' },
+      { id: 'n', kind: 'buy', at: '2026-01-02T19:00:00Z', tz: TZ, wallet: 'ex', sats: 1_000_000, costCents: 50_000, tier: 'documented' },
+      { id: 'c1', kind: 'give', at: '2026-03-01T19:00:00Z', tz: TZ, wallet: 'ex', sats: 10_000_000, valueCents: 900_000, to: 'charity', recipient: 'Church', picks: [{ lotId: 'b', sats: 10_000_000 }] },
+      { id: 'c2', kind: 'give', at: '2026-05-01T19:00:00Z', tz: TZ, wallet: 'ex', sats: 1_000_000, valueCents: 90_000, to: 'charity', recipient: 'Food bank', picks: [{ lotId: 'n', sats: 1_000_000 }] },
+    ]);
+    expect(charityRows(yearSummary(s, 2026))).toEqual([
+      { key: 'c2', date: '2026-05-01', recipient: 'Food bank', valueCents: 90_000, deductionCents: 50_000, term: 'short', appraisal: true },
+      { key: 'c1', date: '2026-03-01', recipient: 'Church', valueCents: 900_000, deductionCents: 900_000, term: 'long', appraisal: true },
+    ]);
+    expect(charityRows(yearSummary(s, 2025))).toEqual([]);
   });
 });

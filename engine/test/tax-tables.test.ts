@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, test } from 'vitest';
 import { divRoundHalfUp } from '../src/money.ts';
 import { taxForYear, type TaxInput } from '../src/tax/tax.ts';
-import { FEDERAL_TABLES, federalTableFor } from '../src/tax/tables/index.ts';
+import { FEDERAL_TABLES, federalTableFor, giftAnnualExclusionFor } from '../src/tax/tables/index.ts';
 import { STATE_RATES, US_STATES } from '../src/tax/tables/state.ts';
 import { TAX_FILING_STATUSES, type TaxFilingStatus } from '../src/tax/types.ts';
 
@@ -154,5 +154,24 @@ describe('state table', () => {
     expect(STATE_RATES.ID).toMatchObject({ kind: 'flat', rate: 530 });
     expect(STATE_RATES.ID).not.toHaveProperty('note');
     expect(STATE_RATES.UT).toMatchObject({ rate: 445, note: expect.stringContaining('S.B. 60') });
+  });
+});
+
+describe('gift annual exclusion by year', () => {
+  test('each year its own limit: published years before the tables, then the tables', () => {
+    const want: [number, number][] = [
+      [2008, 13_000_00],
+      [2012, 13_000_00],
+      [2013, 14_000_00],
+      [2017, 14_000_00],
+      [2018, 15_000_00],
+      [2021, 15_000_00],
+      [2022, 16_000_00],
+      [2023, 17_000_00],
+      [2024, 18_000_00],
+      [2025, 19_000_00],
+      [2026, 19_000_00],
+    ];
+    for (const [year, cents] of want) expect([year, giftAnnualExclusionFor(year)]).toEqual([year, cents]);
   });
 });

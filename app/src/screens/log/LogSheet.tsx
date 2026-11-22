@@ -21,6 +21,8 @@ import { Review } from './Review.tsx';
 import { SellForm } from './SellForm.tsx';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { useToast } from '../../ui/Toast.tsx';
+import { fundedRemoval } from '../../lib/loans-view.ts';
+import { shortDate } from '../../lib/format.ts';
 
 const TABS: { kind: Exclude<LogKind, 'retirement-buy'>; label: string; name: string }[] = [
   { kind: 'buy', label: 'Bought', name: 'Bought' },
@@ -84,6 +86,7 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [doneGift, setDoneGift] = useState<string | null>(null);
   const [removeId] = useState(() => uuidv7());
+  const [keepLinkId] = useState(() => uuidv7());
   const editing = startPreset.edit !== undefined;
   const removing = startPreset.remove !== undefined;
   // A retirement purchase has no tab: it opens from its wallet's page, on its own.
@@ -112,6 +115,8 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
     if (!removing || head === null) return null;
     const line = describeEntry(head, walletsById);
     const noun = entryNoun(head);
+    // A purchase paid with a loan: the money was still drawn, so the draw keeps counting toward what is owed.
+    const funded = head.kind === 'buy' || head.kind === 'opening-lot' ? fundedRemoval(entries, state, head.id) : null;
     return {
       title: `Remove this ${noun}?`,
       saveLabel: `Remove ${noun}`,
@@ -124,9 +129,21 @@ function LogBody({ preset: startPreset, onClose, onStep }: { preset: LogPreset; 
         ...(line.sats === null ? [] : [{ label: 'Amount', value: <Amount sats={line.sats} interactive={false} showUnit /> }]),
         ...(line.cents === null ? [] : [{ label: line.centsLabel === '' ? 'Value' : line.centsLabel.replace(/^./, (c) => c.toUpperCase()), value: <Money cents={line.cents} /> }]),
       ],
-      build: (reason) => [{ id: removeId, kind: 'delete', at: new Date(nowMs).toISOString().slice(0, 19) + 'Z', tz: state.settings.timeZone, replaces: head.id, reason }],
+      ...(funded === null
+        ? {}
+        : {
+            extra: (
+              <Callout tone="warn" title={`Paid with ${funded.loanName}`}>
+                The <Money cents={funded.drawCents} /> drawn on {shortDate(funded.drawDate)} for it still counts toward what you owe on {funded.loanName}. If that changed, log a payment on the loan’s page.
+              </Callout>
+            ),
+          }),
+      build: (reason) => [
+        { id: removeId, kind: 'delete', at: new Date(nowMs).toISOString().slice(0, 19) + 'Z', tz: state.settings.timeZone, replaces: head.id, reason },
+        ...(funded?.keepLink ? [{ ...funded.keepLink, id: keepLinkId } as Entry] : []),
+      ],
     };
-  }, [removing, head, walletsById, removeId, nowMs, state.settings.timeZone]);
+  }, [removing, head, walletsById, removeId, keepLinkId, nowMs, entries, state]);
 
   const reviewing = draft !== null;
   const sheetTitle = removeDraft?.title ?? draft?.title ?? null;

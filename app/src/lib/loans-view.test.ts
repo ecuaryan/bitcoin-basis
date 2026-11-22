@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_LOAN_ID, DEMO_TODAY } from '../demo/demo-data.ts';
 import { describeEntry } from './describe-entry.ts';
 import { buildItems, entryRows, kindGroup, NO_FILTER } from './entry-list.ts';
-import { breakEvenWords, goneWords, loanTag, loanTagFor, loanTags, paymentNudge, planLinks, purchaseOptions, purchaseWorth, statementDayText, statementToCheck, type PurchaseOption } from './loans-view.ts';
+import { breakEvenWords, fundedRemoval, goneWords, loanTag, loanTagFor, loanTags, paymentNudge, planLinks, purchaseOptions, purchaseWorth, recordedBalanceOn, statementDayText, statementToCheck, type LinkPlan, type PurchaseOption } from './loans-view.ts';
 
 const book = buildDemoBook();
 const state = replay(book.entries);
@@ -135,5 +135,77 @@ describe('where a loan\'s Bitcoin went', () => {
     expect(goneWords([p([piece('lost', 5)])])).toEqual({ sats: 5, words: 'later lost' });
     expect(goneWords([p([piece('closed-out', 5), piece('sold', 9)])])?.words).toBe('later sold or closed out on a frozen platform');
     expect(goneWords([p([])])).toBeNull();
+  });
+});
+
+// ---- Fixes from an independent review (synthetic data) ----------------------------------------
+
+const TZ = 'America/Boise';
+const noon = (d: string) => `${d}T19:00:00Z`;
+const ex: Entry = { id: 'w-ex', kind: 'wallet', at: '2015-01-01T00:00:00Z', tz: TZ, wallet: 'ex', name: 'Exchange', type: 'exchange', defaultProof: 'Email receipt' };
+const heloc: Entry = { id: 'loan-h', kind: 'loan', at: noon('2024-01-01'), tz: TZ, loan: 'h', name: 'HELOC', opened: '2024-01-01', aprMillionths: 65_000 };
+const row = (id: string, acquired: string): Entry => ({ id, kind: 'opening-lot', at: noon('2024-06-01'), tz: TZ, wallet: 'ex', acquiredAt: noon(acquired), sats: 10_000_000, costCents: 600_000, tier: 'documented', origin: 'Import' });
+const buyOf = (id: string, date: string): Entry => ({ id, kind: 'buy', at: noon(date), tz: TZ, wallet: 'ex', sats: 10_000_000, costCents: 1_000_000, tier: 'documented' });
+
+describe('a CSV purchase split over two rows is one link', () => {
+  // One $12,000.00 purchase imported as two rows (L1 on Mar 1, L2 on Mar 3) sharing one link.
+  const entries: Entry[] = [ex, heloc, row('L1', '2024-03-01'), row('L2', '2024-03-03'), { id: 'K', kind: 'loan-link', at: noon('2024-06-01'), tz: TZ, loan: 'h', lot: 'L1', alsoLots: ['L2'], drawCents: 1_200_000 }];
+  const st = replay(entries);
+  const options = purchaseOptions(entries, st);
+  const both = new Map<string, string | null>([['L1', null], ['L2', null]]);
+  it('knows both rows belong to the link, drawn from the earliest', () => {
+    expect(options.map((o) => [o.lotId, o.linkLots, o.drawDefault])).toEqual([['L2', ['L1', 'L2'], '2024-03-01'], ['L1', ['L1', 'L2'], '2024-03-01']]);
+    expect(planLinks('h', options, both)).toEqual({ add: [], remove: [], change: [] });
+  });
+  it('unticking one row keeps the link; unticking both removes it once', () => {
+    expect(planLinks('h', options, new Map([['L1', null]]))).toEqual({ add: [], remove: [], change: [] });
+    expect(planLinks('h', options, new Map())).toEqual({ add: [], remove: ['K'], change: [] });
+  });
+  it('a new draw date keeps the other row and the amount', () => {
+    const plan = planLinks('h', options, new Map([['L1', '2024-02-15'], ['L2', '2024-02-15']]));
+    expect(plan.change).toEqual([{ entryId: 'K', lot: 'L1', alsoLots: ['L2'], drawCents: 1_200_000, drawDate: '2024-02-15' }]);
+    const { entryId, ...link } = plan.change[0] as LinkPlan['change'][number];
+    const after = replay([...entries, { id: 'K2', kind: 'loan-link', at: noon('2024-06-01'), tz: TZ, loan: 'h', ...link, replaces: entryId, reason: 'Draw date changed' }]);
+    expect(after.errors).toEqual([]);
+    expect(loanSummary(after, 'h', null, '2024-06-01')?.drawnCents).toBe(1_200_000);
+  });
+});
+
+describe('removing a loan-funded purchase', () => {
+  // P1 and P2 linked at $10,000.00 each, $5,000.00 repaid.
+  const entries: Entry[] = [
+    ex,
+    heloc,
+    buyOf('P1', '2025-01-10'),
+    buyOf('P2', '2025-01-20'),
+    { id: 'K1', kind: 'loan-link', at: noon('2025-01-10'), tz: TZ, loan: 'h', lot: 'P1' },
+    { id: 'K2', kind: 'loan-link', at: noon('2025-01-20'), tz: TZ, loan: 'h', lot: 'P2' },
+    { id: 'Y', kind: 'loan-payment', at: noon('2025-03-01'), tz: TZ, loan: 'h', interestCents: 0, principalCents: 500_000 },
+  ];
+  const st = replay(entries);
+  it('names the loan and the draw, and keeps what is owed', () => {
+    const r = fundedRemoval(entries, st, 'P2');
+    expect(r).toMatchObject({ loanId: 'h', loanName: 'HELOC', drawCents: 1_000_000, drawDate: '2025-01-20' });
+    const removed: Entry[] = [{ id: 'Z', kind: 'delete', at: noon('2025-06-01'), tz: TZ, replaces: 'P2', reason: 'Typo' }, { ...(r?.keepLink as object), id: 'K2b' } as Entry];
+    const after = replay([...entries, ...removed]);
+    expect(after.errors).toEqual([]);
+    expect(loanSummary(after, 'h', null, '2025-06-01')).toMatchObject({ principalOwedCents: 1_500_000, purchaseCount: 1, otherDrawsCents: 1_000_000 });
+    expect(fundedRemoval(entries, st, 'nothing')).toBeNull();
+  });
+});
+
+describe('the statement check after paying more than was drawn', () => {
+  const entries: Entry[] = [ex, { ...heloc, statementDay: 31 } as Entry, buyOf('P1', '2025-01-10'), { id: 'K1', kind: 'loan-link', at: noon('2025-01-10'), tz: TZ, loan: 'h', lot: 'P1' }, { id: 'Y', kind: 'loan-payment', at: noon('2025-02-10'), tz: TZ, loan: 'h', interestCents: 0, principalCents: 1_010_000 }];
+  const st = replay(entries);
+  const l = st.loans[0] as NonNullable<(typeof st.loans)[number]>;
+  it('asks about the balance the engine checks against: a $100.00 credit', () => {
+    expect(statementToCheck(st, l, '2025-03-05')).toEqual({ date: '2025-02-28', owedCents: -10_000 });
+  });
+  it('a draw of the gap makes it match the engine', () => {
+    // The statement shows $500.00 owed: the gap is $600.00 (not $500.00), and the engine then agrees.
+    const gap = 50_000 - recordedBalanceOn(st, 'h', '2025-02-28');
+    const after = replay([...entries, { id: 'D', kind: 'loan-draw', at: noon('2025-02-28'), tz: TZ, loan: 'h', cents: gap }, { id: 'T', kind: 'loan-statement', at: noon('2025-02-28'), tz: TZ, loan: 'h', balanceCents: 50_000 }]);
+    expect(gap).toBe(60_000);
+    expect(loanSummary(after, 'h', null, '2025-03-05')?.statements.map((s) => s.matches)).toEqual([true]);
   });
 });

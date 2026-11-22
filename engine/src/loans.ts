@@ -11,6 +11,8 @@ import { dateOfDay, dayNumber, latestMonthDay } from './dates.ts';
 import { divRoundHalfUp, mulDivOrNull, mulDivRoundHalfUp, SATS_PER_BTC, type Cents, type Sats } from './money.ts';
 import { compareStrings } from './order.ts';
 import { statementDayOn } from './loan-book.ts';
+
+export { LOAN_PAID_SO_FAR_NOTE } from './loan-book.ts';
 import { traceCoins, type GonePiece, type TracedCoins } from './trace.ts';
 import type { LedgerState, LocalDate, Loan, LoanDraw, LoanId, LoanPayment, LoanStatement, LotId } from './types.ts';
 
@@ -161,7 +163,8 @@ export interface PaymentSuggestion {
 
 /**
  * Pre-fill for logging a payment made on `payDate`: the billing cycle it pays (ending on the latest statement
- * closing date on or before `payDate`, or on `payDate` if the loan has no statement day), starting the day after
+ * closing date on or before `payDate`, or on `payDate` if the loan has no statement day; if a payment already covers
+ * past that date, the cycle that payment covers), starting the day after
  * the last day an earlier payment's interest covered (or when the loan started), less interest already recorded for
  * that cycle. Uses the statement day in force on `payDate`. Null for an unknown loan.
  */
@@ -169,8 +172,11 @@ export function suggestLoanPayment(state: LedgerState, loanId: LoanId, payDate: 
   const loan = findLoan(state, loanId);
   if (loan === null) return null;
   const day = statementDayOn(loan, payDate);
-  const throughDate = day === null ? payDate : latestMonthDay(payDate, day);
+  const closing = day === null ? payDate : latestMonthDay(payDate, day);
   const withInterest = loan.payments.filter((p) => p.interestCents > 0);
+  // A payment that already covers past that closing date (the statement day changed since, or interest was paid ahead)
+  // paid the cycle the closing date falls in: that cycle is the one to finish, never the same days again.
+  const throughDate = withInterest.filter((p) => p.date <= payDate && p.interestThrough >= closing).map((p) => p.interestThrough).sort(compareStrings)[0] ?? closing;
   const last = withInterest.map((p) => p.interestThrough).filter((d) => d < throughDate).sort(compareStrings).at(-1);
   const fromDate = last === undefined ? dateOfDay(startDay(loan, loan.draws.filter((d) => d.date <= throughDate))) : dateOfDay(dayNumber(last) + 1);
   const alreadyPaidCents = sum(withInterest.filter((p) => p.interestThrough === throughDate).map((p) => p.interestCents));
@@ -232,9 +238,11 @@ function allocate(loan: Loan, draws: readonly LoanDraw[], payments: readonly Loa
     return { payment, shares: split };
   });
   const accruing = end > lastCut;
-  // Cycles that ended on or before `onDate` (a cycle paid ahead is not billed yet).
-  const billed = sum(cuts.slice(1).map((c, k) => (c <= end && throughCuts.includes(c) ? interestOf(loan, windows[k] as bigint[]) : 0)));
-  const paidForBilled = sum(interestPayments.filter((p) => dayNumber(p.interestThrough) < end).map((p) => p.interestCents));
+  // "Interest paid so far" settles every cycle through its last day: nothing before it is unpaid, and no excess carries on.
+  const settled = Math.max(-Infinity, ...interestPayments.filter((p) => p.paidSoFar === true && dayNumber(p.interestThrough) < end).map((p) => dayNumber(p.interestThrough) + 1));
+  // Cycles that ended on or before `onDate` (a cycle paid ahead is not billed yet), after any settled ones.
+  const billed = sum(cuts.slice(1).map((c, k) => (c <= end && c > settled && throughCuts.includes(c) ? interestOf(loan, windows[k] as bigint[]) : 0)));
+  const paidForBilled = sum(interestPayments.filter((p) => dayNumber(p.interestThrough) < end && dayNumber(p.interestThrough) + 1 > settled).map((p) => p.interestCents));
   return {
     shares,
     unallocatedCents,
@@ -542,15 +550,39 @@ export interface LoanInterestYear {
   /** The share on loan-funded purchases: exact when every draw was a purchase, else an ESTIMATE. */
   onPurchasesCents: Cents;
   loans: { loanId: LoanId; name: string; interestPaidCents: Cents; onPurchasesCents: Cents }[];
+  /**
+   * "Interest paid so far" lump sums whose time (the loan's start through the day it was recorded) includes this year.
+   * Not in the figures above: it was paid over several years and is not split by year. Listed under every year it spans.
+   */
+  paidBefore: LoanInterestPaidBefore[];
+}
+
+/** An "interest paid so far" lump sum: interest paid by `date`, over the loan's history, not split by year. */
+export interface LoanInterestPaidBefore {
+  loanId: LoanId;
+  name: string;
+  /** The day it was recorded (the last payment it includes). */
+  date: LocalDate;
+  interestPaidCents: Cents;
+  /** The share on loan-funded purchases: exact when every draw was a purchase, else an ESTIMATE. */
+  onPurchasesCents: Cents;
 }
 
 /** Plain-language note for Tax season. Not tax advice. */
 export const LOAN_INTEREST_CPA_NOTE =
   'Interest on money borrowed to buy investments may be deductible as investment interest (Form 4952), but only if you itemize, only up to your net investment income, and only for the part of the loan traced to the investment. Interest on a home equity loan used for something other than the home is not deductible as mortgage interest. Confirm with your CPA.';
 
-/** Interest paid per calendar year of the payment date, across every loan (or one), oldest year first. */
+/**
+ * Interest paid per calendar year of the payment date, across every loan (or one), oldest year first. An "interest
+ * paid so far" lump sum is not put in the year it was recorded: it is listed in `paidBefore` of every year it spans.
+ */
 export function loanInterestByYear(state: LedgerState, loanId?: LoanId): LoanInterestYear[] {
   const years = new Map<number, LoanInterestYear>();
+  const yearRow = (year: number): LoanInterestYear => {
+    const y = years.get(year) ?? { year, interestPaidCents: 0, onPurchasesCents: 0, loans: [], paidBefore: [] };
+    years.set(year, y);
+    return y;
+  };
   for (const loan of state.loans) {
     if (loanId !== undefined && loan.id !== loanId) continue;
     // As of the loan's last record, so each payment's split is final.
@@ -560,8 +592,12 @@ export function loanInterestByYear(state: LedgerState, loanId?: LoanId): LoanInt
     for (const { payment, shares } of a.allocation.perPayment) {
       const year = Number(payment.date.slice(0, 4));
       const onPurchases = sum(shares.filter((_, i) => (a.draws[i] as LoanDraw).lotId !== null));
-      const y = years.get(year) ?? { year, interestPaidCents: 0, onPurchasesCents: 0, loans: [] };
-      years.set(year, y);
+      if (payment.paidSoFar === true) {
+        const lump = { loanId: loan.id, name: loan.name, date: payment.date, interestPaidCents: payment.interestCents, onPurchasesCents: onPurchases };
+        for (let y = Math.min(year, Number(dateOfDay(startDay(loan, a.draws)).slice(0, 4))); y <= year; y++) yearRow(y).paidBefore.push(lump);
+        continue;
+      }
+      const y = yearRow(year);
       y.interestPaidCents += payment.interestCents;
       y.onPurchasesCents += onPurchases;
       const row = y.loans.find((r) => r.loanId === loan.id) ?? { loanId: loan.id, name: loan.name, interestPaidCents: 0, onPurchasesCents: 0 };

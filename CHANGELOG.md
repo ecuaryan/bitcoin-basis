@@ -19,6 +19,31 @@
 - **The chart's average-cost line has a switch**: All (the average of all your Bitcoin, the default), Taxable or Retirement. The line under the chart says which average it is. Shown when you have retirement coins with their cost logged.
 - **"Held apart" is now "Retirement"**: one card for your retirement accounts (worth, cost and gain each). Frozen wallets moved into Wallets, listed last with their amount muted and "Frozen, not counted".
 
+### Fixed (independent review)
+
+- **Loans:**
+  - Paying a loan off in the middle of a statement cycle no longer leaves made-up interest owed.
+  - Managing a loan's purchases no longer breaks a purchase that a spreadsheet import split across rows.
+  - Removing a purchase paid with a loan no longer lowers what you owe; the removal says which loan and draw paid for it.
+  - Interest paid before you started tracking a loan no longer shows as unpaid, and Tax season lists it on its own instead of in one year.
+  - The statement check matches correctly after you overpay.
+  - The payment pre-fill no longer asks again after a statement-day change.
+  - Changing a loan's day count no longer fails when another loan has its old name.
+  - The "Including interest" figure rounds down, so a loss is never shown smaller than it is.
+- **Tax and gifts:**
+  - Gifts before 2025 are checked against that year's own per-person limit (for example $18,000 in 2024), not 2025's $19,000.
+  - Selling coins from a gift worth less than the giver's cost now shows "confirm with your CPA" in the year you sell.
+  - Tax season and the CPA summary list each charity gift with its date, value, deduction and holding period.
+  - Gift notes say when coins were inherited (always long-term).
+  - On a phone, Tax season no longer shows a back arrow to Records.
+- **Import and screens:**
+  - Importing a spreadsheet again after a failed or interrupted import no longer adds the same lots twice; rows already in your records are skipped and counted.
+  - After you change a purchase's date, its coins are offered for sales from the new date.
+  - A save that fails (for example because your records locked) now says why instead of doing nothing.
+  - Long entry titles wrap instead of being cut off on phones.
+  - Phones show when saved changes haven't been uploaded yet, as desktop does.
+  - Records › Closed years lists the newest year first.
+
 ### Security
 
 - **Lock locks every window**: pressing Lock in the installed app now also locks a browser tab open on the same device, and the other way round (before, the other window kept showing your records until its own auto-lock). Idle and background locks still stay in their own window.

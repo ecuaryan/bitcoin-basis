@@ -119,3 +119,8 @@ export function useToast(): ToastApi {
   if (ctx === null) throw new Error('useToast needs <ToastProvider>');
   return ctx;
 }
+
+/** The toast when there is one (a component that also renders outside the app's provider, such as in a unit test). */
+export function useToastIfAny(): ToastApi | null {
+  return useContext(ToastContext);
+}

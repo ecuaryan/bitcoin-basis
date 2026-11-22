@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderApp, type Rendered } from '../../test/render.tsx';
-import { OwedNowParts } from './loan-parts.tsx';
+import { floorDollars, OwedNowParts } from './loan-parts.tsx';
 
 let app: Rendered | null = null;
 afterEach(() => {
@@ -31,5 +31,16 @@ describe('Owed now: what it adds to the balance, each part labeled', () => {
   it('hides the amounts with Hide amounts', async () => {
     app = await renderApp(<OwedNowParts s={parts(2_200, 4_000, '2025-02-01', null)} today="2025-02-20" />, { hidden: true });
     expect(text()).not.toMatch(/\$\d/);
+  });
+});
+
+describe('Including interest: whole dollars rounded down', () => {
+  it('never understates a loss or overstates a gain (Example L: −$688.73 is −$689)', () => {
+    expect(floorDollars(-68_873)).toBe(-68_900);
+    expect(floorDollars(68_873)).toBe(68_800);
+    expect(floorDollars(-68_800)).toBe(-68_800);
+    // Under a dollar keeps its cents.
+    expect(floorDollars(-50)).toBe(-50);
+    expect(floorDollars(99)).toBe(99);
   });
 });

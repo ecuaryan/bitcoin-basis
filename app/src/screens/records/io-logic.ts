@@ -210,6 +210,8 @@ export interface ImportPreview extends LotsPreview {
   closedYears: number[];
   /** The text the importer actually read (names tidied). */
   text: string;
+  /** Rows left out because an earlier import already added them. */
+  skipped: number;
 }
 
 function slugOf(name: string): string {
@@ -220,7 +222,7 @@ function slugOf(name: string): string {
  * Read an opening-lots CSV where some wallets may not exist yet. New wallets are described in `newWallets`
  * (the coins already point at their ids) so the caller can add the wallets first, then the coins.
  */
-export function previewImport(text: string, wallets: readonly Wallet[], tz: string, newId: () => string, closedYears: readonly number[], loans: readonly LoanRef[] = [], retirementNames: readonly string[] = []): ImportPreview {
+export function previewImport(text: string, wallets: readonly Wallet[], tz: string, newId: () => string, closedYears: readonly number[], loans: readonly LoanRef[] = [], retirementNames: readonly string[] = [], book: BookSoFar = NO_BOOK): ImportPreview {
   const plan = planWallets(text, wallets);
   const newWallets: NewWallet[] = plan.created.map((c) => {
     const entryId = newId();
@@ -232,10 +234,11 @@ export function previewImport(text: string, wallets: readonly Wallet[], tz: stri
   const planned = newLoanNames(plan.text, loans).map((name) => ({ name, entryId: newId(), id: newId() }));
   const read = previewLots(plan.text, [...wallets, ...pretend], tz, newId, [...loans, ...planned.map((l) => ({ id: l.id, name: l.name, closed: false }))]);
   // An empty tier is how retirement purchases are written, so say what to do if that is what the row is.
-  const p = { ...read, problems: read.problems.map((x) => (x.message.startsWith('tier "" ') ? { ...x, message: 'the tier is empty. Use Documented, Reconstructed, Estimated or Unknown; or, if this is a retirement account purchase, its wallet must be a Retirement wallet' } : x)) };
-  const lotDate = new Map(p.entries.map((e) => [e.id, localDate(e.acquiredAt, e.tz)]));
+  const all = { ...read, problems: read.problems.map((x) => (x.message.startsWith('tier "" ') ? { ...x, message: 'the tier is empty. Use Documented, Reconstructed, Estimated or Unknown; or, if this is a retirement account purchase, its wallet must be a Retirement wallet' } : x)) };
+  const lotDate = new Map(all.entries.map((e) => [e.id, localDate(e.acquiredAt, e.tz)]));
+  const p = skipAlreadyAdded(all, book);
   const newLoans: NewLoan[] = planned.flatMap((l) => {
-    const mine = p.links.filter((k) => k.loan === l.id);
+    const mine = all.links.filter((k) => k.loan === l.id);
     const dates = mine.map((k) => k.drawDate ?? lotDate.get(k.lot) ?? '').filter((d) => d !== '').sort();
     return dates.length === 0 ? [] : [{ ...l, coins: linkedRows(mine), opened: dates[0] as string }];
   });
@@ -255,6 +258,62 @@ export function previewImport(text: string, wallets: readonly Wallet[], tz: stri
     closedYears: [...years].sort((a, b) => a - b),
     text: plan.text,
   };
+}
+
+/** The book an import is added to: every entry, and the ids of the versions in force. */
+export interface BookSoFar {
+  entries: readonly Entry[];
+  applied: readonly string[];
+}
+const NO_BOOK: BookSoFar = { entries: [], applied: [] };
+
+const lotKey = (e: OpeningLotEntry): string => JSON.stringify([e.wallet, e.acquiredAt, e.sats, e.costCents, e.tier, e.origin]);
+const retirementKey = (e: RetirementBuyEntry): string => JSON.stringify([e.wallet, e.at, e.sats, e.costCents, e.proof ?? '']);
+
+/**
+ * Leave out rows an earlier import already added (an import that stopped part way, then the same file chosen
+ * again). A row matches an imported coin in the book with the same wallet, date, amount, cost, tier and origin;
+ * each one in the book covers one row, so a file with two identical rows adds the second if only one is there.
+ * Loan links of skipped rows point at the coins already in the book, and links already saved are left out.
+ */
+export function skipAlreadyAdded<P extends LotsPreview>(p: P, book: BookSoFar): P & { skipped: number } {
+  if (book.applied.length === 0) return { ...p, skipped: 0 };
+  const byId = new Map(book.entries.map((e) => [e.id, e]));
+  const rootOf = (e: Entry): string => {
+    let cur = e;
+    const seen = new Set([cur.id]);
+    for (let up = byId.get(cur.replaces ?? ''); up !== undefined && !seen.has(up.id); up = byId.get(up.replaces ?? '')) {
+      seen.add(up.id);
+      cur = up;
+    }
+    return cur.id;
+  };
+  const lots = new Map<string, string[]>();
+  const buys = new Map<string, number>();
+  const linked = new Set<string>();
+  for (const id of book.applied) {
+    const e = byId.get(id);
+    if (e?.kind === 'opening-lot') lots.set(lotKey(e), [...(lots.get(lotKey(e)) ?? []), rootOf(e)]);
+    if (e?.kind === 'retirement-buy') buys.set(retirementKey(e), (buys.get(retirementKey(e)) ?? 0) + 1);
+    if (e?.kind === 'loan-link') linked.add(JSON.stringify([e.loan, e.lot]));
+  }
+  const lotIs = new Map<string, string>();
+  const entries = p.entries.filter((e) => {
+    const there = lots.get(lotKey(e))?.shift();
+    if (there !== undefined) lotIs.set(e.id, there);
+    return there === undefined;
+  });
+  const retirementBuys = p.retirementBuys.filter((e) => {
+    const n = buys.get(retirementKey(e)) ?? 0;
+    buys.set(retirementKey(e), n - 1);
+    return n <= 0;
+  });
+  const to = (lot: string): string => lotIs.get(lot) ?? lot;
+  const links = p.links
+    .map((k) => ({ ...k, lot: to(k.lot), ...(k.alsoLots === undefined ? {} : { alsoLots: k.alsoLots.map(to) }) }))
+    .filter((k) => !linked.has(JSON.stringify([k.loan, k.lot])));
+  const skipped = p.entries.length - entries.length + p.retirementBuys.length - retirementBuys.length;
+  return { ...p, entries, retirementBuys, links, skipped };
 }
 
 /** The wallet entries to add before the coins, with the types the person picked (by wallet name). */

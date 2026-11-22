@@ -156,9 +156,17 @@ export function loanLines(s: LoanSummary, plain: boolean, masked: boolean): { ke
   return lines;
 }
 
+/**
+ * Whole dollars rounded down (toward −∞), so a gain never shows more than it is and a loss never less: −$688.73 is
+ * −$689, $688.73 is $688. Under a dollar either way keeps its cents (formatMoney shows them).
+ */
+export function floorDollars(cents: number): number {
+  return Math.abs(cents) < 100 ? cents : Math.floor(cents / 100) * 100;
+}
+
 /** "Including interest": the big honest number (value − cost of the coins still held − interest on them). */
 export function IncludingInterest({ s, plain, size = 'card' }: { s: LoanSummary; plain: boolean; size?: 'card' | 'page' }) {
-  const cents = s.gainIncludingInterestCents;
+  const cents = s.gainIncludingInterestCents === null ? null : floorDollars(s.gainIncludingInterestCents);
   return (
     <span className="flex flex-col gap-1">
       <span className={cx('text-muted', size === 'page' ? 'text-[13px]' : 'text-xs')}>Including interest</span>

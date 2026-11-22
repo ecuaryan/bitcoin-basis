@@ -78,24 +78,39 @@ function applyLoans(loans: Map<LoanId, Work>, entries: readonly LoanRecordEntry[
   for (const list of early.values()) for (const u of list) report(u, problem('unknown-loan', `loan ${u.loan} does not exist`));
 }
 
+/**
+ * The note the app gives "interest paid so far" when a loan is set up mid-stream. Such a payment (interest only) is a lump
+ * sum of the loan's history: it settles every cycle through its `interestThrough`, and it is not split into tax years.
+ */
+export const LOAN_PAID_SO_FAR_NOTE = 'Interest paid before tracking started';
+
 function link(book: Book, l: Loan, linked: Map<LotId, EntryId>, byId: ReadonlyMap<EntryId, Entry>, e: Extract<LoanRecordEntry, { kind: 'loan-link' }>): Problem | null {
   const ids = [e.lot, ...(e.alsoLots ?? [])];
   const lots: Lot[] = [];
+  const present: LotId[] = [];
   let costCents = 0;
   for (const id of ids) {
     const lot = book.lots.get(id);
-    const origin = lot === undefined ? undefined : byId.get(lot.originEntryId);
-    if (lot === undefined || origin === undefined || (origin.kind !== 'buy' && origin.kind !== 'opening-lot')) return problem('unknown-purchase', `${id} is not a purchase or imported lot in the ledger`);
-    if (linked.has(id) || lots.includes(lot)) return problem('already-linked', 'this purchase is already linked to a loan; unlink it first');
+    if (linked.has(id) || (lot !== undefined && lots.includes(lot))) return problem('already-linked', 'this purchase is already linked to a loan; unlink it first');
+    // A purchase that is not in the ledger (removed): its draw still counts if the link says how much and when.
+    if (lot === undefined) continue;
+    const origin = byId.get(lot.originEntryId);
+    if (origin === undefined || (origin.kind !== 'buy' && origin.kind !== 'opening-lot')) return problem('unknown-purchase', `${id} is not a purchase or imported lot in the ledger`);
     lots.push(lot);
+    present.push(id);
     costCents += origin.costCents;
+  }
+  const gone = present.length < ids.length;
+  if (gone && (e.drawCents === undefined || (present.length === 0 && e.drawDate === undefined))) {
+    return problem('unknown-purchase', `${ids.find((id) => !present.includes(id)) as LotId} is not a purchase or imported lot in the ledger`);
   }
   const cents = e.drawCents ?? costCents;
   const bad = addVolume(book, 0, cents);
   if (bad !== null) return bad;
   for (const id of ids) linked.set(id, e.id);
   const date = e.drawDate ?? lots.map((x) => x.acquiredDate).sort(compareStrings)[0];
-  l.draws.push({ entryId: e.id, date: date as LocalDate, cents, lotId: e.lot, lotIds: ids });
+  // With every purchase gone it is money drawn for nothing tracked: an other draw, so what is owed stays true.
+  l.draws.push({ entryId: e.id, date: date as LocalDate, cents, lotId: present[0] ?? null, lotIds: present });
   return null;
 }
 
@@ -116,7 +131,8 @@ function applyRecord(book: Book, loans: ReadonlyMap<LoanId, Work>, linked: Map<L
     case 'loan-payment': {
       const bad = addVolume(book, 0, e.interestCents + e.principalCents);
       if (bad !== null) return bad;
-      l.payments.push({ entryId: e.id, date, interestCents: e.interestCents, principalCents: e.principalCents, interestThrough: date });
+      const paidSoFar = e.principalCents === 0 && e.note === LOAN_PAID_SO_FAR_NOTE;
+      l.payments.push({ entryId: e.id, date, interestCents: e.interestCents, principalCents: e.principalCents, interestThrough: date, ...(paidSoFar ? { paidSoFar } : {}) });
       work.rawThrough.set(e.id, e.interestThrough);
       return null;
     }
@@ -130,6 +146,14 @@ function applyRecord(book: Book, loans: ReadonlyMap<LoanId, Work>, linked: Map<L
 export function statementDayOn(loan: Pick<Loan, 'statementDays'>, date: LocalDate): number | null {
   const d = [...loan.statementDays].reverse().find((x) => x.from <= date) ?? loan.statementDays[0];
   return d === undefined ? null : d.day;
+}
+
+/** Draws − principal repaid by the end of `date` (0 or less: nothing owed). */
+function principalOn(loan: Loan, date: LocalDate): number {
+  let net = 0;
+  for (const d of loan.draws) if (d.date <= date) net += d.cents;
+  for (const p of loan.payments) if (p.date <= date) net -= p.principalCents;
+  return net;
 }
 
 /** Apply every loan record after the coin entries. Problems go to `state.errors` like any other entry's. */
@@ -149,7 +173,9 @@ export function applyLoanEntries(book: Book, entries: readonly LoanRecordEntry[]
     loan.draws.sort((a, b) => compareStrings(a.date, b.date) || compareStrings(a.lotId ?? a.entryId, b.lotId ?? b.entryId));
     for (const p of loan.payments) {
       const day = statementDayOn(loan, p.date);
-      p.interestThrough = rawThrough.get(p.entryId) ?? (day === null ? p.date : latestMonthDay(p.date, day));
+      // A payoff (principal and interest that leave nothing owed) pays interest up to its own day, like a lender's payoff quote.
+      const payoff = p.principalCents > 0 && p.interestCents > 0 && principalOn(loan, p.date) <= 0;
+      p.interestThrough = rawThrough.get(p.entryId) ?? (day === null || payoff ? p.date : latestMonthDay(p.date, day));
     }
     book.state.loans.push(loan);
   }

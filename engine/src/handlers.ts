@@ -27,6 +27,7 @@ import type {
   BuyEntry,
   CloseOut,
   CoinEntry,
+  EntryId,
   GiftGiven,
   GiveEntry,
   LocalDate,
@@ -45,6 +46,18 @@ import type {
   WalletCloseOutEntry,
   WalletId,
 } from './types.ts';
+
+const DISPOSAL_WORD = { sell: 'Sale', spend: 'Spending', fee: 'Network fee', 'close-out': 'Close-out' } as const;
+
+/** A sale, spending, fee or close-out that used a dual-basis gift lot is flagged in its own year, where the 8949 row is. */
+function flagDualBasis(book: Book, entryId: EntryId, kind: keyof typeof DISPOSAL_WORD, date: LocalDate, pieces: readonly Piece[]): void {
+  if (!pieces.some((p) => p.lossBasis !== null)) return;
+  book.state.cpaFlags.push({
+    entryId,
+    code: 'dual-basis',
+    message: `${DISPOSAL_WORD[kind]} on ${date} used coins from a gift worth less than the giver's cost (dual basis): a gain uses the giver's cost, a loss the value at the gift, and in between there is no gain or loss. Confirm with your CPA.`,
+  });
+}
 
 function checkPicks(book: Book, wallet: WalletId, picks: readonly LotPick[], total: number): Problem | null {
   return pickProblem((id) => book.lots.get(id), wallet, picks, total);
@@ -126,7 +139,10 @@ export function applyMove(book: Book, e: MoveEntry, date: LocalDate): Problem | 
     book.lots.set(pieceId(p.lotId), { ...src, id: pieceId(p.lotId), wallet: to.id, sats, costCents: piece.costCents, lossBasis });
   });
   const feePieces = e.picks.flatMap((p, i) => ((fee[i] as number) > 0 ? [takeFromLot(book, p.lotId, fee[i] as number, date)] : []));
-  if (feePieces.length > 0) book.state.disposals.push(makeDisposal(e, 'fee', from.id, date, feePieces, e.feeValueCents, null));
+  if (feePieces.length > 0) {
+    book.state.disposals.push(makeDisposal(e, 'fee', from.id, date, feePieces, e.feeValueCents, null));
+    flagDualBasis(book, e.id, 'fee', date, feePieces);
+  }
   touch(book, from.id, e.id);
   touch(book, to.id, e.id);
   return null;
@@ -145,7 +161,9 @@ function takePicks(book: Book, e: SellEntry | GiveEntry | LostEntry, date: Local
 export function applySell(book: Book, e: SellEntry, date: LocalDate): Problem | null {
   const taken = takePicks(book, e, date, e.proceedsCents);
   if ('code' in taken) return taken;
-  book.state.disposals.push(makeDisposal(e, e.spent ? 'spend' : 'sell', taken.wallet, date, taken.pieces, e.proceedsCents, e.description ?? null));
+  const kind = e.spent ? 'spend' : 'sell';
+  book.state.disposals.push(makeDisposal(e, kind, taken.wallet, date, taken.pieces, e.proceedsCents, e.description ?? null));
+  flagDualBasis(book, e.id, kind, date, taken.pieces);
   return null;
 }
 
@@ -189,6 +207,7 @@ export function applyCloseOut(book: Book, e: WalletCloseOutEntry, date: LocalDat
   w.closeOutEntryId = e.id;
   book.closeOuts.set(w.id, { closeOut, pieces });
   book.state.closeOuts.push(closeOut);
+  flagDualBasis(book, e.id, 'close-out', lossDate, pieces);
   touch(book, w.id, e.id);
   return null;
 }

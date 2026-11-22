@@ -1,4 +1,4 @@
-import { exportEntriesJson, exportOpeningLotsCsv, replay, createUuidV7 } from '@bitcoin-basis/engine';
+import { exportEntriesJson, exportOpeningLotsCsv, replay, createUuidV7, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook } from '../../demo/demo-data.ts';
 import { chunk, guessWalletType, linkedRows, loanEntries, lotsTemplateCsv, newLoanNames, planWallets, previewImport, previewJson, previewLots, walletEntries, withoutBadRows } from './io-logic.ts';
@@ -204,5 +204,53 @@ describe('a new wallet whose rows are written as retirement purchases', () => {
     expect(p.newWallets[0]?.retirementLike).toBe(false);
     expect(p.retirementBuys).toEqual([]);
     expect(walletEntries(p.newWallets, { 'New Place': 'retirement' }, '2026-01-01T00:00:00Z', 'UTC')[0]?.type).toBe('exchange');
+  });
+});
+
+describe('an import that stopped part way, then tried again or chosen again', () => {
+  const FHEAD = `${HEAD},funded_by`;
+  const row = (day: string, loan = '') => `${good.replace('Strike', 'Brand New').replace('2021-03-15', `2021-03-${day}`)},${loan}`;
+  // Five rows: a new wallet and a new loan; two rows are identical (two buys the same second).
+  const text = `${FHEAD}\n${row('01', 'HELOC')}\n${row('02')}\n${row('02')}\n${row('03', 'HELOC')}\n${row('04')}\n`;
+  const base = buildDemoBook().entries;
+  const bookOf = (entries: readonly Entry[]) => ({ entries, applied: replay(entries).applied });
+
+  it('first time, nothing is skipped', () => {
+    const p = previewImport(text, state.wallets, 'America/Boise', newId, [], state.loans, [], bookOf(base));
+    expect(p.skipped).toBe(0);
+    expect(p.entries).toHaveLength(5);
+  });
+
+  it('leaves out the rows already added, so nothing is added twice, and still links the loans', () => {
+    const first = previewImport(text, state.wallets, 'America/Boise', newId, [], state.loans, [], bookOf(base));
+    const made = [...(loanEntries(first.newLoans, { HELOC: '7' }, '2026-01-01T00:00:00Z', 'America/Boise') ?? []), ...walletEntries(first.newWallets, {}, '2026-01-01T00:00:00Z', 'America/Boise')];
+    // The first batch (loan, wallet) and the first two lots were saved; then it failed. The links were never saved.
+    const saved = [...base, ...made, ...first.entries.slice(0, 2)];
+    const after = replay(saved);
+    const again = previewImport(text, after.wallets, 'America/Boise', newId, [], after.loans, [], bookOf(saved));
+    expect(again.problems).toEqual([]);
+    expect(again.newWallets).toEqual([]);
+    expect(again.newLoans).toEqual([]);
+    expect(again.skipped).toBe(2);
+    // One of the two identical rows was added; the other still is not.
+    expect(again.entries.map((e) => e.acquiredAt.slice(0, 10))).toEqual(['2021-03-02', '2021-03-03', '2021-03-04']);
+    // The link for the row already added points at the coins already in the book.
+    expect(again.links.map((k) => k.lot)).toEqual([first.entries[0]?.id, again.entries[1]?.id]);
+    const done = [...saved, ...again.entries, ...again.links];
+    const book = replay(done);
+    expect(book.errors).toEqual([]);
+    expect(book.lots.filter((l) => l.wallet === first.newWallets[0]?.id)).toHaveLength(5);
+    expect(book.loans.find((l) => l.name === 'HELOC')?.draws).toHaveLength(2);
+    // Chosen once more: everything is there, links included.
+    const third = previewImport(text, book.wallets, 'America/Boise', newId, [], book.loans, [], bookOf(done));
+    expect([third.skipped, third.entries.length, third.links.length, third.newWallets.length, third.newLoans.length]).toEqual([5, 0, 0, 0, 0]);
+  });
+
+  it('retirement purchases already added are skipped too', () => {
+    const ira = good.replace('Strike', 'Retirement account').replace(',Documented,', ',,');
+    const first = previewImport(`${HEAD}\n${ira}\n${ira}\n`, state.wallets, 'America/Boise', newId, [], [], [], bookOf(base));
+    const saved = [...base, ...first.retirementBuys.slice(0, 1)];
+    const again = previewImport(`${HEAD}\n${ira}\n${ira}\n`, state.wallets, 'America/Boise', newId, [], [], [], bookOf(saved));
+    expect([again.skipped, again.retirementBuys.length]).toEqual([1, 1]);
   });
 });

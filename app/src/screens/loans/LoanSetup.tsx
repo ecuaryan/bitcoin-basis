@@ -1,11 +1,10 @@
-import { parseAprPercent, parseDollars, uuidv7, type Entry, type Loan, type LoanId } from '@bitcoin-basis/engine';
+import { LOAN_PAID_SO_FAR_NOTE, parseAprPercent, parseDollars, uuidv7, type Entry, type Loan, type LoanId } from '@bitcoin-basis/engine';
 import { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { countOf, shortDate } from '../../lib/format.ts';
-import { buildItems } from '../../lib/entry-list.ts';
-import { planLinks, purchaseOptions, type PurchaseOption } from '../../lib/loans-view.ts';
+import { lotsWith, planLinks, purchaseOptions, type PurchaseOption } from '../../lib/loans-view.ts';
 import { Amount } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Callout, SelectField, TextField } from '../../ui/form-fields.tsx';
@@ -16,7 +15,7 @@ import { useToast } from '../../ui/Toast.tsx';
 import { useSubmit } from '../../ui/use-submit.ts';
 import { cleanNumber } from '../log/model.ts';
 import { FormFooter } from '../log/parts.tsx';
-import { useLoanWriter, type LoanDraft } from './loan-writer.ts';
+import { loanRecordToEdit, useLoanWriter, type LoanDraft } from './loan-writer.ts';
 
 /** Why the draw date matters, in one line. */
 export const DRAW_DATE_WHY = 'Interest starts the day the money is drawn, so each purchase counts from its own date.';
@@ -47,22 +46,28 @@ export function PurchasePicker({ options, loanId, chosen, onChange }: { options:
   const walletIds = [...new Set(options.map((o) => o.walletId))];
   const total = options.filter((o) => chosen.has(o.lotId)).reduce((n, o) => n + o.costCents, 0);
 
+  // A purchase an import split across rows is one link: its rows are ticked, unticked and dated together.
   function toggle(o: PurchaseOption) {
     const next = new Map(chosen);
-    if (next.has(o.lotId)) next.delete(o.lotId);
-    else next.set(o.lotId, o.loanId === loanId && o.drawDate !== null && o.drawDate !== o.date ? o.drawDate : null);
+    const on = !next.has(o.lotId);
+    for (const lot of lotsWith(o, loanId)) {
+      if (!on) next.delete(lot);
+      else next.set(lot, o.loanId === loanId && o.drawDate !== null && o.drawDate !== o.drawDefault ? o.drawDate : null);
+    }
     onChange(next);
   }
   function setDraw(o: PurchaseOption, date: string) {
     const next = new Map(chosen);
-    next.set(o.lotId, date === '' || date === o.date ? null : date);
+    for (const lot of lotsWith(o, loanId)) next.set(lot, date === '' || date === o.drawDefault ? null : date);
     onChange(next);
   }
   function selectShown(on: boolean) {
     const next = new Map(chosen);
     for (const o of pickable) {
-      if (on && !next.has(o.lotId)) next.set(o.lotId, null);
-      if (!on) next.delete(o.lotId);
+      for (const lot of lotsWith(o, loanId)) {
+        if (on && !next.has(lot)) next.set(lot, null);
+        if (!on) next.delete(lot);
+      }
     }
     onChange(next);
   }
@@ -108,10 +113,10 @@ export function PurchasePicker({ options, loanId, chosen, onChange }: { options:
               </label>
               {on ? (
                 editing === o.lotId ? (
-                  <TextField label="Money drawn on" type="date" value={draw ?? o.date} max={today} onChange={(e) => setDraw(o, e.target.value)} frameClassName="mb-2 ml-8" className="!min-h-11" />
+                  <TextField label="Money drawn on" type="date" value={draw ?? o.drawDefault} max={today} onChange={(e) => setDraw(o, e.target.value)} frameClassName="mb-2 ml-8" className="!min-h-11" />
                 ) : (
                   <span className="-mt-1 mb-1 ml-8 flex items-center gap-1 text-xs text-muted">
-                    Drawn {shortDate(draw ?? o.date)}
+                    Drawn {shortDate(draw ?? o.drawDefault)}
                     <button type="button" onClick={() => setEditing(o.lotId)} aria-label={`Change the draw date for the ${shortDate(o.date)} purchase`} className="min-h-11 bg-transparent px-1.5 text-xs font-semibold text-amber">
                       Change
                     </button>
@@ -131,7 +136,7 @@ function linkDrafts(loanId: LoanId, options: readonly PurchaseOption[], chosen: 
   const plan = planLinks(loanId, options, chosen);
   return [
     ...plan.remove.map((entryId): LoanDraft => ({ draft: { kind: 'delete', replaces: entryId, reason: 'Not paid with this loan' } })),
-    ...plan.change.map((c): LoanDraft => ({ draft: { kind: 'loan-link', loan: loanId, lot: c.lot, ...(c.drawDate === undefined ? {} : { drawDate: c.drawDate }), replaces: c.entryId, reason: 'Draw date changed' } })),
+    ...plan.change.map(({ entryId, ...link }): LoanDraft => ({ draft: { kind: 'loan-link', loan: loanId, ...link, replaces: entryId, reason: 'Draw date changed' } })),
     ...plan.add.map((a): LoanDraft => ({ draft: { kind: 'loan-link', loan: loanId, lot: a.lot, ...(a.drawDate === undefined ? {} : { drawDate: a.drawDate }) } })),
   ];
 }
@@ -210,7 +215,7 @@ function SetupBody({ onClose, onPending }: { onClose(): void; onPending?(loan: P
         ...(limitCents === null ? {} : { creditLimitCents: limitCents }),
       },
     };
-    const soFar: LoanDraft[] = soFarCents !== null && soFarCents > 0 ? [{ draft: { kind: 'loan-payment', loan: loanId, interestCents: soFarCents, principalCents: 0, note: 'Interest paid before tracking started' }, date: asOf }] : [];
+    const soFar: LoanDraft[] = soFarCents !== null && soFarCents > 0 ? [{ draft: { kind: 'loan-payment', loan: loanId, interestCents: soFarCents, principalCents: 0, note: LOAN_PAID_SO_FAR_NOTE }, date: asOf }] : [];
     return [loan, ...soFar, ...linkDrafts(loanId, options, chosen)];
   }
 
@@ -308,11 +313,14 @@ function SetupBody({ onClose, onPending }: { onClose(): void; onPending?(loan: P
  * rate history covers every day money was drawn (interest itself is the same: before its first rate, the first rate applies).
  */
 function startEarlier(entries: readonly Entry[], loan: Loan, options: readonly PurchaseOption[], chosen: ReadonlyMap<string, string | null>): LoanDraft[] {
-  const earliest = [...chosen.entries()].map(([lot, d]) => d ?? options.find((o) => o.lotId === lot)?.date ?? loan.opened).sort()[0];
+  const earliest = [...chosen.entries()].map(([lot, d]) => d ?? options.find((o) => o.lotId === lot)?.drawDefault ?? loan.opened).sort()[0];
   if (earliest === undefined || earliest >= loan.opened) return [];
-  const head = buildItems(entries).find((i) => !i.deleted && i.current.kind === 'loan' && i.current.loan === loan.id)?.current;
-  if (head?.kind !== 'loan') return [];
-  return [{ draft: { ...head, opened: earliest, replaces: head.id, reason: 'Starts with its oldest purchase' } }];
+  const record = loanRecordToEdit(entries, loan.id);
+  if (record === null) return [];
+  const { id, at, tz, ...rest } = record.head;
+  void at;
+  void tz;
+  return [{ draft: { ...rest, opened: earliest, replaces: id, reason: 'Starts with its oldest purchase' }, keep: record.keep }];
 }
 
 /** The loan page's "Add purchases": tick or untick, change a draw date, one save. */
@@ -329,7 +337,7 @@ function ManageBody({ loan, onClose }: { loan: Loan; onClose(): void }) {
   const toast = useToast();
   const writer = useLoanWriter();
   const options = useMemo(() => purchaseOptions(entries, state), [entries, state]);
-  const [chosen, setChosen] = useState<Map<string, string | null>>(() => new Map(options.filter((o) => o.loanId === loan.id).map((o) => [o.lotId, o.drawDate !== null && o.drawDate !== o.date ? o.drawDate : null])));
+  const [chosen, setChosen] = useState<Map<string, string | null>>(() => new Map(options.filter((o) => o.loanId === loan.id).map((o) => [o.lotId, o.drawDate !== null && o.drawDate !== o.drawDefault ? o.drawDate : null])));
   const [problems, setProblems] = useState<string[]>([]);
   const links = linkDrafts(loan.id, options, chosen);
   const drafts = links.length === 0 ? links : [...startEarlier(entries, loan, options, chosen), ...links];

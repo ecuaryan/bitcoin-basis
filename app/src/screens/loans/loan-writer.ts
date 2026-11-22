@@ -1,6 +1,7 @@
-import type { Entry, LedgerState } from '@bitcoin-basis/engine';
+import type { Entry, LedgerState, LoanEntry, LoanId } from '@bitcoin-basis/engine';
 import { useCallback } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
+import { buildItems } from '../../lib/entry-list.ts';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import type { EntryDraft } from '../../ui/use-writer.ts';
 import { noonOn, trialReplay } from '../log/model.ts';
@@ -9,6 +10,18 @@ import { noonOn, trialReplay } from '../log/model.ts';
 export interface LoanDraft {
   draft: EntryDraft;
   date?: string;
+  /** Exactly this time and zone instead (`date` is ignored): an edit of a loan record keeps its first version's. */
+  keep?: { at: string; tz: string };
+}
+
+/**
+ * The loan record of `loanId` as it stands now, to edit, and its first version's time: loans and their updates replay in
+ * timeline order, so a new version saved "now" would come after any loan created since (and could find its name taken).
+ */
+export function loanRecordToEdit(entries: readonly Entry[], loanId: LoanId): { head: LoanEntry; keep: { at: string; tz: string } } | null {
+  const item = buildItems(entries).find((i) => !i.deleted && i.current.kind === 'loan' && i.current.loan === loanId);
+  const first = item?.versions[0];
+  return item?.current.kind === 'loan' && first !== undefined ? { head: item.current, keep: { at: first.at, tz: first.tz } } : null;
 }
 
 /**
@@ -22,7 +35,8 @@ export function useLoanWriter(): { make(drafts: readonly LoanDraft[]): { entries
     (drafts: readonly LoanDraft[]) => {
       const nextId = newIdGenerator(entries);
       const now = entryInstant(isDemo, today);
-      const made = drafts.map(({ draft, date }) => {
+      const made = drafts.map(({ draft, date, keep }) => {
+        if (keep !== undefined) return { ...draft, id: nextId(), at: keep.at, tz: keep.tz } as Entry;
         const at = date === undefined || date === today ? now : (noonOn(date, tz) ?? now);
         return { ...draft, id: nextId(), at, tz } as Entry;
       });

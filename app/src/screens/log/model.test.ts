@@ -72,6 +72,22 @@ describe('coin choice and trial replay', () => {
   it('hides coins that did not exist yet', () => {
     expect(lotsAvailable(state, book, 'ex', '2024-06-01T00:00:00Z').map((l) => l.id)).toEqual(['b1']);
   });
+  it('times a lot by the version in force: a purchase moved earlier is offered from its new date', () => {
+    const edited: Entry = { ...buy('b2v2', '2025-02-01T17:00:00Z', 30_000_000, 2_400_000), replaces: 'b2', reason: 'wrong date' };
+    const withEdit = [...book, edited];
+    expect(lotsAvailable(replay(withEdit), withEdit, 'ex', '2025-02-15T00:00:00Z').map((l) => l.id)).toEqual(['b1', 'b2']);
+    // And one moved later is not offered before it.
+    const later: Entry = { ...buy('b2v3', '2025-04-01T17:00:00Z', 30_000_000, 2_400_000), replaces: 'b2v2', reason: 'wrong date' };
+    const withLater = [...withEdit, later];
+    expect(lotsAvailable(replay(withLater), withLater, 'ex', '2025-03-15T00:00:00Z').map((l) => l.id)).toEqual(['b1']);
+  });
+  it('times moved coins by the move version in force', () => {
+    const cold: Entry = { id: 'w2', kind: 'wallet', at: '2024-01-01T00:00:00Z', tz: 'America/Boise', wallet: 'cold', name: 'Cold', type: 'self-custody', defaultProof: '' };
+    const move: Entry = { id: 'm1', kind: 'move', at: '2024-06-01T17:00:00Z', tz: 'America/Boise', from: 'ex', to: 'cold', sats: 10_000_000, feeSats: 0, feeValueCents: 0, picks: [{ lotId: 'b1', sats: 10_000_000 }] };
+    const moved: Entry = { ...move, id: 'm1v2', at: '2024-04-01T17:00:00Z', replaces: 'm1', reason: 'wrong date' };
+    const all = [...book, cold, move, moved];
+    expect(lotsAvailable(replay(all), all, 'cold', '2024-05-01T00:00:00Z').map((l) => l.id)).toEqual(['m1:b1']);
+  });
   it('reports a sale that would break and a delete that breaks later entries', () => {
     const sell: Entry = { id: 's1', kind: 'sell', at: '2026-01-01T00:00:00Z', tz: 'America/Boise', wallet: 'ex', sats: 90_000_000, proceedsCents: 1, picks: [{ lotId: 'b1', sats: 90_000_000 }], spent: false };
     expect(trialReplay(book, state, [sell]).problems.length).toBeGreaterThan(0);

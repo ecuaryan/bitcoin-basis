@@ -7,7 +7,7 @@ import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { buildItems, type EntryItem, type EntryRun } from '../../lib/entry-list.ts';
 import { countOf, shortDate } from '../../lib/format.ts';
-import { breakEvenWords, goneWords, purchaseWorth, statementDayText, statementToCheck } from '../../lib/loans-view.ts';
+import { breakEvenWords, goneWords, purchaseWorth, recordedBalanceOn, statementDayText, statementToCheck } from '../../lib/loans-view.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide } from '../../ui/AppShell.tsx';
 import { Button, buttonClasses } from '../../ui/Button.tsx';
@@ -379,7 +379,7 @@ function StatementCheck({ loan, s, onPay }: { loan: Loan; s: LoanSummary; onPay(
     setText('');
   }
   const submit = useSubmit(async (what: 'yes' | 'check' | 'draw') => {
-    if (what === 'yes') return record(ask.date, ask.owedCents);
+    if (what === 'yes') return ask.owedCents < 0 ? undefined : record(ask.date, ask.owedCents);
     if (what === 'draw' && gap !== null) {
       const made = writer.make([
         { draft: { kind: 'loan-draw', loan: loan.id, cents: gap.diff, note: 'Found by a statement check' }, date: gap.date },
@@ -401,7 +401,8 @@ function StatementCheck({ loan, s, onPay }: { loan: Loan; s: LoanSummary; onPay(
     const cents = parseDollars(cleanNumber(text));
     if (cents === null) return setError('Enter what your statement shows.');
     if (!isValidLocalDate(date) || date > today) return setError('Pick the statement’s date.');
-    const recorded = loanSummary(state, loan.id, null, date)?.principalOwedCents ?? 0;
+    // The engine's own figure (a credit is negative), so "Matches" and an added draw agree with its check.
+    const recorded = recordedBalanceOn(state, loan.id, date);
     if (cents === recorded) return record(date, cents);
     setGap({ diff: cents - recorded, date, balance: cents });
   });
@@ -410,21 +411,29 @@ function StatementCheck({ loan, s, onPay }: { loan: Loan; s: LoanSummary; onPay(
   return (
     <Card as="section" aria-label="Statement check" className="flex flex-col gap-3">
       <SectionHeader title="Does it match your statement?" right={<SectionCount>{lastMatch ? `Matched ${shortDate(lastMatch.date)}` : 'Not checked yet'}</SectionCount>} className="-my-2" />
-      <p className="m-0 text-[15px] leading-snug">
-        Does your {shortDate(ask.date)} statement show{' '}
-        <strong className="font-semibold">
-          <Money cents={ask.owedCents} />
-        </strong>{' '}
-        owed?
-      </p>
+      {ask.owedCents < 0 ? (
+        <p className="m-0 text-[15px] leading-snug">
+          Your records show <strong className="font-semibold"><Money cents={-ask.owedCents} /></strong> more paid than drawn by {shortDate(ask.date)}: nothing owed, and a credit.
+        </p>
+      ) : (
+        <p className="m-0 text-[15px] leading-snug">
+          Does your {shortDate(ask.date)} statement show{' '}
+          <strong className="font-semibold">
+            <Money cents={ask.owedCents} />
+          </strong>{' '}
+          owed?
+        </p>
+      )}
       <p className="-mt-1.5 m-0 text-xs leading-snug text-muted">The balance you owe on it, not counting the interest due.</p>
       {!different ? (
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" disabled={busy} onClick={() => void submit.run('yes')}>
-            {busy ? 'Saving…' : 'Yes'}
-          </Button>
+          {ask.owedCents < 0 ? null : (
+            <Button variant="secondary" disabled={busy} onClick={() => void submit.run('yes')}>
+              {busy ? 'Saving…' : 'Yes'}
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => setDifferent(true)}>
-            No, it&apos;s different
+            {ask.owedCents < 0 ? 'Check a statement' : <>No, it&apos;s different</>}
           </Button>
         </div>
       ) : (

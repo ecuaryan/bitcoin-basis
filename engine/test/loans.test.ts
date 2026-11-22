@@ -127,7 +127,7 @@ describe('Example L: four $5,000 purchases on a 6.5% HELOC', () => {
   });
 
   test('interest by year for the CPA note; which loan paid for which purchase', () => {
-    expect(loanInterestByYear(state)).toEqual([{ year: 2025, interestPaidCents: 52_603, onPurchasesCents: 52_603, loans: [{ loanId: 'h', name: 'HELOC', interestPaidCents: 52_603, onPurchasesCents: 52_603 }] }]);
+    expect(loanInterestByYear(state)).toEqual([{ year: 2025, interestPaidCents: 52_603, onPurchasesCents: 52_603, loans: [{ loanId: 'h', name: 'HELOC', interestPaidCents: 52_603, onPurchasesCents: 52_603 }], paidBefore: [] }]);
     expect(loanByPurchase(state)).toEqual(new Map([['P1', 'h'], ['P2', 'h'], ['P3', 'h'], ['P4', 'h']]));
     expect(originLotId('M1:P4')).toBe('P4');
   });
@@ -176,7 +176,7 @@ describe('interest allocation edge cases', () => {
     const state = replay([...coins(), loan('h', '2025-01-01', 73_000), link('K1', 'h', 'A'), draw('D', 'h', '2025-01-10', '10000'), payment('Y', 'h', '2025-02-01', '100', '0', { interestThrough: '2025-01-31' })]);
     const s = loanSummary(state, 'h', PRICE, '2025-02-01');
     expect(s).toMatchObject({ interestPaidCents: 10_000, interestOnPurchasesCents: 5_000, interestOnPurchasesEstimated: true, otherDrawsCents: 1_000_000 });
-    expect(loanInterestByYear(state)).toEqual([{ year: 2025, interestPaidCents: 10_000, onPurchasesCents: 5_000, loans: [{ loanId: 'h', name: 'HELOC', interestPaidCents: 10_000, onPurchasesCents: 5_000 }] }]);
+    expect(loanInterestByYear(state)).toEqual([{ year: 2025, interestPaidCents: 10_000, onPurchasesCents: 5_000, loans: [{ loanId: 'h', name: 'HELOC', interestPaidCents: 10_000, onPurchasesCents: 5_000 }], paidBefore: [] }]);
   });
 
   test('a period with no balance splits by the amounts drawn by then; interest before any draw is left unallocated', () => {
@@ -191,7 +191,7 @@ describe('interest allocation edge cases', () => {
     const zero = replay([...coins(), loan('h', '2025-01-01', 65_000), link('K', 'h', 'A', { drawCents: 0 }), payment('Y', 'h', '2025-01-31', '1')]);
     expect(loanPurchases(zero, 'h', PRICE, '2025-02-01').map((p) => p.interestShareCents)).toEqual([0]);
     expect(loanSummary(zero, 'h', PRICE, '2025-02-01')).toMatchObject({ interestOnPurchasesCents: 0, unallocatedInterestCents: 100 });
-    expect(loanInterestByYear(none)).toEqual([{ year: 2025, interestPaidCents: 1_234, onPurchasesCents: 0, loans: [{ loanId: 'h', name: 'HELOC', interestPaidCents: 1_234, onPurchasesCents: 0 }] }]);
+    expect(loanInterestByYear(none)).toEqual([{ year: 2025, interestPaidCents: 1_234, onPurchasesCents: 0, loans: [{ loanId: 'h', name: 'HELOC', interestPaidCents: 1_234, onPurchasesCents: 0 }], paidBefore: [] }]);
   });
 
   test('two payments for the same period share it; interest paid ahead leaves nothing accrued', () => {
@@ -338,7 +338,9 @@ describe('loan records in replay', () => {
     expect(estimateLoanInterest(state, 'h', '2025-02-01', '2025-01-31')).toBe(0);
     expect(suggestLoanPayment(state, 'h', '2025-01-31')).toMatchObject({ fromDate: '2025-01-10', throughDate: '2025-01-31', days: 22 });
     const paidAhead = replay([...coins(), loan('h', '2025-01-15', 65_000), link('K', 'h', 'A'), payment('Y', 'h', '2025-01-20', '1', '0', { interestThrough: '2025-03-31' })]);
-    expect(suggestLoanPayment(paidAhead, 'h', '2025-01-31')).toMatchObject({ fromDate: '2025-01-10', interestCents: 3_918 });
+    // A payment already covers past the Jan 31 closing (through Mar 31): the pre-fill finishes that cycle, Jan 10 - Mar 31
+    // ($144.25 less the $1.00 logged), never January again on its own.
+    expect(suggestLoanPayment(paidAhead, 'h', '2025-01-31')).toMatchObject({ fromDate: '2025-01-10', throughDate: '2025-03-31', alreadyPaidCents: 100, interestCents: 14_325 });
     expect(suggestLoanPayment(replay([...coins(), loan('h', '2025-01-15', 65_000), payment('Y', 'h', '2025-01-20', '1')]), 'h', '2025-01-20')).toMatchObject({ fromDate: '2025-01-15', days: 6, interestCents: 0 });
   });
 

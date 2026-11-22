@@ -1,7 +1,7 @@
 export { carryforwardFor, stateChoiceFromSettings } from './settings.ts';
 export { capitalTaxEffect, incrementalTax, marginalRates, taxForYear } from './tax.ts';
 export type { Carryforward, IncrementalTax, MarginalRates, Netting, StateChoice, TaxAssumptions, TaxEffect, TaxInput, TaxResult } from './tax.ts';
-export { FEDERAL_TABLES, federalTableFor } from './tables/index.ts';
+export { FEDERAL_TABLES, federalTableFor, giftAnnualExclusionFor } from './tables/index.ts';
 export type { TableLookup } from './tables/index.ts';
 export { STATE_RATES, US_STATES } from './tables/state.ts';
 export type { StateCode, StateRate } from './tables/state.ts';

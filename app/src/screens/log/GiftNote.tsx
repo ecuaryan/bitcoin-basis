@@ -1,4 +1,4 @@
-import { formatBtc, type GiftGiven } from '@bitcoin-basis/engine';
+import { formatBtc, type GiftGiven, type GiftPick } from '@bitcoin-basis/engine';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
@@ -14,6 +14,11 @@ import { useTitle } from '../../ui/use-title.ts';
 
 const CARRYOVER = "When the person sells, they generally use the giver's cost and the dates above, not the value on the day of the gift. If the coins were worth less than the cost when given, a different rule can apply to losses.";
 
+/** How a lot given was got: inherited coins are always long-term, so the recipient must not count them as short-term. */
+function lotWhen(p: GiftPick): string {
+  return p.inherited ? `Inherited ${longDate(p.acquiredDate)} (always long-term)` : `Bought ${longDate(p.acquiredDate)}`;
+}
+
 /** The note a person who received a gift can keep: what was given, the giver's cost and when each coin was bought. Plain text, no tax advice. */
 export function giftNoteText(g: GiftGiven): string {
   const lines = [
@@ -25,7 +30,7 @@ export function giftNoteText(g: GiftGiven): string {
     `Giver's cost for these coins: ${formatMoney(g.costCents)}`,
     '',
     "Lots given (the date the giver got them, amount, giver's cost):",
-    ...g.picks.map((p) => `- ${longDate(p.acquiredDate)}: ${formatBtc(p.sats)} BTC, cost ${formatMoney(p.costCents)}`),
+    ...g.picks.map((p) => `- ${lotWhen(p)}: ${formatBtc(p.sats)} BTC, cost ${formatMoney(p.costCents)}`),
     '',
     CARRYOVER,
     'Confirm with your CPA. Not tax advice.',
@@ -57,7 +62,7 @@ export function GiftNoteCard({ gift, heading: Heading = 'h4' }: { gift: GiftGive
       <ul aria-label="Lots given" className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-muted">
         {gift.picks.map((p) => (
           <li key={p.lotId} className="flex justify-between gap-3">
-            <span>Bought {longDate(p.acquiredDate)}</span>
+            <span>{lotWhen(p)}</span>
             <span>
               <Amount sats={p.sats} interactive={false} /> · cost <Money cents={p.costCents} />
             </span>

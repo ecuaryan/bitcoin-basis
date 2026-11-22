@@ -51,7 +51,7 @@ export function EntryRow({ run, wallets, onOpen, last }: { run: EntryRun; wallet
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
-            <span className={cx('truncate', item.deleted && 'text-muted line-through')}>
+            <span className={cx('line-clamp-2 [overflow-wrap:anywhere]', item.deleted && 'text-muted line-through')}>
               {line.title}
               {count > 1 ? ` ×${count}` : ''}
             </span>

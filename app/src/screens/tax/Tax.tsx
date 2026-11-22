@@ -12,13 +12,13 @@ import { buttonClasses, Button } from '../../ui/Button.tsx';
 import { Card } from '../../ui/Card.tsx';
 import { downloadText } from '../../ui/download.ts';
 import { Field, SelectBox } from '../../ui/Field.tsx';
-import { ChevronLeftIcon, DownloadIcon, InfoIcon } from '../../ui/more-icons.tsx';
+import { DownloadIcon, InfoIcon } from '../../ui/more-icons.tsx';
 import { PageHeader } from '../../ui/PageHeader.tsx';
 import { Sheet } from '../../ui/Sheet.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { entryInstant, newIdGenerator } from '../../ui/new-entry.ts';
 import { LockIcon } from '../../ui/icons.tsx';
-import { answerReason, defaultTaxYear, FEE_SALE_HELP, feeOnlyYes, flagsForYear, form1099Rows, nextYearLosses, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
+import { answerReason, CHARITY_RULE, charityRows, defaultTaxYear, TERM_WORDS, FEE_SALE_HELP, feeOnlyYes, flagsForYear, form1099Rows, nextYearLosses, overExclusion, totalsByKind, yearIsOver, yearsAvailable, yearTaxView } from './tax-logic.ts';
 import { LOSSES_CHECK, staleLosses } from '../../lib/losses.ts';
 import { useWriter } from '../../ui/use-writer.ts';
 import { useTitle } from '../../ui/use-title.ts';
@@ -176,6 +176,7 @@ export function Tax() {
   const forms = useMemo(() => form1099Rows(state, year, entries), [state, year, entries]);
   const gifts = useMemo(() => overExclusion(state, year), [state, year]);
   const flags = useMemo(() => flagsForYear(state, year), [state, year]);
+  const charity = useMemo(() => charityRows(summary), [summary]);
   const loanInterest = useMemo(() => loanInterestByYear(state).find((y) => y.year === year) ?? null, [state, year]);
   const closed = state.closedYears.includes(year);
   const stale = year === yearOf(today) ? staleLosses(state.settings, year) : null;
@@ -322,6 +323,26 @@ export function Tax() {
           {g.recipient}: <Money cents={g.valueCents} /> is over the yearly limit per person. A gift tax return may be needed: confirm with your CPA.
         </p>
       ))}
+      {charity.length > 0 && (
+        <>
+          <ul aria-label="Charity gifts" className="m-0 flex list-none flex-col p-0">
+            {charity.map((c) => (
+              <li key={c.key} className="flex flex-col gap-0.5 border-t border-line-soft py-2 text-sm">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="text-soft">
+                    {c.recipient} · {shortDate(c.date)}
+                  </span>
+                  <Money cents={c.valueCents} />
+                </span>
+                <span className="text-xs text-muted">
+                  Deduction <Money cents={c.deductionCents} /> · {TERM_WORDS[c.term]}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="m-0 text-xs text-muted">{CHARITY_RULE}</p>
+        </>
+      )}
     </Card>
   );
 
@@ -346,6 +367,11 @@ export function Tax() {
             </li>
           ))}
         </ul>
+        {loanInterest.paidBefore.map((p) => (
+          <p key={`${p.loanId}-${p.date}`} className="m-0 text-xs text-muted">
+            {p.name}: <Money cents={p.interestPaidCents} /> paid by {shortDate(p.date)}, not split by year
+          </p>
+        ))}
         <p className="m-0 flex items-start gap-2.5 text-[13px] leading-[1.4] text-soft">
           <InfoIcon size={16} className="mt-px flex-none text-accent" />
           {LOAN_INTEREST_CPA_NOTE}
@@ -411,10 +437,8 @@ export function Tax() {
       {wide ? (
         <PageHeader title="Tax season">{picker}</PageHeader>
       ) : (
+        // Tax is a bottom tab on a phone, so there is nothing to go back to.
         <header className="flex items-center gap-3">
-          <Link to="/records" aria-label="Back to Records" className="flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-soft hover:text-text">
-            <ChevronLeftIcon size={18} />
-          </Link>
           <h1 className="m-0 min-w-0 flex-1 truncate font-display text-[28px] font-semibold tracking-tight">Tax season</h1>
           {picker}
         </header>

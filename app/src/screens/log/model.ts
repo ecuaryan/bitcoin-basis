@@ -154,10 +154,31 @@ export function usualWallet(entries: readonly Entry[], state: LedgerState, kinds
 
 /** The wallet's coins that already existed at `at`, oldest first. */
 export function lotsAvailable(state: LedgerState, entries: readonly Entry[], wallet: string, at: string): Lot[] {
-  const madeAt = new Map(entries.map((e) => [e.id, e.at]));
   const t = Date.parse(at);
-  const ok = state.lots.filter((l) => l.wallet === wallet && l.sats > 0 && Date.parse(madeAt.get(l.id.split(':')[0] as string) ?? l.acquiredAt) <= t);
+  const arrived = arrivalTimes(state, entries);
+  const ok = state.lots.filter((l) => l.wallet === wallet && l.sats > 0 && Date.parse(arrived.get(l.id.split(':')[0] as string) ?? l.acquiredAt) <= t);
   return oldestFirstOrder(ok, wallet);
+}
+
+/**
+ * When the coins behind each lot id root reached their wallet: the time of the version in force of the entry
+ * that made them (the buy, or the move for moved pieces), so an edited date counts, not the first version's.
+ */
+function arrivalTimes(state: LedgerState, entries: readonly Entry[]): Map<string, string> {
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const out = new Map<string, string>();
+  for (const id of state.applied) {
+    const e = byId.get(id);
+    if (e === undefined) continue;
+    let root = e;
+    const seen = new Set([root.id]);
+    for (let up = byId.get(root.replaces ?? ''); up !== undefined && !seen.has(up.id); up = byId.get(up.replaces ?? '')) {
+      seen.add(up.id);
+      root = up;
+    }
+    out.set(root.id, e.at);
+  }
+  return out;
 }
 
 /** The automatic orders: oldest first (sales, moves, losses) and lowest cost first (gifts). */

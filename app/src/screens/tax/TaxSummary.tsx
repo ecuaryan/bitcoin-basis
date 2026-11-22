@@ -1,8 +1,8 @@
 import { LOAN_INTEREST_CPA_NOTE, loanInterestByYear, yearSummary } from '@bitcoin-basis/engine';
 import { Link, useParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
-import { formatMoney } from '../../lib/format.ts';
-import { answerReason, flagsForYear, form8949Detail, overExclusion, totalsByKind, yearTaxView } from './tax-logic.ts';
+import { formatMoney, shortDate } from '../../lib/format.ts';
+import { answerReason, CHARITY_RULE, charityRows, flagsForYear, form8949Detail, overExclusion, totalsByKind, yearTaxView } from './tax-logic.ts';
 import { useTitle } from '../../ui/use-title.ts';
 import { assumesNoIncome, taxProfileSet } from '../records/settings-logic.ts';
 
@@ -27,6 +27,7 @@ export function TaxSummary() {
   const detail = form8949Detail(s);
   const gifts = overExclusion(state, year);
   const flags = flagsForYear(state, year);
+  const charity = charityRows(s);
   const loanInterest = loanInterestByYear(state).find((y) => y.year === year) ?? null;
   useTitle(`${year} tax summary`);
   const m = (c: number) => formatMoney(c);
@@ -180,6 +181,34 @@ export function TaxSummary() {
           <p className="m-0">
             {gifts.over.length === 0 ? `None over ${m(gifts.limitCents)} to one person.` : gifts.over.map((g) => `${g.recipient}: ${m(g.valueCents)} is over ${m(gifts.limitCents)} (confirm with your CPA)`).join('; ')}
           </p>
+          {charity.length > 0 && (
+            <>
+              <h3 className="mb-0 mt-2 text-sm font-semibold">Charity gifts (Schedule A): deduction {m(charity.reduce((t, c) => t + c.deductionCents, 0))}</h3>
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    {['Date', 'Charity', 'Value', 'Deduction', 'Term'].map((h) => (
+                      <th key={h} className={th}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {charity.map((c) => (
+                    <tr key={c.key}>
+                      <td className={td}>{c.date}</td>
+                      <td className={td}>{c.recipient}</td>
+                      <td className={td}>{m(c.valueCents)}</td>
+                      <td className={td}>{m(c.deductionCents)}</td>
+                      <td className={td}>{c.term}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="m-0 text-neutral-600">{CHARITY_RULE}</p>
+            </>
+          )}
         </section>
 
         {loanInterest !== null && (
@@ -192,6 +221,13 @@ export function TaxSummary() {
                     <td className={td}>{l.name}</td>
                     <td className={`${td} text-right`}>{m(l.interestPaidCents)}</td>
                     <td className={`${td} text-right`}>{l.onPurchasesCents === l.interestPaidCents ? 'all on Bitcoin purchases' : `about ${m(l.onPurchasesCents)} on Bitcoin purchases`}</td>
+                  </tr>
+                ))}
+                {loanInterest.paidBefore.map((p) => (
+                  <tr key={`before-${p.loanId}-${p.date}`}>
+                    <td className={td}>{p.name}</td>
+                    <td className={`${td} text-right`}>{m(p.interestPaidCents)}</td>
+                    <td className={`${td} text-right`}>{`paid by ${shortDate(p.date)}, not split by year (not in the total)`}</td>
                   </tr>
                 ))}
               </tbody>

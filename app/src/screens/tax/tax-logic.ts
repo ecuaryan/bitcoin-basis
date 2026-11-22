@@ -1,5 +1,6 @@
 import { lossesForYear } from '../../lib/losses.ts';
-import { federalTableFor, localDate, taxForYear, yearOf, yearSummary, type Cents, type Term, type Entry, type LedgerState, type Netting, type Settings, type Wallet, stateChoiceFromSettings, giftsOverExclusion, type RecipientTotal, type YearSummary } from '@bitcoin-basis/engine';
+import { newestFirst } from '../../lib/newest-first.ts';
+import { federalTableFor, giftAnnualExclusionFor, localDate, taxForYear, yearOf, yearSummary, type Cents, type Term, type Entry, type LedgerState, type Netting, type Settings, type Wallet, stateChoiceFromSettings, giftsOverExclusion, type RecipientTotal, type YearSummary } from '@bitcoin-basis/engine';
 
 /** Years worth choosing: any with activity or a closing, plus this year; newest first. */
 export function yearsAvailable(state: LedgerState, today: string): number[] {
@@ -165,7 +166,7 @@ export function yearTaxView(state: LedgerState, settings: Settings, year: number
     limitCents: r.assumptions.capitalLossLimit,
     tableYear: table.year,
     fellBack,
-    giftExclusionCents: table.giftAnnualExclusion,
+    giftExclusionCents: giftAnnualExclusionFor(year),
   };
 }
 
@@ -207,16 +208,42 @@ export function form1099Rows(state: LedgerState, year: number, entries: readonly
   return rows;
 }
 
+/** One charity gift for Tax season and the CPA summary: what a CPA needs for Schedule A. */
+export interface CharityRow {
+  key: string;
+  date: string;
+  recipient: string;
+  valueCents: Cents;
+  /** Long-term coins count their value that day; short-term coins the lesser of cost and value. */
+  deductionCents: Cents;
+  term: 'short' | 'long' | 'both';
+  /** The year's charity gifts total over $5,000: a qualified appraisal is needed. */
+  appraisal: boolean;
+}
+
+/** How the deduction was worked out, in one line under the list. */
+export const CHARITY_RULE = 'Deduction: the value that day for coins held over a year, else the lower of cost and value.';
+
+export const TERM_WORDS: Record<CharityRow['term'], string> = { short: 'short-term', long: 'long-term', both: 'short- and long-term' };
+
+/** The year's charity gifts, newest first. */
+export function charityRows(s: YearSummary): CharityRow[] {
+  return newestFirst(s.charityGifts, (g) => g.date).map((g) => ({ key: g.entryId, date: g.date, recipient: g.recipient, valueCents: g.valueCents, deductionCents: g.deductionCents, term: termWord(g.picks.map((p) => p.term)), appraisal: g.appraisalFlag }));
+}
+
 /** Recipients of gifts over the yearly per-person limit. */
 export function overExclusion(state: LedgerState, year: number): { over: RecipientTotal[]; limitCents: Cents } {
-  const limitCents = federalTableFor(year).table.giftAnnualExclusion;
+  const limitCents = giftAnnualExclusionFor(year);
   return { over: giftsOverExclusion(state, year, limitCents), limitCents };
 }
 
-/** CPA flags (dual basis, lost coins, qualified appraisal) for entries in a year. */
+/**
+ * CPA flags (dual basis, lost coins, qualified appraisal) for entries in a year. A dual-basis gift is flagged in the
+ * year it was received and again in each year its coins are sold, spent, paid as a fee or closed out.
+ */
 export function flagsForYear(state: LedgerState, year: number): LedgerState['cpaFlags'] {
   const inYear = new Set<string>();
-  for (const list of [state.lost, state.charityGifts, state.giftsReceived, state.gifts]) for (const i of list) if (i.year === year) inYear.add(i.entryId);
+  for (const list of [state.lost, state.charityGifts, state.giftsReceived, state.gifts, state.disposals, state.closeOuts]) for (const i of list) if (i.year === year) inYear.add(i.entryId);
   return state.cpaFlags.filter((f) => inYear.has(f.entryId));
 }
 

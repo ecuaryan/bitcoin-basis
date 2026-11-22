@@ -138,3 +138,19 @@ test('Records: quick settings changes save once, and the entries list keeps sett
   expect(text).not.toMatch(/×[4-9]/);
   await expectNoViolations(page);
 });
+
+test('Records: choosing the same spreadsheet again adds nothing twice', async ({ page }) => {
+  await setUp(page);
+  const importFile = async () => {
+    await page.getByRole('link', { name: 'Records', exact: true }).click();
+    await page.getByRole('link', { name: /^Import and/ }).click();
+    await page.getByLabel('Choose your spreadsheet').setInputFiles(NEW_WALLETS);
+  };
+  await importFile();
+  await page.getByRole('button', { name: 'Create wallets and add 5 lots' }).click();
+  await expect(page.getByText('Added 5 lots and 3 wallets.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
+  await importFile();
+  await expect(page.getByRole('status').filter({ hasText: 'opening-lots-new-wallets.csv' })).toContainText('Everything in this file is already in your records. Nothing was added.');
+  await expect(page.getByRole('button', { name: /^Add|^Create/ })).toHaveCount(0);
+});

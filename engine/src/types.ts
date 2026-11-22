@@ -664,6 +664,11 @@ export interface LoanPayment {
   principalCents: Cents;
   /** Last day the interest covers (resolved default, see `LoanPaymentEntry`). */
   interestThrough: LocalDate;
+  /**
+   * "Interest paid so far" from setting up a loan mid-stream (interest only, noted `LOAN_PAID_SO_FAR_NOTE`): a lump sum
+   * of payments made over the loan's history, so it settles every cycle through `interestThrough` and is not one year's.
+   */
+  paidSoFar?: boolean;
 }
 export interface LoanStatement {
   entryId: EntryId;

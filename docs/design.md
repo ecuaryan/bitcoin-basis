@@ -40,7 +40,7 @@ Type: hero 46px (phone) / 64px (desktop) Space Grotesk 600, tracking -0.03em, `l
 
 ## Layout
 
-- Phone (< 1024px): header (brand, hide, lock), scrolling `main` (20px side padding), fixed bottom nav 92px with 4 tabs: Holdings, What if, orange + (opens the Log sheet), Records. Column is max 560px, centered.
+- Phone (< 1024px): header (brand, hide, lock), scrolling `main` (20px side padding), fixed bottom nav 92px with 4 tabs and the orange + between them: Holdings, What if, + (opens the Log sheet), Tax, Records. Tabs are top-level screens, so they have no back arrow. Column is max 560px, centered.
 - Desktop (>= 1024px): 220px sidebar (Holdings, What if, Tax season, Records, orange Log button), main padded 32/40. The screen draws its own Hide amounts / Lock text buttons in its header.
 - Screens choose layout with `useIsWide()` (a media query hook), not by rendering both. Use `useLogSheet().open()` to open the Log sheet.
 - Routes: `/` Holdings, `/what-if`, `/records`, `/tax`, `/wallet/:id`, `/loans/:id`, `/log` (opens the sheet), plus full-screen `/welcome`, `/unlock`, `/kit`. Add real screens by replacing the stub in `screens/stubs.tsx` and the element in `App.tsx`.

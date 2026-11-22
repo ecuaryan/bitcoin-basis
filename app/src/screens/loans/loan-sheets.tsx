@@ -2,7 +2,6 @@ import { formatAprPercent, isValidLocalDate, loanSummary, parseAprPercent, parse
 import { useMemo, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { shortDate } from '../../lib/format.ts';
-import { buildItems } from '../../lib/entry-list.ts';
 import { Money } from '../../ui/Amount.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Callout, SelectField, SummaryRow, TextField } from '../../ui/form-fields.tsx';
@@ -14,7 +13,7 @@ import { useSubmit } from '../../ui/use-submit.ts';
 import { centsText, cleanNumber } from '../log/model.ts';
 import { FormFooter } from '../log/parts.tsx';
 import { STATEMENT_DAYS } from './LoanSetup.tsx';
-import { useLoanWriter, type LoanDraft } from './loan-writer.ts';
+import { loanRecordToEdit, useLoanWriter, type LoanDraft } from './loan-writer.ts';
 
 const BIG_BUTTON = 'min-h-14 flex-1 rounded-[18px] text-[17px] shadow-[0_10px_30px_rgba(247,147,26,0.35)]';
 
@@ -231,13 +230,12 @@ function SettingsBody({ loan, onClose }: { loan: Loan; onClose(): void }) {
     const out: LoanDraft[] = Object.keys(patch).length > 0 ? [{ draft: { kind: 'loan-update', loan: loan.id, ...patch } }] : [];
     if (dayCount !== loan.dayCount) {
       // How interest is counted lives on the loan record itself: a new version of it, with a reason.
-      const head = buildItems(entries).find((i) => !i.deleted && i.current.kind === 'loan' && i.current.loan === loan.id)?.current;
-      if (head?.kind === 'loan') {
-        const { id, at, tz, ...rest } = head;
-        void id;
+      const record = loanRecordToEdit(entries, loan.id);
+      if (record !== null) {
+        const { id, at, tz, ...rest } = record.head;
         void at;
         void tz;
-        out.push({ draft: { ...rest, dayCount, replaces: head.id, reason: 'Changed how interest is counted' } });
+        out.push({ draft: { ...rest, dayCount, replaces: id, reason: 'Changed how interest is counted' }, keep: record.keep });
       }
     }
     return out;
