@@ -22,6 +22,13 @@
 
 - **Recent purchases** on Holdings, under the chart and your retirement accounts: your latest five purchases, newest first, in the same table as a wallet's lots (Date, Paid, Bitcoin with the cost per BTC, Now with the gain or loss and its percent), with the wallet on each row. It counts logged purchases, retirement purchases (tagged Retirement) and imported lots that cost something, dated when they were bought. "Show 10 more" adds rows; tap one to open it. On desktop it spans the page, one line per purchase.
 
+### Changed (loan page)
+
+- **The loan page opens with the loan card's top half**: "Gain or loss after interest" with its math (worth − cost − interest), the break-even gauge with today's price, and the four figures (Owed, Bitcoin it bought, Interest paid, If paid off today), each "?" beside what it explains. Once coins have been sold or paid back, a line under the math gives the whole result.
+- **Details** replaces the long list of rows: three short groups. The loan (owed now with interest and what it includes, borrowed in all and where it went, less what was paid back, the rate with "(variable)" and its history, and when the statement closes), Interest (interest paid and through when; how much of it is charged to the purchases, and what the rest was on: money drawn for other things, or days before any purchase), and The Bitcoin (bought, still held and where the rest went, sold or spent for, paid back by a frozen platform, the whole result). "Rate changed" sits under the rate; the separate Rate card is gone.
+- **Purchases is a table**: each purchase's coins still held, what they cost, what they are worth now, the gain or loss before and after its share of the interest, and a Total row that is exactly the result at the top. On a phone: Cost, Now and After interest (with the interest under it), plus one line that adds it up.
+- **The result after interest shows cents**, on the Holdings card and the loan page alike, so the two and the purchases' Total always agree.
+
 ### Changed (Sell)
 
 - **Sell: plan cards you can read straight across.** Every plan card (Oldest first, Lowest tax, Lots you picked) shows the same rows in the same places, lined up across cards: the tax as the big number ("Tax this adds", or "Tax this saves" in green) with "Federal $X + state $Y" under it, what you keep after tax with its math ("$23,703.10 sale − $0.00 tax"), short-term, long-term, losses left for next year, the share on Estimated or Unknown cost, and the lots used. Empty figures ($0.00, 0%) are muted. The plan the planner prefers gets a small pill ("Least tax", "Saves the most", or "Keeps more losses" when the tax is the same). Under the cards, "Lots used in …" lists the chosen plan's lots (bought, term, Bitcoin, cost, sold for, gain or loss) with a Total row that matches the card's short-term + long-term. A third plan (after picking lots) sits full width under the two on a phone. Federal and state tax now always add up to the total to the cent (the engine splits the total by largest remainder).
@@ -104,6 +111,7 @@
 
 ### Fixed
 
+- **"If paid off today" is never shown better than it is.** A shortfall now rounds up and a leftover down at 4 decimals (it rounded to the nearest, so a shortfall could look up to 0.00005 BTC smaller and a leftover that much bigger). In dollars it rounds the same way to the cent; in sats it is exact. A shortfall of a few sats shows 0.0001 BTC; a leftover too small for 4 decimals keeps all 8.
 Accuracy fixes from an independent audit: every number accurate and labeled exactly.
 
 - **Owed now counts interest billed but not paid.** When a statement's interest was paid only in part, "Owed now" left out the rest. It now adds what is left of the cycles your payments cover (their interest less what you paid for them; paying a past-due remainder with the next statement makes up for it) to the interest since. A $10,000.00 line at 7.30% with January's $62.00 interest and $40.00 paid, seen on Feb 20, 2025: $10,040.00 before, now $10,062.00, "Includes about $22.00 interest billed but not yet paid and about $40.00 since Feb 1, 2025, not billed yet". Interest since the last payment says "not paid yet" when a statement has closed on it. A history paid in full is unchanged. Engine: `LoanSummary.unpaidBilledInterestCents`, `accruedBilledThrough`.
