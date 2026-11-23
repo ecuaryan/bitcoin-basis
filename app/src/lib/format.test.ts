@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanDecimal, countOf, formatDay, formatMoney, formatWhen, groupedBtc, groupedSats, maskDigits, prettyBtc, prettyDollars, satsToCents, sharePercents, shortBtc, wholeDollarParts, shortDate, shortWhen } from './format.ts';
+import { cleanDecimal, countOf, formatDay, formatMoney, formatWhen, groupedBtc, groupedSats, maskDigits, prettyBtc, prettyDollars, satsToCents, satsToCentsRounded, sharePercents, shortBtc, wholeDollarParts, shortDate, shortWhen } from './format.ts';
 
 describe('format', () => {
   it('groups BTC in fours', () => {
@@ -18,6 +18,26 @@ describe('format', () => {
     expect(shortBtc(1)).toBe('0.0000 0001');
     expect(shortBtc(5_000)).toBe('0.0001');
     expect(shortBtc(0)).toBe('0.0000');
+  });
+  it('rounds short BTC up (a shortfall) or down (a leftover) when asked, never to zero', () => {
+    expect(shortBtc(3_420_001, 'up')).toBe('0.0343');
+    expect(shortBtc(3_420_000, 'up')).toBe('0.0342');
+    expect(shortBtc(3_429_999, 'down')).toBe('0.0342');
+    expect(shortBtc(3_425_000)).toBe('0.0343');
+    expect(shortBtc(3_425_000, 'down')).toBe('0.0342');
+    expect(shortBtc(1, 'up')).toBe('0.0001');
+    expect(shortBtc(9_999, 'down')).toBe('0.0000 9999');
+    expect(shortBtc(0, 'up')).toBe('0.0000');
+    expect(shortBtc(0, 'down')).toBe('0.0000');
+  });
+  it('converts sats to cents rounded up or down when asked', () => {
+    // 3,424,999 sats at $94,812.40 is $3,247.3237…
+    expect(satsToCents(3_424_999, 9_481_240)).toBe(324_732);
+    expect(satsToCentsRounded(3_424_999, 9_481_240, 'up')).toBe(324_733);
+    expect(satsToCentsRounded(3_424_999, 9_481_240, 'down')).toBe(324_732);
+    expect(satsToCentsRounded(3_424_999, 9_481_240, 'half-up')).toBe(324_732);
+    // Exact: no rounding either way.
+    expect(satsToCentsRounded(100_000_000, 9_481_240, 'up')).toBe(9_481_240);
   });
   it('formats money', () => {
     expect(formatMoney(123_456)).toBe('$1,234.56');
