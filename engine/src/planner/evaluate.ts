@@ -3,7 +3,7 @@ import { sum } from '../book.ts';
 import { MAX_ENTRY_CENTS, mulDivOrNull, mulDivRoundHalfUp, splitProportional, SATS_PER_BTC, type Cents, type Sats } from '../money.ts';
 import { pieceOf, withProceeds } from '../picks.ts';
 import { incrementalTax, type Carryforward } from '../tax/tax.ts';
-import type { Lot, LotPick, Tier } from '../types.ts';
+import type { DisposalPick, Lot, LotPick, Tier } from '../types.ts';
 import { taxInput, type TaxContext } from './context.ts';
 
 export interface SaleEvaluation {
@@ -21,9 +21,17 @@ export interface SaleEvaluation {
   readonly federalTaxCents: Cents;
   readonly stateTaxCents: Cents;
   readonly totalTaxCents: Cents;
+  /** What the sale leaves after this tax: proceeds − total tax (more than the proceeds when the sale saves tax). */
+  readonly afterTaxCents: Cents;
   /** Carryforward into next year with the sale, and without it. */
   readonly carryforwardOut: Carryforward;
   readonly baseCarryforwardOut: Carryforward;
+  /**
+   * Each lot's part of the sale, in pick order: sats, cost, proceeds (the sale's proceeds split by sats, so they add up
+   * to `proceedsCents`), gain and term. For a gift worth less than the giver's cost, cost, date and term are the basis
+   * the dual-basis rule used, so proceeds − cost is the gain. Gains add up to `gainCents`, costs to `costCents`.
+   */
+  readonly pieces: readonly DisposalPick[];
 }
 
 const ROUGH: readonly Tier[] = ['estimated', 'unknown'];
@@ -64,7 +72,9 @@ export function evaluatePicks(lots: readonly Lot[], picks: readonly LotPick[], p
     federalTaxCents: tax.federal,
     stateTaxCents: tax.state,
     totalTaxCents: tax.total,
+    afterTaxCents: proceedsCents - tax.total,
     carryforwardOut: tax.carryforwardOut,
     baseCarryforwardOut: tax.baseCarryforwardOut,
+    pieces,
   };
 }

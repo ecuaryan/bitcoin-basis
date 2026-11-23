@@ -283,8 +283,27 @@ function effectExact(input: TaxInput): { delta: ExactDelta; core: Core } {
   return { delta: { federal: core.federal - none.federal, state: core.state - none.state }, core };
 }
 
+/** a / b rounded toward minus infinity (b > 0). */
+const floorDiv = (a: bigint, b: bigint): bigint => (a % b < ZERO ? a / b - 1n : a / b);
+
+/**
+ * Federal and state cents that add up exactly to the total (the exact sum, half-up), so "federal $X + state $Y"
+ * always matches the total shown. Each part is its exact value rounded down or up: both start rounded down, and
+ * the 0, 1 or 2 cents left go to the part with the larger remainder (largest remainder; federal on a tie).
+ * Rounding each part on its own could miss the total by a cent.
+ */
+export function addingParts(federal: bigint, state: bigint): { federal: Cents; state: Cents; total: Cents } {
+  const total = toCents('total', federal + state);
+  const f = floorDiv(federal, SCALE);
+  const s = floorDiv(state, SCALE);
+  const left = BigInt(total) - f - s;
+  const federalUp = left === 2n || (left === 1n && federal - f * SCALE >= state - s * SCALE);
+  const stateUp = left === 2n || (left === 1n && !federalUp);
+  return { federal: toNumber('federal', federalUp ? f + 1n : f), state: toNumber('state', stateUp ? s + 1n : s), total };
+}
+
 function report(d: ExactDelta): { federal: Cents; state: Cents; total: Cents } {
-  return { federal: toCents('federal', d.federal), state: toCents('state', d.state), total: toCents('total', d.federal + d.state) };
+  return addingParts(d.federal, d.state);
 }
 
 /** Capital tax effect = tax with the capital items (gains, losses, carryforward) − tax with none (wages only). */

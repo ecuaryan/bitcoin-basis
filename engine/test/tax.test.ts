@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, test } from 'vitest';
-import { capitalTaxEffect, incrementalTax, marginalRates, taxForYear, type TaxInput } from '../src/tax/tax.ts';
+import { addingParts, capitalTaxEffect, incrementalTax, marginalRates, taxForYear, type TaxInput } from '../src/tax/tax.ts';
 import type { StateCode } from '../src/tax/tables/state.ts';
 import type { TaxFilingStatus } from '../src/tax/types.ts';
 
@@ -198,10 +198,13 @@ describe('state', () => {
     expect(capitalTaxEffect(io({ st: -10_000_00, state: { code: 'IL' } })).state).toBe(-148_50);
   });
 
-  test('state and federal round separately; total rounds the exact sum', () => {
+  test('total rounds the exact sum; federal and state split it by largest remainder, so they add up', () => {
     // 1 cent of short-term gain: federal 12% = 0.12¢ → 0, Idaho 5.3% = 0.053¢ → 0, total 0.173¢ → 0.
-    // 3 cents: federal 0.36¢ → 0, state 0.159¢ → 0, total 0.519¢ → 1.
-    expect(capitalTaxEffect(io({ st: 3 }))).toMatchObject({ federal: 0, state: 0, total: 1 });
+    // 3 cents: federal 0.36¢, state 0.159¢, total 0.519¢ → 1; the cent goes to federal (the larger remainder).
+    // Rounded on their own, both would be 0 and miss the total by a cent.
+    expect(capitalTaxEffect(io({ st: 1 }))).toMatchObject({ federal: 0, state: 0, total: 0 });
+    expect(capitalTaxEffect(io({ st: 3 }))).toMatchObject({ federal: 1, state: 0, total: 1 });
+    expect(incrementalTax(io({}), io({ st: 3 }))).toMatchObject({ federal: 1, state: 0, total: 1 });
     // Halves round away from zero: 50% of ±1 cent is ±0.5¢ → ±1.
     expect(capitalTaxEffect(io({ st: 1, state: { customRate: 5_000 } }))).toMatchObject({ federal: 0, state: 1, total: 1 });
     expect(capitalTaxEffect(io({ st: -1, state: { customRate: 5_000 } }))).toMatchObject({ federal: 0, state: -1, total: -1 });
@@ -283,6 +286,35 @@ describe('validation and large values', () => {
   });
 });
 
+describe('federal + state add up to the total (largest remainder)', () => {
+  // Exact values are cents scaled by 10,000: 14_000n is 1.4 cents.
+  test.each([
+    ['nothing left over', 12_000n, 21_000n, { federal: 1, state: 2, total: 3 }],
+    // Rounded on their own these were 1 + 2 = 3, a cent short of the total 4.
+    ['a cent left, to federal (larger remainder)', 14_000n, 23_000n, { federal: 2, state: 2, total: 4 }],
+    ['a cent left, to state (larger remainder)', 13_000n, 24_000n, { federal: 1, state: 3, total: 4 }],
+    ['two cents left, one each', 18_000n, 27_000n, { federal: 2, state: 3, total: 5 }],
+    ['a tie goes to federal', 2_500n, 2_500n, { federal: 1, state: 0, total: 1 }],
+    // A saving: rounded on their own −1 + −2 = −3, a cent short of −4.
+    ['negative parts', -14_000n, -23_000n, { federal: -2, state: -2, total: -4 }],
+    ['whole negative cents', -20_000n, -30_000n, { federal: -2, state: -3, total: -5 }],
+  ])('%s', (_name, federal, state, out) => {
+    expect(addingParts(federal, state)).toEqual(out);
+  });
+
+  test('any exact parts: they add up to the total, each less than a cent from its exact value', () => {
+    fc.assert(
+      fc.property(fc.bigInt({ min: -1_000_000_000_000n, max: 1_000_000_000_000n }), fc.bigInt({ min: -1_000_000_000_000n, max: 1_000_000_000_000n }), (f, s) => {
+        const r = addingParts(f, s);
+        expect(r.federal + r.state).toBe(r.total);
+        expect(Math.abs(r.federal * 10_000 - Number(f))).toBeLessThan(10_000);
+        expect(Math.abs(r.state * 10_000 - Number(s))).toBeLessThan(10_000);
+      }),
+      { numRuns: 2000 },
+    );
+  });
+});
+
 describe('properties', () => {
   const input = fc.record({
     year: fc.constantFrom(2025, 2026, 2027),
@@ -323,7 +355,11 @@ describe('properties', () => {
     fc.assert(
       fc.property(input, fc.integer({ min: 0, max: 100_000_00 }), fc.boolean(), (i, extra, short) => {
         const more = short ? { ...i, st: i.st + extra } : { ...i, lt: i.lt + extra };
-        expect(incrementalTax(i, more).total).toBeGreaterThanOrEqual(0);
+        const r = incrementalTax(i, more);
+        expect(r.total).toBeGreaterThanOrEqual(0);
+        expect(r.federal + r.state).toBe(r.total);
+        const c = capitalTaxEffect(more);
+        expect(c.federal + c.state).toBe(c.total);
       }),
       { numRuns: 1000 },
     );
