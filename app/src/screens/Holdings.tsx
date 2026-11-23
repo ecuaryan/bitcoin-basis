@@ -392,8 +392,8 @@ function TaxableFigures({ view }: { view: HoldingsView }) {
 // ---- Phone -----------------------------------------------------------------------------
 
 /**
- * One order on both sizes, most looked-at first: what it is all worth and the gain, anything to do, the loans (above or
- * below break-even), the taxable and retirement split with the taxable figures, the wallets, recent purchases, then the
+ * One order on both sizes, most looked-at first: what it is all worth and the gain, anything to do, recent purchases,
+ * the loans (above or below break-even), the taxable and retirement split with the taxable figures, the wallets, then the
  * look-back cards (stack by year, average cost against price, retirement) and how well it is documented.
  */
 function PhoneHoldings({ view }: { view: HoldingsView }) {
@@ -423,12 +423,12 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
 
       <BalanceNudge />
       <LoanNudge />
+      <RecentPurchases />
       <LoansSection />
 
       <SplitCard view={view} wide={false} />
       <TaxableFigures view={view} />
       <WalletsCard view={view} />
-      <RecentPurchases />
 
       <StackCard view={view} wide={false} onPick={setYear} />
       <AverageChartCard view={view} wide={false} />
@@ -473,6 +473,8 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
 
       <BalanceNudge />
       <LoanNudge />
+      <RecentPurchases />
+
       <LoansSection />
 
       <SplitCard view={view} wide />
@@ -485,8 +487,6 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
         </div>
         <DocumentationCard view={view} />
       </div>
-
-      <RecentPurchases />
 
       <StackCard view={view} wide onPick={setYear} />
 

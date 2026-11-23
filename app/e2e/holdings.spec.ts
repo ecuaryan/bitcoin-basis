@@ -140,16 +140,16 @@ test('Holdings runs most looked-at first; the stack by year is all your Bitcoin,
   await openHoldingsWithDemo(page);
   const stack = page.getByRole('region', { name: 'Your coins by year bought' });
   await expect(stack.getByRole('heading', { name: 'Your stack, by year bought' })).toBeVisible();
-  // Worth and gain, the loans, the split and taxable figures, wallets, recent purchases, then the look-back cards.
+  // Worth and gain, recent purchases, the loans, the split and taxable figures, wallets, then the look-back cards.
   await expect(page.getByRole('heading', { name: 'Taxable', exact: true })).toHaveCount(0);
   const y = async (l: Locator) => (await l.boundingBox())?.y ?? NaN;
   const order = [
     page.getByRole('region', { name: 'What all your Bitcoin is worth' }),
+    page.getByRole('region', { name: 'Recent purchases' }),
     page.getByRole('region', { name: 'Loans' }).first(),
     page.getByRole('region', { name: 'Taxable and retirement' }),
     page.getByRole('region', { name: 'Your taxable figures' }),
     page.getByRole('region', { name: 'Wallets' }),
-    page.getByRole('region', { name: 'Recent purchases' }),
     stack,
     page.getByRole('region', { name: 'Average cost versus price' }),
   ];
@@ -198,10 +198,10 @@ test('Recent purchases: the latest five, newest first, with worth now and the pe
   const card = page.getByRole('region', { name: 'Recent purchases' });
   const list = card.getByRole('list', { name: 'Purchases, newest first' });
   await expect(list.getByRole('listitem')).toHaveCount(5);
-  // Under the wallets, above the stack by year and the chart.
+  // Right under the hero, above the loans.
   const y = async (l: Locator) => (await l.boundingBox())?.y ?? NaN;
-  expect(await y(card)).toBeGreaterThan(await y(page.getByRole('region', { name: 'Wallets' })));
-  expect(await y(card)).toBeLessThan(await y(page.getByRole('region', { name: 'Your coins by year bought' })));
+  expect(await y(card)).toBeGreaterThan(await y(page.getByRole('region', { name: 'What all your Bitcoin is worth' })));
+  expect(await y(card)).toBeLessThan(await y(page.getByRole('region', { name: 'Loans' }).first()));
   const rows = list.getByRole('button');
   await expect(rows.first()).toHaveAccessibleName(/Paid \$[\d,]+\.\d\d .*now \$[\d,]+\.\d\d (up|down) [+−]\$[\d,]+\.\d\d [+−]\d+%.*Strike/);
   await expect(card.getByText(/^[+−]\d+%$/).first()).toBeVisible();
