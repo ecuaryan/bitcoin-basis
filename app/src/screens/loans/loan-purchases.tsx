@@ -1,4 +1,4 @@
-import type { Loan, LoanPurchase, LoanSummary } from '@bitcoin-basis/engine';
+import { averageCostPerBtc, type Loan, type LoanPurchase, type LoanSummary } from '@bitcoin-basis/engine';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
@@ -10,102 +10,140 @@ import { Card } from '../../ui/Card.tsx';
 import { PlainMoney } from '../../ui/plain-money.tsx';
 import { EmptyLine, SectionCount, SectionHeader, ShowMore } from '../../ui/SectionHeader.tsx';
 import { Approx, SignedMoney } from './loan-parts.tsx';
+import { fromParts } from '../../lib/worth-now.ts';
+import { C, Gain, MAIN, NARROW_ONLY, Percent, ROW, SUB, WIDE_ONLY } from '../purchase-table.tsx';
 
 /** Rows shown before "Show all". */
 export const LOAN_PURCHASES_SHOWN = 5;
 
-// One grid; every row is a subgrid, so the columns line up (as in the wallet's lots table).
-// Narrow (a phone): the purchase (date, BTC, wallet) on its own line, then Cost · Now · After interest (its interest
-// share under it). Wide (38rem of card and up): Purchase · Cost · Now · Gain or loss · Interest · After interest.
+// The Recent purchases table's grid and cells, plus the loan's two columns. Narrow (a phone): Date (year, wallet) · Paid ·
+// Bitcoin (@ cost per BTC) · Now (gain, percent), then a line across the row with the interest and the gain after it.
+// Wide (56rem of card and up): Date · Paid · Bitcoin · Cost per BTC · Now · Gain or loss · % · Interest · After interest.
 const TABLE =
-  'grid grid-cols-[repeat(3,minmax(max-content,1fr))] gap-x-3 tabular-nums @min-[38rem]:grid-cols-[minmax(0,1.3fr)_repeat(5,minmax(max-content,1fr))] @min-[38rem]:gap-x-4';
-const ROW = 'col-span-full grid grid-cols-subgrid';
-// The narrowest phones step the figures down a size so every column still fits.
-const MAIN = 'text-[13px] @max-[19.5rem]:text-xs';
-const SUB = 'text-[11px] @min-[38rem]:text-xs';
-const C = {
-  what: 'col-span-full flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 @min-[38rem]:col-span-1 @min-[38rem]:col-start-1 @min-[38rem]:flex-col @min-[38rem]:items-start',
-  cost: 'col-start-1 flex flex-col items-end gap-0.5 text-right @min-[38rem]:col-start-2',
-  now: 'col-start-2 text-right @min-[38rem]:col-start-3',
-  gain: 'col-start-4 hidden text-right @min-[38rem]:block',
-  share: 'col-start-5 hidden text-right @min-[38rem]:block',
-  after: 'col-start-3 flex flex-col items-end gap-0.5 text-right @min-[38rem]:col-start-6',
+  'grid grid-cols-[max-content_repeat(3,minmax(max-content,1fr))] gap-x-2 tabular-nums @min-[56rem]:grid-cols-[minmax(max-content,1.2fr)_repeat(5,minmax(max-content,1fr))_max-content_repeat(2,minmax(max-content,1fr))] @min-[56rem]:gap-x-4';
+const L = {
+  date: 'col-start-1 row-span-3 flex flex-col gap-0.5 @min-[56rem]:row-span-1',
+  interest: 'col-span-full col-start-1 row-start-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg bg-bg px-2.5 py-1.5 @min-[56rem]:contents',
+  share: '@min-[56rem]:col-start-8 @min-[56rem]:row-start-1 @min-[56rem]:text-right',
+  after: '@min-[56rem]:col-start-9 @min-[56rem]:row-start-1 @min-[56rem]:text-right',
 };
-const NARROW_ONLY = '@min-[38rem]:hidden';
 
-/** The cells after the first: cost of the coins still held, worth now, gain before and after the interest, the interest. */
-function Figures({ cost, ofCost, value, upDown, interest, after, estimated }: { cost: number; ofCost: number | null; value: number | null; upDown: number | null; interest: number; after: number | null; estimated: boolean }) {
-  const approx = estimated ? <Approx /> : null;
+interface Figures {
+  /** The cost and BTC of the coins still held, and what they cost and bought in all (null: all still held). */
+  costCents: number;
+  sats: number;
+  of: { costCents: number; sats: number } | null;
+  valueCents: number | null;
+  interestCents: number;
+  afterCents: number | null;
+  estimated: boolean;
+}
+
+/** Paid · Bitcoin · Cost per BTC · Now · Gain · % · Interest · After interest, in the Recent purchases cells. */
+function Cells({ f, total = false }: { f: Figures; total?: boolean }) {
+  const worth = fromParts(f.sats, f.costCents, f.valueCents);
+  const perBtc = averageCostPerBtc(f.costCents, f.sats);
+  const approx = f.estimated ? <Approx /> : null;
+  const strong = total ? 'font-semibold' : '';
   return (
     <>
-      <span className={cx(C.cost, MAIN)}>
-        <span>
-          <span className="sr-only">, cost </span>
-          <PlainMoney cents={cost} />
-        </span>
-        {ofCost !== null ? (
-          <span className={cx(SUB, 'text-muted')}>
-            of <PlainMoney cents={ofCost} />
-          </span>
-        ) : null}
+      <span className={cx(C.paid, MAIN, strong)}>
+        <span className="sr-only">, paid </span>
+        <PlainMoney cents={f.costCents} />
       </span>
-      <span className={cx(C.now, MAIN)}>
+      {f.of !== null ? (
+        <span className={cx('col-start-2 row-start-2 text-right text-muted @min-[56rem]:hidden', SUB)}>
+          of <PlainMoney cents={f.of.costCents} />
+        </span>
+      ) : null}
+      <span className={cx(C.btc, MAIN, 'font-semibold')}>
+        <Amount sats={f.sats} interactive={false} alwaysBtc />
+        <span className="sr-only"> BTC</span>
+      </span>
+      <span className={cx(C.perBtc, SUB, 'whitespace-nowrap text-muted @min-[56rem]:text-soft')}>
+        {perBtc === null || total ? null : (
+          <>
+            <span aria-hidden="true" className={NARROW_ONLY}>
+              @{' '}
+            </span>
+            <span className="sr-only">, cost per BTC </span>
+            <PlainMoney cents={perBtc} precision="dollars" />
+          </>
+        )}
+      </span>
+      <span className={cx(C.now, MAIN, strong)}>
         <span className="sr-only">, now </span>
-        {value === null ? '—' : <PlainMoney cents={value} />}
+        {worth.valueCents === null ? '—' : <PlainMoney cents={worth.valueCents} />}
       </span>
-      <span className={cx(C.gain, MAIN)}>
-        <span className="sr-only">, before interest </span>
-        {upDown === null ? '—' : <SignedMoney cents={upDown} plain precision="cents" />}
-      </span>
-      <span className={cx(C.share, MAIN, 'text-soft')}>
-        <span className="sr-only">, interest </span>
-        {approx}
-        <PlainMoney cents={interest} />
-      </span>
-      <span className={cx(C.after, MAIN)}>
-        <span className="font-semibold">
-          <span className="sr-only">, after interest </span>
-          {after === null ? '—' : <SignedMoney cents={after} plain precision="cents" />}
-        </span>
-        <span className={cx(SUB, NARROW_ONLY, 'whitespace-nowrap font-normal text-muted')}>
-          <span className="sr-only">, including </span>
+      <Gain worth={worth} className={cx(C.gain, SUB, '@min-[56rem]:text-sm')} />
+      <Percent worth={worth} className={cx(C.pct, SUB)} />
+      <span className={cx(L.interest, SUB)}>
+        <span className={cx(L.share, 'text-muted @min-[56rem]:text-[13px] @min-[56rem]:text-soft')}>
+          {f.of !== null ? (
+            <span className={NARROW_ONLY}>
+              <Amount sats={f.sats} short showUnit interactive={false} /> held of <Amount sats={f.of.sats} short showUnit interactive={false} />
+              {' · '}
+            </span>
+          ) : null}
+          <span className="sr-only">, interest </span>
           {approx}
-          <PlainMoney cents={interest} /> interest
+          <PlainMoney cents={f.interestCents} />
+          <span className={NARROW_ONLY}> interest</span>
+        </span>
+        <span className={cx(L.after, 'font-semibold', total ? 'text-[15px] @min-[56rem]:text-base' : 'text-[13px] @min-[56rem]:text-sm')}>
+          <span className="sr-only">, after interest </span>
+          {f.afterCents === null ? '—' : <SignedMoney cents={f.afterCents} plain precision="cents" />}
+          <span className={cx(NARROW_ONLY, 'text-xs font-normal text-muted')}> after interest</span>
         </span>
       </span>
     </>
   );
 }
 
-function PurchaseRow({ p, wallet, onOpen }: { p: LoanPurchase; wallet: string; onOpen(): void }) {
-  const btc = (sats: number) => <Amount sats={sats} short showUnit interactive={false} />;
+/** Date over year over wallet on a phone; `Oct 13, 2025` over the wallet when wide. A `title` (Total) in place of a date. */
+function When({ date = '', title, children }: { date?: string; title?: string; children: ReactNode }) {
+  const [monthDay = '', year = ''] = date === '' ? [] : shortDate(date).split(', ');
   return (
-    <li className={cx(ROW, 'border-b border-line')}>
-      <button type="button" aria-haspopup="dialog" onClick={onOpen} className={cx(ROW, 'min-h-14 items-start gap-y-1 bg-transparent py-2.5 text-left text-text')}>
-        <span className={cx(C.what, MAIN)}>
-          <span className="whitespace-nowrap font-semibold">{shortDate(p.drawDate)}</span>
-          <span className={cx(SUB, 'text-muted [overflow-wrap:anywhere]')}>
-            <span className="sr-only">, </span>
-            {p.heldSats === p.sats ? (
-              btc(p.sats)
-            ) : p.heldSats === 0 ? (
-              <>{btc(p.sats)}, none held</>
-            ) : (
-              <>
-                {btc(p.heldSats)} held of {btc(p.sats)}
-              </>
-            )}
-            {wallet !== '' ? ` · ${wallet}` : ''}
-          </span>
-        </span>
-        <Figures
-          cost={p.heldCostCents}
-          ofCost={p.heldCostCents === p.costCents ? null : p.costCents}
-          value={p.valueCents}
-          upDown={p.upDownCents}
-          interest={p.interestShareCents}
-          after={p.gainIncludingInterestCents}
-          estimated
+    <span className={L.date}>
+      <span className={cx(MAIN, 'whitespace-nowrap font-semibold')}>
+        {title ?? (
+          <>
+            {monthDay}
+            <span className={WIDE_ONLY}>, {year}</span>
+          </>
+        )}
+      </span>
+      {title === undefined ? <span className={cx(SUB, NARROW_ONLY, 'text-muted')}>{year}</span> : null}
+      <span className={cx(SUB, 'min-w-0 truncate text-muted')}>{children}</span>
+    </span>
+  );
+}
+
+function PurchaseRow({ p, wallet, onOpen }: { p: LoanPurchase; wallet: string; onOpen(): void }) {
+  const partly = p.heldSats !== p.sats;
+  return (
+    <li className={cx(ROW, 'border-b border-line-soft')}>
+      <button type="button" aria-haspopup="dialog" onClick={onOpen} className={cx(ROW, 'gap-y-0.5 bg-transparent py-2.5 text-left text-text @min-[56rem]:min-h-12 @min-[56rem]:items-center')}>
+        <When date={p.drawDate}>
+          <span className="sr-only">, </span>
+          {wallet}
+          {partly ? (
+            <span className={WIDE_ONLY}>
+              {' · '}
+              <Amount sats={p.heldSats} short showUnit interactive={false} /> held of <Amount sats={p.sats} short showUnit interactive={false} />
+            </span>
+          ) : null}
+        </When>
+        <Cells
+          f={{
+            costCents: p.heldCostCents,
+            sats: p.heldSats,
+            of: partly ? { costCents: p.costCents, sats: p.sats } : null,
+            valueCents: p.valueCents,
+            interestCents: p.interestShareCents,
+            afterCents: p.gainIncludingInterestCents,
+            estimated: true,
+          }}
         />
       </button>
     </li>
@@ -128,15 +166,6 @@ export function Purchases({ loan, s, purchases, onManage, onOpen }: { loan: Loan
   const newest = useMemo(() => [...purchases].sort((a, b) => (a.drawDate > b.drawDate ? -1 : a.drawDate < b.drawDate ? 1 : 0)), [purchases]);
   const shown = all ? newest : newest.slice(0, LOAN_PURCHASES_SHOWN);
   const hidden = purchases.length - shown.length;
-  let note: ReactNode = null;
-  if (s.upDownCents !== null && s.gainIncludingInterestCents !== null) {
-    note = (
-      <p className={cx('m-0 mt-3 rounded-xl bg-bg px-3 py-2.5 text-xs leading-normal text-muted', NARROW_ONLY)}>
-        <SignedMoney cents={s.upDownCents} precision="cents" /> before interest, less {s.interestOnPurchasesEstimated ? <Approx /> : null}
-        <PlainMoney cents={s.interestOnPurchasesCents} /> interest = <SignedMoney cents={s.gainIncludingInterestCents} precision="cents" className="font-semibold" /> after interest
-      </p>
-    );
-  }
   return (
     <Card as="section" aria-label="Purchases" className="@container flex flex-col">
       <SectionHeader title="Purchases, newest first" right={<SectionCount>{countOf(purchases.length, 'purchase')}</SectionCount>} className="-mt-2" />
@@ -145,13 +174,15 @@ export function Purchases({ loan, s, purchases, onManage, onOpen }: { loan: Loan
       ) : (
         <>
           <div className={TABLE}>
-            <div aria-hidden="true" className={cx(ROW, 'border-b border-line pb-1.5 text-[11px] text-muted')}>
-              <span className="col-start-1 hidden @min-[38rem]:block">Purchase</span>
-              <span className={C.cost}>Cost</span>
+            <div aria-hidden="true" className={cx(ROW, 'border-b border-line pb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted')}>
+              <span className="col-start-1">Date</span>
+              <span className={C.paid}>Paid</span>
+              <span className={C.btc}>Bitcoin</span>
+              <span className={cx(C.perBtc, WIDE_ONLY)}>Cost per BTC</span>
               <span className={C.now}>Now</span>
-              <span className={C.gain}>Gain or loss</span>
-              <span className={C.share}>Interest</span>
-              <span className={C.after}>After interest</span>
+              <span className="col-span-2 col-start-6 hidden text-right @min-[56rem]:inline">Gain or loss</span>
+              <span className="col-start-8 hidden text-right @min-[56rem]:inline">Interest</span>
+              <span className="col-start-9 hidden text-right @min-[56rem]:inline">After interest</span>
             </div>
             <ul aria-label="Purchases" className={cx(ROW, 'm-0 list-none p-0')}>
               {shown.map((p) => (
@@ -166,27 +197,25 @@ export function Purchases({ loan, s, purchases, onManage, onOpen }: { loan: Loan
                 />
               ))}
             </ul>
-            <div role="group" aria-label="Total" className={cx(ROW, 'items-start gap-y-1 pt-2.5 font-semibold')}>
-              <span className={cx(C.what, MAIN)}>
-                <span>Total</span>
-                <span className={cx(SUB, 'font-normal text-muted')}>
-                  <span className="sr-only">, </span>
-                  {hidden > 0 ? `All ${countOf(purchases.length, 'purchase')} · ` : ''}
-                  <Amount sats={s.heldSats} short showUnit interactive={false} /> held
-                </span>
-              </span>
-              <Figures
-                cost={s.heldCostCents}
-                ofCost={null}
-                value={s.valueCents}
-                upDown={s.upDownCents}
-                interest={s.interestOnPurchasesCents}
-                after={s.gainIncludingInterestCents}
-                estimated={s.interestOnPurchasesEstimated}
+            <div role="group" aria-label="Total" className={cx(ROW, 'gap-y-0.5 pt-3 @min-[56rem]:items-center')}>
+              <When title="Total">
+                <span className="sr-only">, </span>
+                {countOf(purchases.length, 'purchase')}
+              </When>
+              <Cells
+                total
+                f={{
+                  costCents: s.heldCostCents,
+                  sats: s.heldSats,
+                  of: null,
+                  valueCents: s.valueCents,
+                  interestCents: s.interestOnPurchasesCents,
+                  afterCents: s.gainIncludingInterestCents,
+                  estimated: s.interestOnPurchasesEstimated,
+                }}
               />
             </div>
           </div>
-          {note}
         </>
       )}
       {hidden > 0 ? <ShowMore onClick={() => setAll(true)}>Show all {countOf(purchases.length, 'purchase')}</ShowMore> : null}

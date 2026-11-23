@@ -61,6 +61,9 @@ test('Holdings: the loan card shows exactly the engine’s figures for the demo 
   const list = page.getByRole('region', { name: 'Purchases' });
   await expect(list).toContainText('4 purchases');
   await expect(list.getByRole('list', { name: 'Purchases' }).getByRole('listitem')).toHaveCount(4);
+  // The Recent purchases layout: Date · Paid · Bitcoin · Now, then each row's interest and its gain after interest.
+  await expect(list.locator('[aria-hidden="true"]').first()).toContainText(/^Date\s*Paid\s*Bitcoin/);
+  await expect(list.getByRole('list', { name: 'Purchases' }).getByRole('button').first()).toHaveAccessibleName(/, paid \$[\d,]+\.\d\d.* BTC.*, now \$[\d,]+\.\d\d.*, interest .*\$[\d,]+\.\d\d.*, after interest [+−]\$[\d,]+\.\d\d/);
   expect(total((p) => p.heldCostCents)).toBe(expected.heldCostCents);
   expect(total((p) => p.valueCents)).toBe(expected.valueCents);
   expect(total((p) => p.interestShareCents)).toBe(expected.interestOnPurchasesCents);
