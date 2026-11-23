@@ -21,13 +21,14 @@ describe('balance reminder', () => {
   it('picks the wallet that has waited longest once 90 days pass', () => {
     const state = replay(book);
     const h = holdings(state);
-    expect(addDays('2026-10-30', 90)).toBe('2027-01-28');
+    expect(addDays('2026-11-02', 90)).toBe('2027-01-31');
     // Without the tax-season rule (no entries given), only the 90 days count.
-    expect(balanceNudge(state, h, '2027-01-27')).toBeNull();
-    expect(balanceNudge(state, h, '2027-01-28')).toMatchObject({ lastChecked: '2026-10-30', why: 'stale' });
+    expect(balanceNudge(state, h, '2027-01-30')).toBeNull();
+    expect(balanceNudge(state, h, '2027-01-31')).toMatchObject({ lastChecked: '2026-11-02', why: 'stale' });
   });
   it('asks once in tax season about a wallet used last year and not confirmed since Jan 1', () => {
-    expect(nudgeFor(book, '2027-01-01')).toMatchObject({ lastChecked: '2026-10-30', why: 'tax-season' });
+    // Strike was used in 2026 (Cold storage was not), so it is the one asked about.
+    expect(nudgeFor(book, '2027-01-01')).toMatchObject({ lastChecked: '2026-11-20', why: 'tax-season' });
     expect(nudgeFor(book, '2027-04-15')?.why).toBe('stale');
     const state = replay(book);
     // Confirmed this year: quiet until 90 days pass.

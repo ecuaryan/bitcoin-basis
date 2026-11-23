@@ -161,7 +161,7 @@ test('Entries: an aligned table on a wide card, compact rows on a phone; each ro
   const list = page.getByRole('list', { name: 'Entries, newest first' });
   const first = list.getByRole('button').first();
   // Title first, then wallet and date with its year (Chrome puts a space before a comma that follows a block), the full 8-decimal BTC and what the dollars were.
-  await expect(first).toHaveAccessibleName(/^Bought ?, Strike · Nov 12 ?, 2026 ?, \+0\.0234 7140 BTC ?, \$1,388\.93 paid$/);
+  await expect(first).toHaveAccessibleName(/^Bought ?, Strike · Nov 1 ?, 2026 ?, \+0\.0324 8000 BTC ?, \$2,403\.37 paid$/);
   const heading = page.locator('[aria-hidden="true"]', { hasText: /^DateWhatWalletBitcoinDollars$/ });
   if (info.project.name === 'desktop') {
     await expect(heading).toBeVisible();
@@ -178,7 +178,7 @@ test('Entries: an aligned table on a wide card, compact rows on a phone; each ro
   }
   // A move: both wallets, its fee, no dollars.
   await page.getByRole('searchbox', { name: 'Search entries' }).fill('moved');
-  await expect(list.getByRole('button').first()).toHaveAccessibleName(/^Moved ?, Strike .*Cold storage · Jul 1 ?, 2025 ?, .*0\.3176 9422 BTC ?, fee 0\.0000 4400 BTC/);
+  await expect(list.getByRole('button').first()).toHaveAccessibleName(/^Moved ?, Strike .*Cold storage · Jul 1 ?, 2025 ?, .*0\.2000 0000 BTC ?, fee 0\.0000 4400 BTC/);
   await list.getByRole('button').first().click();
   await expect(page.getByRole('dialog', { name: 'Moved' })).toContainText('History');
   await expectNoViolations(page);
@@ -190,12 +190,12 @@ test("Entries on a wallet's page: a move out shows what left (coins and fee); Hi
   const entries = page.getByRole('region', { name: 'Entries' });
   await entries.getByRole('button', { name: /^Show all \d+ entries/ }).click();
   const move = entries.getByRole('button', { name: /^Moved to Cold storage/ }).first();
-  await expect(move).toHaveAccessibleName(/0\.3176 9422 BTC arrived · fee 0\.0000 4400 BTC · Jul 1 ?, 2025 ?, −0\.3177 3822 BTC/);
+  await expect(move).toHaveAccessibleName(/0\.2000 0000 BTC arrived · fee 0\.0000 4400 BTC · Jul 1 ?, 2025 ?, −0\.2000 4400 BTC/);
   if (info.project.name === 'desktop') await expect(page.locator('[aria-hidden="true"]', { hasText: /^DateWhatBitcoinDollars$/ })).toBeVisible();
   await expectNoViolations(page);
   // Hide amounts hides every figure in the rows; the dates stay.
   await page.getByRole('button', { name: 'Hide amounts' }).first().click();
   const texts = await entries.getByRole('listitem').allInnerTexts();
-  expect(texts.length).toBeGreaterThan(100);
+  expect(texts.length).toBeGreaterThan(20);
   for (const t of texts) expect(t.replace(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}|\b20\d\d\b/g, '')).not.toMatch(/\d/);
 });

@@ -9,10 +9,9 @@ describe('Holdings: every worth is lot by lot, so the parts add up to the totals
   const view = buildHoldingsView(state, holdings(state), DEMO_PRICE_CENTS, DEMO_TODAY);
 
   it('the taxable worth is the year rows added up, to the cent', () => {
-    // Before: sats × price on the total ($319,206.90) against the lots added up ($319,206.94).
     const rows = view.stack.reduce((t, r) => t + (sumWorth(r.lots, DEMO_PRICE_CENTS).valueCents as number), 0);
     expect(view.worthCents).toBe(rows);
-    expect(view.worthCents).toBe(31_920_694);
+    expect(view.worthCents).toBe(17_540_295);
     expect(view.all?.taxable.valueCents).toBe(view.worthCents);
     expect(view.gainCents).toBe(view.all?.taxable.gainCents);
   });
@@ -32,8 +31,8 @@ describe('Holdings: every worth is lot by lot, so the parts add up to the totals
     const dollars = (c: number | null) => Math.trunc((c as number) / 100);
     expect(dollars(split.taxable.valueCents) + dollars(split.retirement.valueCents)).toBe(dollars(all.total.valueCents));
     expect(dollars(split.taxable.gainCents) + dollars(split.retirement.gainCents)).toBe(dollars(all.total.gainCents));
-    // $319,206.94 + $33,184.34 = $352,391.28: $319,207 + $33,184 (was $319,206 + $33,184 under $352,391).
-    expect([split.taxable.valueCents, split.retirement.valueCents]).toEqual([31_920_700, 3_318_400]);
+    // $175,402.95 + $23,703.10 = $199,106.05: $175,403 + $23,703 = $199,106.
+    expect([split.taxable.valueCents, split.retirement.valueCents]).toEqual([17_540_300, 2_370_300]);
     expect(view.taxableGainShownCents).toBe(split.taxable.gainCents);
     // The Retirement card's one wallet shows the Retirement row's figures.
     expect(view.retirement.map((r) => [r.shown.valueCents, r.shown.gainCents])).toEqual([[split.retirement.valueCents, split.retirement.gainCents]]);
@@ -98,8 +97,8 @@ describe('Holdings: your stack by year bought is all your Bitcoin, taxable and r
 
   it('each year has its retirement purchases, by their date, beside the taxable lots', () => {
     const byYear = Object.fromEntries(view.stack.map((r) => [r.year, r.retirementSats]));
-    // The demo's three retirement purchases: 0.15 BTC in 2022, 0.165 in 2024, 0.035 in 2026.
-    expect(byYear).toEqual({ 2022: 15_000_000, 2023: 0, 2024: 16_500_000, 2025: 0, 2026: 3_500_000 });
+    // The demo's three retirement purchases: 0.10 BTC in 2022, 0.10 in 2024, 0.05 in 2026.
+    expect(byYear).toEqual({ 2022: 10_000_000, 2023: 0, 2024: 10_000_000, 2025: 0, 2026: 5_000_000 });
     for (const r of view.stack) {
       expect(r.sats).toBe(r.taxableSats + r.retirementSats);
       expect(r.taxableSats).toBe(r.lots.reduce((t, l) => t + l.sats, 0));

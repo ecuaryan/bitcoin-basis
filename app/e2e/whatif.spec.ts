@@ -73,12 +73,12 @@ test('Sell: plan cards line up row by row, and the lots used add up to the card'
 
   const lots = page.getByRole('region', { name: 'Lots used' });
   const toggle = lots.getByRole('button', { name: /^Lots used in Lowest tax/ });
-  await expect(toggle).toContainText('17 lots');
-  // 17 lots: folded to start.
+  await expect(toggle).toContainText('11 lots');
+  // 11 lots: folded to start.
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggle.click();
   const rows = lots.getByRole('list', { name: 'Lots used in Lowest tax' }).getByRole('listitem');
-  await expect(rows).toHaveCount(17);
+  await expect(rows).toHaveCount(11);
   await expect(rows.first()).toContainText(/[A-Z][a-z]{2} \d{1,2}, \d{4}/);
   const total = lots.getByRole('group', { name: 'Total of the lots used' });
   const totalGain = /([+\u2212]?\$[\d,.]+)$/.exec((await total.innerText()).trim());
@@ -88,7 +88,7 @@ test('Sell: plan cards line up row by row, and the lots used add up to the card'
   // The table follows the choice.
   await oldest.click();
   await expect(oldest).toHaveAttribute('aria-checked', 'true');
-  await expect(lots.getByRole('button', { name: /^Lots used in Oldest first/ })).toContainText('31 lots');
+  await expect(lots.getByRole('button', { name: /^Lots used in Oldest first/ })).toContainText('13 lots');
 
   // Hide amounts hides every figure on the cards and in the table (dates and counts stay).
   await page.getByRole('button', { name: 'Hide amounts', exact: true }).first().click();

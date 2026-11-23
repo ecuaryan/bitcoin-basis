@@ -48,7 +48,7 @@ If you hold your own coins, nobody sends you a tax statement, yet the IRS still 
 - **Retirement accounts:** log what an IRA bought to see each purchase's cost, worth now and gain, plus an All Bitcoin total (taxable and retirement together). Retirement coins never enter tax math.
 - **Emergency kit:** a one-page printout for your estate papers: the recovery code, how to open the records, and where the Bitcoin is held (wallet names only). The app reminds you to test it once a year.
 - **Hide amounts** (your choice, off by default), installable on a phone, offline after the first load.
-- **Try the demo:** on the first screen, "Try the demo" loads synthetic data, or open `/demo` on your app's address (a link you can share). Made-up data, kept only in memory and gone when you close it. Import and restore are off.
+- **Try the demo:** on the first screen, "Try the demo" loads synthetic data, or open `/demo` on your app's address (a link you can share). Once set up, the lock screen has "Show the demo" too, to show someone on your own phone. Made-up data, kept only in memory and gone when you close it. Import and restore are off.
 
 The browser talks only to your own Worker. The Worker fetches the public BTC price (history rounded to the hour) from mempool.space, or from your own `MEMPOOL_URL`, and forwards nothing about you. When mempool fails, the live price comes from Coinbase's public spot price instead (`COINBASE_URL`, `off` to skip it), again with nothing about you.
 

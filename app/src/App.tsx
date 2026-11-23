@@ -6,7 +6,8 @@ import { ReadyGate } from './ui/ready-gate.tsx';
 import { AppShell, useLogSheet } from './ui/AppShell.tsx';
 import { lazy, Suspense, useEffect, useRef } from 'react';
 import { useLedger } from './data/ledger-provider.tsx';
-import { useVaultStatusOptional } from './data/vault-provider.tsx';
+import { useVaultOptional } from './data/vault-provider.tsx';
+import { flushPendingSaves } from './lib/pending-saves.ts';
 import { useServiceWorkerUpdateToast } from './register-sw.ts';
 import { UpdateBoundary } from './ui/UpdateBoundary.tsx';
 import { useScrollBehavior } from './ui/scroll-behavior.ts';
@@ -31,20 +32,26 @@ function LogRoute() {
 }
 
 /**
- * `/demo`: a link to share. Opens the made-up demo, which lives only in this browser's memory and never reaches the
- * server. On a device that holds real records it opens those instead (the demo is never allowed beside a vault).
+ * `/demo`: a link to share, or a way to show someone the demo on your own device. Opens the made-up demo, which lives
+ * only in this browser's memory and never reaches the server. Records open on this device are locked first, so the
+ * demo never sits beside them; Exit demo goes back to the lock screen.
  */
 function DemoRoute() {
-  const status = useVaultStatusOptional();
+  const vault = useVaultOptional();
   const { isDemo, loadDemo } = useLedger();
-  const allowed = status === null || status.state === 'empty';
   const started = useRef(false);
   useEffect(() => {
-    if (!allowed || isDemo || started.current) return;
+    if (isDemo || started.current) return;
     started.current = true;
-    void loadDemo();
-  }, [allowed, isDemo, loadDemo]);
-  if (!allowed || isDemo) return <Navigate to="/" replace />;
+    void (async () => {
+      if (vault !== null && vault.status.state === 'unlocked') {
+        await flushPendingSaves();
+        vault.lock();
+      }
+      await loadDemo();
+    })();
+  }, [isDemo, loadDemo, vault]);
+  if (isDemo) return <Navigate to="/" replace />;
   return <div aria-busy="true" className="min-h-[60dvh]" />;
 }
 

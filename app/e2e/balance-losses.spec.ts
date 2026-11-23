@@ -3,10 +3,10 @@ import { expectNoViolations, go, openDemo } from './helpers.ts';
 
 test('balance check: the question is plain, the first-time help goes away, hide-amounts masks it', async ({ page }) => {
   await openDemo(page);
-  await go(page, '/wallet/wallet-river');
+  await go(page, '/wallet/wallet-strike');
   const card = page.getByRole('region', { name: 'Does it match?' });
-  await expect(card).toContainText('Does River show');
-  // River was confirmed in the demo, so the first-time help is not shown.
+  await expect(card).toContainText('Does Strike show');
+  // Strike was confirmed in the demo, so the first-time help is not shown.
   await expect(card).not.toContainText('A quick check that nothing was missed');
   await expectNoViolations(page);
   await page.getByRole('button', { name: /Hide amounts|Hide/ }).first().click();

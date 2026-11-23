@@ -18,13 +18,19 @@ test('Wallet: each lot shows what it is worth now, up or down, with the percent'
 
 test('Frozen wallet: its lots show no worth or gain, and its purchase says the coins are frozen, not gone', async ({ page }) => {
   await openDemo(page);
-  await go(page, '/wallet/wallet-harbor');
+  // The demo has no frozen wallet, so freeze Strike first.
+  await go(page, '/wallet/wallet-strike');
+  await page.getByRole('button', { name: 'Wallet options' }).click();
+  await page.getByRole('button', { name: /Platform frozen or failed/ }).click();
+  await page.getByRole('button', { name: 'Review', exact: true }).click();
+  await page.getByRole('button', { name: 'Mark frozen' }).click();
+  await expect(page.getByText(/FROZEN SINCE/)).toBeVisible();
   const coins = page.getByRole('region', { name: 'Lots in this wallet' });
   await expect(coins).toContainText('Frozen · not counted in what your Bitcoin is worth');
   await expect(coins.getByRole('button', { name: LOT_ROW })).toHaveCount(0);
   await page.getByRole('region', { name: 'Entries' }).getByRole('button', { name: /Bought/ }).first().click();
   const block = page.getByRole('dialog').getByRole('region', { name: 'What these coins are worth now' });
-  await expect(block).toContainText('0.5000 0000 BTC of it is in a frozen wallet');
+  await expect(block).toContainText('0.0324 8000 BTC of it is in a frozen wallet');
   await expect(block).not.toContainText('None of these coins are left');
   await expectNoViolations(page);
 });

@@ -2,7 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { expectNoViolations, go, openDemo } from './helpers.ts';
 
 // Gifts: lowest-cost lots by default, and "I bought it to give" (a purchase and the gift of it, saved together).
-// Demo book: in Strike the oldest lot is from Jul 19, 2025; the lowest-cost one ($55,958 per BTC) from Aug 17, 2025.
+// Demo book: Cold storage's oldest lots are from early 2022 ($40,000 a BTC then); its lowest-cost lot (about $17,000
+// per BTC) is from Nov 13, 2022, after the price fell.
 
 async function openGave(page: Page) {
   await page.getByRole('button', { name: 'Log', exact: true }).first().click();
@@ -18,24 +19,22 @@ test('a gift uses the lowest-cost lots first, says why, and the note shows them'
   await expect(d.getByRole('radio', { name: 'Lowest cost first' })).toHaveAttribute('aria-checked', 'true');
   await expect(d.getByText('Uses your lowest-cost lots first, so you keep your higher-cost Bitcoin (less tax when you sell later). The person you give to takes on your cost.')).toBeVisible();
   await d.getByLabel('Amount', { exact: true }).fill('0.01');
-  await d.getByLabel('From wallet').selectOption({ label: 'Strike' });
+  await d.getByLabel('From wallet').selectOption({ label: 'Cold storage' });
   await d.getByLabel('Who is it for?').fill('Mom');
-  await expect(d.getByText('Uses 2 lots, lowest cost first. Saved with the entry.')).toBeVisible();
+  await expect(d.getByText('Uses 1 lot, lowest cost first. Saved with the entry.')).toBeVisible();
   const lots = d.getByRole('list', { name: 'Lots in this wallet' });
-  await expect(lots.getByRole('listitem').first()).toContainText('Aug 17, 2025');
-  await expect(lots).not.toContainText('Jul 19, 2025');
+  await expect(lots.getByRole('listitem').first()).toContainText('Nov 13, 2022');
   await expect(d.getByText('Nobody can claim the loss')).toHaveCount(0);
   await expectNoViolations(page);
 
   await d.getByRole('button', { name: 'Review gift' }).click();
   const used = d.getByRole('region', { name: 'Lots used' });
-  await expect(used).toContainText('Aug 17, 2025');
-  await expect(used).toContainText('Sep 15, 2025');
-  await expect(used).not.toContainText('Jul 19, 2025');
+  await expect(used).toContainText('Nov 13, 2022');
+  await expect(used).toContainText('(1)');
   await expectNoViolations(page);
   await d.getByRole('button', { name: 'Save gift' }).click();
   await expect(d.getByText('Gift saved')).toBeVisible();
-  await expect(d.getByRole('list', { name: 'Lots given' })).toContainText('Bought Aug 17, 2025');
+  await expect(d.getByRole('list', { name: 'Lots given' })).toContainText('Bought Nov 13, 2022');
 });
 
 test('Pick lots is still there for a gift', async ({ page }) => {
@@ -51,7 +50,7 @@ test('"I bought it to give" logs the purchase and the gift together; the gift us
   await openDemo(page);
   await go(page, '/wallet/wallet-strike');
   await expect(page.getByRole('heading', { name: 'Strike', level: 1 })).toBeVisible();
-  await expect(page.getByText('0.6188 2140 BTC').first()).toBeVisible();
+  await expect(page.getByText('0.4200 0000 BTC').first()).toBeVisible();
   const d = await openGave(page);
   // By keyboard: the switch keeps focus while the form below changes.
   const sw = d.getByRole('switch', { name: 'I bought it to give' });
@@ -88,7 +87,7 @@ test('"I bought it to give" logs the purchase and the gift together; the gift us
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   // The wallet is where it was: bought and given away. Newest first: the gift, then the purchase.
-  await expect(page.getByText('0.6188 2140 BTC').first()).toBeVisible();
+  await expect(page.getByText('0.4200 0000 BTC').first()).toBeVisible();
   const entries = page.getByRole('region', { name: 'Entries' });
   const rows = entries.getByRole('listitem');
   await expect(rows.nth(0)).toContainText('Gave to Mom');

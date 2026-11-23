@@ -7,7 +7,7 @@ test('Retirement: log a purchase, see its gain, edit and remove it; Holdings sho
   await go(page, '/wallet/wallet-retirement');
   const purchases = page.getByRole('region', { name: 'Purchases' });
   await expect(purchases).toContainText('3 purchases');
-  await expect(purchases).toContainText('up $8,041.86 (+130%)');
+  await expect(purchases).toContainText('up $5,361.24 (+130%)');
   await expect(page.getByRole('region', { name: 'Balance', exact: true })).toContainText('Never part of tax math.');
 
   await purchases.getByRole('button', { name: 'Log a purchase' }).click();
@@ -50,15 +50,15 @@ test('Retirement: log a purchase, see its gain, edit and remove it; Holdings sho
 
   // Holdings: the hero is all your Bitcoin, split into taxable and retirement right under it.
   await go(page, '/');
-  await expect(page.getByRole('region', { name: 'What all your Bitcoin is worth' })).toContainText('$352,391');
+  await expect(page.getByRole('region', { name: 'What all your Bitcoin is worth' })).toContainText('$199,106');
   const split = page.getByRole('region', { name: 'Taxable and retirement' });
-  await expect(split.getByRole('button', { name: /^Taxable/ })).toContainText('Counts for tax · 3.3667 BTC');
+  await expect(split.getByRole('button', { name: /^Taxable/ })).toContainText('Counts for tax · 1.8500 BTC');
   const retirement = split.getByRole('link', { name: /^Retirement/ });
-  await expect(retirement).toContainText('Kept apart from tax · 0.3500 BTC');
-  await expect(retirement).toContainText('$33,184');
-  await expect(retirement).toContainText('up $17,274');
+  await expect(retirement).toContainText('Kept apart from tax · 0.2500 BTC');
+  await expect(retirement).toContainText('$23,703');
+  await expect(retirement).toContainText('up $11,383');
   await expect(page.getByRole('region', { name: 'All your Bitcoin', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Retirement accounts' })).toContainText('up $17,274');
+  await expect(page.getByRole('region', { name: 'Retirement accounts' })).toContainText('up $11,383');
   await expectNoViolations(page);
 });
 

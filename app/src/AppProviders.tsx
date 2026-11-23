@@ -35,11 +35,14 @@ export interface ProvidersProps {
   children: ReactNode;
 }
 
-/** Real data comes from the vault's store; the demo book is only allowed while no vault is on this device. */
+/**
+ * Real data comes from the vault's store. The demo book is allowed only while the records are not open: before
+ * anyone has set up, or while locked (to show someone the demo on your own phone). Unlocked, the real book wins.
+ */
 function LedgerBridge({ vault, demoStore, children }: { vault: Vault; demoStore: LedgerStore; children: ReactNode }) {
   const status = useVaultStatus();
   return (
-    <LedgerProvider store={vault.store} demoStore={demoStore} demoAllowed={status.state === 'empty'}>
+    <LedgerProvider store={vault.store} demoStore={demoStore} demoAllowed={status.state !== 'unlocked'}>
       {children}
     </LedgerProvider>
   );

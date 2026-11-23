@@ -23,9 +23,10 @@ test('Holdings loads with demo data and has no accessibility violations', async 
 
   // The demo has a retirement account, so the hero is all of it: taxable plus retirement.
   const hero = page.getByRole('region', { name: 'What all your Bitcoin is worth' });
-  await expect(hero.getByText('$352,391')).toBeVisible();
-  await expect(hero.getByText('3.7167 2105 BTC')).toBeVisible();
-  await expect(hero).toContainText('up $197,603 (+128%) unrealized');
+  await expect(hero.getByText('$199,106')).toBeVisible();
+  // 2.1 BTC in all: the demo's Easter egg.
+  await expect(hero.getByText('2.1000 0000 BTC')).toBeVisible();
+  await expect(hero).toContainText('up $110,473 (+125%) unrealized');
   await expect(page.getByRole('heading', { name: 'Your stack, by year bought' })).toBeVisible();
 
   const results = await new AxeBuilder({ page }).analyze();
@@ -80,15 +81,15 @@ test('Holdings with a retirement account: all your Bitcoin on top, split into ta
   await openHoldingsWithDemo(page);
   const split = page.getByRole('region', { name: 'Taxable and retirement' });
   const taxable = split.getByRole('button', { name: /^Taxable/ });
-  await expect(taxable).toContainText('Counts for tax · 3.3667 BTC');
-  // $319,206.94 + $33,184.34 = $352,391.28: the rows add up to the total ($319,207 + $33,184 = $352,391).
-  await expect(page.getByRole('region', { name: 'What all your Bitcoin is worth' })).toContainText('$352,391');
-  await expect(taxable).toContainText('$319,207');
-  await expect(taxable).toContainText('up $180,329');
+  await expect(taxable).toContainText('Counts for tax · 1.8500 BTC');
+  // $175,402.95 + $23,703.10 = $199,106.05: the rows add up to the total ($175,403 + $23,703 = $199,106).
+  await expect(page.getByRole('region', { name: 'What all your Bitcoin is worth' })).toContainText('$199,106');
+  await expect(taxable).toContainText('$175,403');
+  await expect(taxable).toContainText('up $99,090');
   const retirement = split.getByRole('link', { name: /^Retirement/ });
-  await expect(retirement).toContainText('Kept apart from tax · 0.3500 BTC');
-  await expect(retirement).toContainText('$33,184');
-  await expect(retirement).toContainText('up $17,274');
+  await expect(retirement).toContainText('Kept apart from tax · 0.2500 BTC');
+  await expect(retirement).toContainText('$23,703');
+  await expect(retirement).toContainText('up $11,383');
   for (const row of [taxable, retirement]) expect((await row.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
 
   // The old bottom card and the line under the hero are gone.
@@ -162,9 +163,9 @@ test('Holdings runs most looked-at first; the stack by year is all your Bitcoin,
   await expect(stack).toContainText('Retirement');
   await expect(stack).toContainText('Taxable: 94% documented.');
   await expect(stack).not.toContainText('Not in a year');
-  // 2024: the taxable lots (0.6911 2…) plus the retirement purchase of Jan 18 (0.1650): 0.8561 BTC.
+  // 2024: the taxable lots (0.4000) plus the retirement purchase of Jan 18 (0.1000): 0.5000 BTC.
   const y2024 = stack.getByRole('button', { name: /Show the 2024 lots/ });
-  await expect(y2024).toContainText('0.8561');
+  await expect(y2024).toContainText('0.5000');
   await expect(y2024.locator('.bg-retire')).toHaveCount(1);
   await expect(stack.getByRole('button', { name: /Show the 2023 lots/ }).locator('.bg-retire')).toHaveCount(0);
   // Retirement has its own colour everywhere: the split bar and swatch too, never the Reconstructed cream.
@@ -173,7 +174,7 @@ test('Holdings runs most looked-at first; the stack by year is all your Bitcoin,
   await y2024.click();
   const sheet = page.getByRole('dialog', { name: '2024 lots' });
   const purchase = sheet.getByRole('button').filter({ hasText: 'Jan 18, 2024 · Retirement account' });
-  await expect(purchase).toContainText('0.1650 0000');
+  await expect(purchase).toContainText('0.1000 0000');
   await expect(purchase).toContainText('Retirement');
   await expect(purchase).toContainText(/Now \$[\d,]+\.\d\d · up \$[\d,]+\.\d\d \(\+\d+%\)/);
   await purchase.click();
@@ -218,11 +219,12 @@ test('the chart’s average-cost line switches between all your Bitcoin, taxable
   const card = page.getByRole('region', { name: 'Average cost versus price' });
   const pick = card.getByRole('radiogroup', { name: 'Average cost line for' });
   await expect(pick.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true');
-  await expect(card).toContainText('Average cost of all your Bitcoin: $41,646.35');
+  await expect(card).toContainText('Average cost of all your Bitcoin: $42,206.11');
   await pick.getByRole('radio', { name: 'Taxable' }).click();
   await expect(card).toContainText('Average cost of your taxable Bitcoin: $41,250.18');
   await pick.getByRole('radio', { name: 'Retirement' }).click();
-  await expect(card).toContainText('Average cost of your retirement Bitcoin: $45,457.14');
+  // $4,120 + $4,200 + $4,000 = $12,320 for 0.25 BTC.
+  await expect(card).toContainText('Average cost of your retirement Bitcoin: $49,280.00');
   expect((await new AxeBuilder({ page }).include('section[aria-label="Average cost versus price"]').analyze()).violations).toEqual([]);
 });
 
@@ -230,14 +232,14 @@ test('Wallets: one aligned table whose rows add up to the total and the unrealiz
   await openDemo(page);
   const card = page.getByRole('region', { name: 'Wallets' });
   const rows = card.getByRole('list', { name: 'Wallets, biggest first' }).getByRole('link');
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(2);
   const total = card.getByRole('group', { name: 'All counted wallets' });
-  await expect(total).toContainText('3 wallets');
+  await expect(total).toContainText('2 wallets');
   // Every wallet's worth and gain in whole dollars adds up to the total row.
   const dollars = async (loc: Locator, n: number) => Number(((await loc.innerText()).match(/[+−]?\$[\d,]+/g) ?? [])[n]?.replace(/[$,+]/g, '').replace('−', '-'));
   let worth = 0;
   let gain = 0;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     worth += await dollars(rows.nth(i), 0);
     gain += await dollars(rows.nth(i), 1);
   }
@@ -247,7 +249,8 @@ test('Wallets: one aligned table whose rows add up to the total and the unrealiz
   // The BTC figures share one right edge, so the decimals line up.
   const rights = await card.locator('a > span:nth-child(3)').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
   expect(new Set(rights).size).toBe(1);
-  await expect(card.getByRole('list', { name: 'Frozen wallets, not counted' })).toContainText('Not counted');
+  // The demo keeps it simple: no frozen wallet (log-wallet.spec freezes one and checks this list).
+  await expect(card.getByRole('list', { name: 'Frozen wallets, not counted' })).toHaveCount(0);
   await expectNoViolations(page);
 });
 
@@ -259,14 +262,27 @@ test('/demo is a link to share: it opens straight into the made-up demo, with no
   await page.goto('/demo');
   await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('region', { name: 'What all your Bitcoin is worth' })).toContainText('$352,391');
+  await expect(page.getByRole('region', { name: 'What all your Bitcoin is worth' })).toContainText('2.1000 0000 BTC');
   expect(external).toEqual([]);
 });
 
-test('/demo on a device with real records opens those records, never the demo', async ({ page }) => {
+test('/demo on a device with records open locks them first, and Exit demo goes back to the lock screen', async ({ page }) => {
   await setUp(page);
   await go(page, '/demo');
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
+  await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Demo mode' })).toBeVisible();
+  await page.getByRole('button', { name: 'Exit demo' }).first().click();
+  await expect(page.getByRole('button', { name: 'Show the demo' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Holdings' })).toHaveCount(0);
+});
+
+test('the lock screen can show the demo, to show someone on your own phone, and Exit demo locks again', async ({ page }) => {
+  await setUp(page);
+  await page.getByRole('button', { name: 'Lock' }).first().click();
+  await page.getByRole('button', { name: 'Show the demo' }).click();
+  await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Demo mode' })).toBeVisible();
+  await page.getByRole('button', { name: 'Exit demo' }).first().click();
+  await expect(page.getByRole('button', { name: 'Show the demo' })).toBeVisible();
   await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toHaveCount(0);
 });

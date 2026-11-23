@@ -3,8 +3,9 @@
  * have something believable to show on first run and in tests. It is never real data.
  *
  * Integers only (sats and cents). A seeded generator keeps the book identical on every load.
- * The book is built to land on the figures in the approved Holdings design: 3.36672105 BTC across
- * Cold storage, Strike and River; an average cost of $41,250.18; 94% documented.
+ * Small on purpose, enough to show the idea without a wall of rows: 2.1 BTC in all (1.85 taxable in Cold storage
+ * and Strike, 0.25 in a retirement account), a few dozen purchases, one loan, a gift in and one out, one spend.
+ * Taxable average cost $41,250.18; 94% documented.
  */
 import { createUuidV7, mulDivRoundHalfUp, oldestFirst, replay, SATS_PER_BTC, suggestLoanPayment, type BuyEntry, type Entry, type LedgerState, type LotPick, type Tier, type WalletId } from '@bitcoin-basis/engine';
 
@@ -17,24 +18,19 @@ export const DEMO_AVERAGE_COST_CENTS_PER_BTC = 4_125_018;
 export const W = {
   cold: 'wallet-cold',
   strike: 'wallet-strike',
-  river: 'wallet-river',
   coinbase: 'wallet-coinbase',
-  harbor: 'wallet-harbor',
   retirement: 'wallet-retirement',
 } as const;
 
-/** Final sats per (wallet, year acquired), straight from the design's year bars and wallet cards. */
+/** Final sats per (wallet, year acquired): 1.85 BTC taxable, which with the 0.25 BTC retirement account makes 2.1. */
 const TARGET_CELLS: Readonly<Record<string, number>> = {
-  [`${W.cold}:2022`]: 42_104_000,
-  [`${W.cold}:2023`]: 118_018_000,
-  [`${W.cold}:2024`]: 69_112_000,
-  [`${W.cold}:2025`]: 31_769_422,
+  [`${W.cold}:2022`]: 23_000_000,
+  [`${W.cold}:2023`]: 60_000_000,
+  [`${W.cold}:2024`]: 40_000_000,
+  [`${W.cold}:2025`]: 20_000_000,
   [`${W.strike}:2025`]: 15_000_000,
-  [`${W.strike}:2026`]: 46_882_140,
-  [`${W.river}:2025`]: 10_533_578,
-  [`${W.river}:2026`]: 3_252_965,
+  [`${W.strike}:2026`]: 27_000_000,
 };
-const LOT_TARGET = 186;
 
 const DAY = 86_400_000;
 
@@ -151,11 +147,9 @@ type Base = { at: number; cell?: string };
 type Draft =
   | (Base & { t: 'wallet'; wallet: WalletId; name: string; type: 'exchange' | 'self-custody' | 'retirement'; proof: string })
   | (Base & { t: 'update'; wallet: WalletId; archived: boolean })
-  | (Base & { t: 'freeze'; wallet: WalletId })
   | (Base & { t: 'settings' })
-  | (Base & { t: 'buy'; wallet: WalletId; sats: number; tier: Tier; cell?: string; costPinned?: number })
+  | (Base & { t: 'buy'; wallet: WalletId; sats: number; tier: Tier; cell?: string })
   | (Base & { t: 'opening'; wallet: WalletId; sats: number; tier: Tier; origin: string })
-  | (Base & { t: 'payout'; wallet: WalletId; from: WalletId; sats: number; valueCents: number })
   | (Base & { t: 'income'; wallet: WalletId; sats: number; description: string })
   | (Base & { t: 'gift-in'; wallet: WalletId; sats: number; giverCostCents: number; giverAcquiredAt: string })
   | (Base & { t: 'move-all'; from: WalletId; to: WalletId; feeSats: number })
@@ -201,50 +195,39 @@ function drafts(counts: Counts, adj: Readonly<Record<string, number>>, rand: () 
 
   out.push(
     { t: 'wallet', at: at('2022-01-02', 9), wallet: W.coinbase, name: 'Coinbase', type: 'exchange', proof: 'Email receipt' },
-    { t: 'wallet', at: at('2022-01-02', 9) + 1, wallet: W.harbor, name: 'Harbor Earn', type: 'exchange', proof: 'Email receipt' },
-    { t: 'wallet', at: at('2022-01-02', 9) + 2, wallet: W.cold, name: 'Cold storage', type: 'self-custody', proof: 'Exchange receipt + wallet export' },
-    { t: 'wallet', at: at('2022-01-02', 9) + 3, wallet: W.strike, name: 'Strike', type: 'exchange', proof: 'App history export' },
-    { t: 'wallet', at: at('2022-01-02', 9) + 4, wallet: W.river, name: 'River', type: 'exchange', proof: 'Email receipt' },
-    { t: 'wallet', at: at('2022-01-02', 9) + 5, wallet: W.retirement, name: 'Retirement account', type: 'retirement', proof: 'Quarterly statement' },
+    { t: 'wallet', at: at('2022-01-02', 9) + 1, wallet: W.cold, name: 'Cold storage', type: 'self-custody', proof: 'Exchange receipt + wallet export' },
+    { t: 'wallet', at: at('2022-01-02', 9) + 2, wallet: W.strike, name: 'Strike', type: 'exchange', proof: 'App history export' },
+    { t: 'wallet', at: at('2022-01-02', 9) + 3, wallet: W.retirement, name: 'Retirement account', type: 'retirement', proof: 'Quarterly statement' },
     { t: 'settings', at: at('2022-01-02', 10) },
   );
 
-  // Harbor Earn: bought, then frozen in July 2022.
-  out.push({ t: 'buy', at: at('2022-02-03'), wallet: W.harbor, sats: 50_000_000, tier: 'documented', costPinned: 2_000_000 });
-  out.push({ t: 'freeze', at: at('2022-07-13', 15), wallet: W.harbor });
-
-  // Coinbase, 2022 and 2023.
-  buys(W.coinbase, '2022-03-01', '2022-12-20', counts.coinbase2022, 42_104_000 - 9_000_000 - 16_800_000, `${W.cold}:2022`);
-  out.push({ t: 'opening', at: at('2022-05-14'), wallet: W.coinbase, sats: 9_000_000, tier: 'reconstructed', origin: 'Rebuilt from bank statements' });
-  out.push({ t: 'payout', at: at('2022-10-05'), wallet: W.coinbase, from: W.harbor, sats: 16_800_000, valueCents: 320_000 });
-  buys(W.coinbase, '2023-01-05', '2023-12-20', counts.coinbase2023, 118_018_000 - 6_000_000, `${W.cold}:2023`);
-  out.push({ t: 'opening', at: at('2023-06-10'), wallet: W.coinbase, sats: 6_000_000, tier: 'reconstructed', origin: 'Rebuilt from bank statements' });
+  // Coinbase, 2022 and 2023, then everything withdrawn to cold storage and the wallet archived.
+  buys(W.coinbase, '2022-03-01', '2022-12-20', counts.coinbase2022, 23_000_000 - 5_000_000, `${W.cold}:2022`);
+  out.push({ t: 'opening', at: at('2022-05-14'), wallet: W.coinbase, sats: 5_000_000, tier: 'reconstructed', origin: 'Rebuilt from bank statements' });
+  buys(W.coinbase, '2023-01-05', '2023-12-20', counts.coinbase2023, 60_000_000 - 3_000_000, `${W.cold}:2023`);
+  out.push({ t: 'opening', at: at('2023-06-10'), wallet: W.coinbase, sats: 3_000_000, tier: 'reconstructed', origin: 'Rebuilt from bank statements' });
   out.push({ t: 'move-all', at: at('2024-01-15'), from: W.coinbase, to: W.cold, feeSats: 5_200 });
   out.push({ t: 'update', at: at('2024-01-16'), wallet: W.coinbase, archived: true });
 
   // Strike, 2024: bought through the year, then withdrawn to cold storage.
-  buys(W.strike, '2024-01-08', '2025-01-02', counts.strike2024, 69_112_000 - 2_600_000, `${W.cold}:2024`);
-  out.push({ t: 'buy', at: at('2024-05-09'), wallet: W.strike, sats: 2_600_000, tier: 'reconstructed' });
+  buys(W.strike, '2024-01-08', '2025-01-02', counts.strike2024, 40_000_000 - 1_500_000, `${W.cold}:2024`);
+  out.push({ t: 'buy', at: at('2024-05-09'), wallet: W.strike, sats: 1_500_000, tier: 'reconstructed' });
   out.push({ t: 'move-all', at: at('2025-01-08'), from: W.strike, to: W.cold, feeSats: 3_900 });
   // 2025, first half.
-  buys(W.strike, '2025-01-15', '2025-06-25', counts.strike2025a, 31_769_422 - 2_600_000, `${W.cold}:2025`);
-  out.push({ t: 'buy', at: at('2025-03-12'), wallet: W.strike, sats: 2_600_000, tier: 'reconstructed' });
+  buys(W.strike, '2025-01-15', '2025-06-25', counts.strike2025a, 20_000_000 - 1_500_000, `${W.cold}:2025`);
+  out.push({ t: 'buy', at: at('2025-03-12'), wallet: W.strike, sats: 1_500_000, tier: 'reconstructed' });
   out.push({ t: 'move-all', at: at('2025-07-01'), from: W.strike, to: W.cold, feeSats: 4_400 });
-  // 2025, second half, stays on Strike.
-  buys(W.strike, '2025-07-08', '2025-12-28', counts.strike2025b, 15_000_000, `${W.strike}:2025`);
-  // River.
-  buys(W.river, '2025-05-02', '2025-12-18', 3, 10_533_578 - 1_000_000, `${W.river}:2025`);
-  out.push({ t: 'gift-in', at: at('2025-08-20'), wallet: W.river, sats: 1_000_000, giverCostCents: 41_000, giverAcquiredAt: '2025-02-10T12:00:00Z' });
-  buys(W.river, '2026-02-03', '2026-10-20', 4, 3_252_965, `${W.river}:2026`);
+  // 2025, second half, stays on Strike (four of these were paid with the loan), plus a birthday gift.
+  buys(W.strike, '2025-07-08', '2025-12-28', counts.strike2025b, 15_000_000 - 1_000_000, `${W.strike}:2025`);
+  out.push({ t: 'gift-in', at: at('2025-08-20'), wallet: W.strike, sats: 1_000_000, giverCostCents: 41_000, giverAcquiredAt: '2025-02-10T12:00:00Z' });
   // Strike, 2026.
-  buys(W.strike, '2026-01-06', '2026-11-17', counts.strike2026, 46_882_140 - 55_000, `${W.strike}:2026`);
+  buys(W.strike, '2026-01-06', '2026-11-17', counts.strike2026, 27_000_000 - 55_000, `${W.strike}:2026`);
   out.push({ t: 'income', at: at('2026-05-05'), wallet: W.strike, sats: 55_000, description: 'Promo sats' });
   out.push({ t: 'give', at: at('2026-02-14'), wallet: W.strike, sats: 500_000, recipient: 'Sam' });
   out.push({ t: 'sell-spent', at: at('2026-03-10'), wallet: W.strike, sats: 150_000, description: 'Bike repair' });
 
-  out.push({ t: 'snapshot', at: at('2025-12-31', 20), wallet: W.retirement, sats: 31_500_000 });
-  out.push({ t: 'snapshot', at: at('2026-10-31', 20), wallet: W.retirement, sats: 35_000_000 });
-  out.push({ t: 'confirm', at: at('2026-10-30', 18), wallet: W.river });
+  out.push({ t: 'snapshot', at: at('2025-12-31', 20), wallet: W.retirement, sats: 20_000_000 });
+  out.push({ t: 'snapshot', at: at('2026-10-31', 20), wallet: W.retirement, sats: 25_000_000 });
   out.push({ t: 'confirm', at: at('2026-11-02', 18), wallet: W.cold });
   out.push({ t: 'confirm', at: at('2026-11-20', 16), wallet: W.strike });
   return out.sort((a, b) => a.at - b.at);
@@ -289,9 +272,6 @@ function build(t: Tuning): Entry[] {
       case 'update':
         entries.push({ ...base, kind: 'wallet-update', wallet: d.wallet, archived: d.archived });
         break;
-      case 'freeze':
-        entries.push({ ...base, kind: 'wallet-freeze', wallet: d.wallet, note: 'Withdrawals paused by the platform' });
-        break;
       case 'settings':
         entries.push({
           ...base,
@@ -300,16 +280,12 @@ function build(t: Tuning): Entry[] {
         });
         break;
       case 'buy': {
-        const pinned = d.costPinned;
-        const c = pinned ?? cost(d.sats, d.at) + (d === lastStrike2026 ? t.costAdj : 0);
+        const c = cost(d.sats, d.at) + (d === lastStrike2026 ? t.costAdj : 0);
         entries.push({ ...base, kind: 'buy', wallet: d.wallet, sats: d.sats, costCents: c, tier: d.tier });
         break;
       }
       case 'opening':
         entries.push({ ...base, kind: 'opening-lot', wallet: d.wallet, acquiredAt: iso(d.at), sats: d.sats, costCents: cost(d.sats, d.at), tier: d.tier, origin: d.origin });
-        break;
-      case 'payout':
-        entries.push({ ...base, kind: 'receive', wallet: d.wallet, sats: d.sats, valueCents: d.valueCents, source: { type: 'frozen-payout', fromWallet: d.from }, note: 'Partial payout from Harbor Earn' });
         break;
       case 'income':
         entries.push({ ...base, kind: 'receive', wallet: d.wallet, sats: d.sats, valueCents: value(d.sats, d.at), source: { type: 'income', description: d.description } });
@@ -353,8 +329,6 @@ function pick(state: LedgerState, wallet: WalletId, sats: number): LotPick[] {
   return r.value;
 }
 
-const FROZEN = new Set<string>([W.harbor]);
-
 function measure(entries: readonly Entry[]): { cells: Map<string, number>; cost: number; sats: number; lots: number } {
   const state = replay(entries);
   const cells = new Map<string, number>();
@@ -362,7 +336,6 @@ function measure(entries: readonly Entry[]): { cells: Map<string, number>; cost:
   let sats = 0;
   let lots = 0;
   for (const l of state.lots) {
-    if (FROZEN.has(l.wallet)) continue;
     const key = `${l.wallet}:${l.acquiredDate.slice(0, 4)}`;
     cells.set(key, (cells.get(key) ?? 0) + l.sats);
     cost += l.costCents;
@@ -421,7 +394,7 @@ function demoLoan(coins: readonly Entry[]): Entry[] {
 
 /**
  * Three made-up purchases inside the demo's retirement account, so its page shows cost and gain. They add up to the
- * account's latest balance note (0.35 BTC on Oct 31, 2026), so the note matches.
+ * account's latest balance note (0.25 BTC on Oct 31, 2026), so the note matches.
  */
 function demoRetirement(): Entry[] {
   const rand = mulberry32(20_220_210);
@@ -433,9 +406,9 @@ function demoRetirement(): Entry[] {
     },
   });
   const buys: readonly (readonly [string, number, number])[] = [
-    ['2022-02-10', 15_000_000, 618_000],
-    ['2024-01-18', 16_500_000, 693_000],
-    ['2026-03-05', 3_500_000, 280_000],
+    ['2022-02-10', 10_000_000, 412_000],
+    ['2024-01-18', 10_000_000, 420_000],
+    ['2026-03-05', 5_000_000, 400_000],
   ];
   return buys.map(([date, sats, costCents]) => {
     clock = at(date, 15);
@@ -459,20 +432,13 @@ export function buildDemoBook(): DemoBook {
   const targetSats = Object.values(TARGET_CELLS).reduce((s, x) => s + x, 0);
   const targetCost = mulDivRoundHalfUp(DEMO_AVERAGE_COST_CENTS_PER_BTC, targetSats, SATS_PER_BTC);
   const tuning: Tuning = {
-    counts: { coinbase2022: 12, coinbase2023: 36, strike2024: 52, strike2025a: 20, strike2025b: 24, strike2026: 30 },
+    counts: { coinbase2022: 4, coinbase2023: 8, strike2024: 10, strike2025a: 5, strike2025b: 8, strike2026: 10 },
     adj: {},
     costNum: 1000,
     costDen: 1000,
     costAdj: 0,
   };
   let entries = build(tuning);
-  // Lot count: nudge the Strike 2026 purchase count to match the design.
-  for (let i = 0; i < 40; i++) {
-    const m = measure(entries);
-    if (m.lots === LOT_TARGET) break;
-    tuning.counts.strike2026 += LOT_TARGET - m.lots;
-    entries = build(tuning);
-  }
   // Scale all buy costs so the total is about right, then settle exact sats and cents.
   const first = measure(entries);
   tuning.costNum = targetCost;

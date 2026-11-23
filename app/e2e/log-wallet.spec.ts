@@ -32,7 +32,7 @@ test('log a buy: review shows no tax, saving raises the total', async ({ page })
   await axeClean(page);
   await d.getByRole('button', { name: 'Save purchase' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByText('3.7267 2105 BTC')).toBeVisible();
+  await expect(page.getByText('2.1100 0000 BTC')).toBeVisible();
 });
 
 test('log a move with a network fee', async ({ page }) => {
@@ -40,7 +40,7 @@ test('log a move with a network fee', async ({ page }) => {
   await openLog(page, 'Moved');
   const d = dialog(page);
   await d.getByLabel('From', { exact: true }).selectOption({ label: 'Strike' });
-  await d.getByLabel('To', { exact: true }).selectOption({ label: 'River' });
+  await d.getByLabel('To', { exact: true }).selectOption({ label: 'Cold storage' });
   await d.getByLabel('Amount that arrives').fill('0.01');
   await d.getByLabel('Network fee in sats (optional)').fill('1500');
   await axeClean(page);
@@ -55,7 +55,7 @@ test('Moved: "Add a wallet…" only where coins arrive; the fee value fills in f
   await expect(d.getByLabel('From', { exact: true }).locator('option', { hasText: 'Add a wallet…' })).toHaveCount(0);
   await expect(d.getByLabel('To', { exact: true }).locator('option', { hasText: 'Add a wallet…' })).toHaveCount(1);
   await d.getByLabel('From', { exact: true }).selectOption({ label: 'Strike' });
-  await d.getByLabel('To', { exact: true }).selectOption({ label: 'River' });
+  await d.getByLabel('To', { exact: true }).selectOption({ label: 'Cold storage' });
   await d.getByLabel('Amount that arrives').fill('0.01');
   await d.getByLabel('Network fee in sats (optional)').fill('1500');
   // 1,500 sats at the demo price ($94,812.40) is $1.42, filled in and editable.
@@ -139,9 +139,9 @@ test('confirm a balance: yes, then no with a different number', async ({ page })
   await demo(page);
   await go(page, '/wallet/wallet-strike');
   await expect(page.getByRole('heading', { name: 'Strike', level: 1 })).toBeVisible();
-  await expect(page.getByText('0.6188 2140 BTC').first()).toBeVisible();
+  await expect(page.getByText('0.4200 0000 BTC').first()).toBeVisible();
   const card = page.getByRole('region', { name: 'Does it match?' });
-  await expect(card).toContainText('Does Strike show 0.6188 2140 BTC?');
+  await expect(card).toContainText('Does Strike show 0.4200 0000 BTC?');
   await card.getByRole('button', { name: 'Yes' }).click();
   await expect(page.getByText('Confirmed. Strike matches.')).toBeVisible();
   await expect(card.getByText('Confirmed today', { exact: true })).toBeVisible();
@@ -149,7 +149,7 @@ test('confirm a balance: yes, then no with a different number', async ({ page })
   await card.getByRole('button', { name: "No, it's different" }).click();
   const box = card.getByLabel('What Strike shows');
   await expect(box).toBeFocused();
-  await box.fill('0.6253214');
+  await box.fill('0.4265');
   await card.getByRole('button', { name: 'Check', exact: true }).click();
   await expect(page.getByText(/Strike shows .* more\./)).toBeVisible();
   await expect(card.getByRole('button', { name: /^Log the missing 0\.0065 0000 BTC/ })).toBeVisible();
@@ -165,7 +165,7 @@ test('mismatch: wallet shows more, so ask Bought or Received with the amount fil
   await expect(entries.getByRole('listitem').first()).toBeVisible();
   const before = await entries.getByRole('listitem').count();
   await card.getByRole('button', { name: "No, it's different" }).click();
-  await card.getByLabel('What Strike shows').fill('0.6253214');
+  await card.getByLabel('What Strike shows').fill('0.4265');
   await card.getByRole('button', { name: 'Check', exact: true }).click();
   await card.getByRole('button', { name: /^Log the missing/ }).click();
   await expect(card.getByRole('button', { name: 'Bought' })).toBeVisible();
@@ -187,7 +187,7 @@ test('mismatch: wallet shows less, so ask what happened; each answer opens with 
   await go(page, '/wallet/wallet-strike');
   const card = page.getByRole('region', { name: 'Does it match?' });
   await card.getByRole('button', { name: "No, it's different" }).click();
-  await card.getByLabel('What Strike shows').fill('0.6088214');
+  await card.getByLabel('What Strike shows').fill('0.41');
   await card.getByRole('button', { name: 'Check', exact: true }).click();
   await card.getByRole('button', { name: /^Log the missing 0\.0100 0000 BTC/ }).click();
   await expect(card.getByRole('button', { name: 'Bought' })).toHaveCount(0);
@@ -235,13 +235,17 @@ test('confirming the same balance again does not add another entry, and checks n
 
 test('freeze a wallet, log a payout, close it out', async ({ page }) => {
   await demo(page);
-  await go(page, '/wallet/wallet-river');
+  await go(page, '/wallet/wallet-cold');
   await page.getByRole('button', { name: 'Wallet options' }).click();
   await page.getByRole('button', { name: /Platform frozen or failed/ }).click();
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   await axeClean(page);
   await page.getByRole('button', { name: 'Mark frozen' }).click();
   await expect(page.getByText(/FROZEN SINCE/)).toBeVisible();
+  // On Holdings it is listed after the total, not counted.
+  await go(page, '/');
+  await expect(page.getByRole('region', { name: 'Wallets' }).getByRole('list', { name: 'Frozen wallets, not counted' })).toContainText('Cold storage');
+  await go(page, '/wallet/wallet-cold');
 
   await page.getByRole('button', { name: 'Log a payout' }).click();
   const d = dialog(page);
@@ -343,7 +347,7 @@ test('double-clicking Save on a purchase logs it once', async ({ page }) => {
   });
   await expect(page.getByRole('dialog')).toHaveCount(0);
   // All Bitcoin 3.7167 2105 + 0.01 once, not twice.
-  await expect(page.getByText('3.7267 2105 BTC')).toBeVisible();
+  await expect(page.getByText('2.1100 0000 BTC')).toBeVisible();
   await expect(page.getByText('3.7367 2105 BTC')).toHaveCount(0);
 });
 

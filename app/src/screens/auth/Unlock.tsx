@@ -5,6 +5,7 @@ import { VaultError } from '../../vault/errors.ts';
 import { incomingRecovery } from '../../data/recovery-handoff.ts';
 import { currentPlatform, type Platform } from '../../data/platform.ts';
 import { useVault, useVaultStatus } from '../../data/vault-provider.tsx';
+import { useLedger } from '../../data/ledger-provider.tsx';
 import type { LockReason, UnlockOptions, UnlockStep } from '../../vault/index.ts';
 import { FaceIdIcon, FingerprintIcon, KeyIcon } from '../../ui/auth-icons.tsx';
 import { ShieldIcon } from '../../ui/more-icons.tsx';
@@ -96,6 +97,7 @@ function quietAutoFailure(e: unknown): boolean {
 export function Unlock({ platform }: { platform?: Platform } = {}) {
   const vault = useVault();
   const status = useVaultStatus();
+  const { loadDemo } = useLedger();
   const detected = useMemo(() => platform ?? currentPlatform(), [platform]);
   const passkeyOk = status.passkeyUnlock;
   const [useCode, setUseCode] = useState(() => !passkeyOk || incomingRecovery.peek() !== null);
@@ -228,6 +230,14 @@ export function Unlock({ platform }: { platform?: Platform } = {}) {
             </TextButton>
           </>
         )}
+        <TextButton
+          onClick={() => {
+            tryAgain();
+            void loadDemo();
+          }}
+        >
+          Show the demo
+        </TextButton>
         <div className="flex items-center justify-center gap-2 text-xs normal-nums text-muted">
           <ShieldIcon size={14} />
           Self-hosted · end-to-end encrypted · no tracking
