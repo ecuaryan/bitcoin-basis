@@ -55,6 +55,26 @@ describe('Amount', () => {
     );
     expect(text()).toBe('742,6650.0074 BTC');
   });
+  it('rounds a short amount up or down when asked: BTC at 4 decimals, USD to the cent, sats exact', async () => {
+    app = await renderApp(
+      <>
+        <Amount sats={3_424_999} short round="up" interactive={false} />|<Amount sats={3_424_999} short round="down" interactive={false} />
+      </>,
+    );
+    expect(text()).toBe('0.0343|0.0342');
+    app.unmount();
+    window.localStorage.setItem('bb.unit', 'sats');
+    app = await renderApp(<Amount sats={3_424_999} short round="up" interactive={false} />);
+    expect(text()).toBe('3,424,999');
+    app.unmount();
+    window.localStorage.setItem('bb.unit', 'usd');
+    app = await renderApp(
+      <>
+        <Amount sats={3_424_999} short round="up" interactive={false} />|<Amount sats={3_424_999} short round="down" interactive={false} />|<Amount sats={3_424_999} short interactive={false} />
+      </>,
+    );
+    expect(text()).toBe('$3,247.33|$3,247.32|$3,247');
+  });
   it('is plain text, not a button, when not interactive', async () => {
     app = await renderApp(<Amount sats={742_665} interactive={false} />);
     expect(app.container.querySelector('button')).toBeNull();

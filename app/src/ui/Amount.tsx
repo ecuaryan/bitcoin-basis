@@ -1,6 +1,6 @@
 import { usePrice } from '../data/price-provider.tsx';
 import { cx } from '../lib/cx.ts';
-import { formatMoney, groupedBtc, groupedSats, maskDigits, satsToCents, shortBtc, type MoneyFormat } from '../lib/format.ts';
+import { formatMoney, groupedBtc, groupedSats, maskDigits, satsToCents, satsToCentsRounded, shortBtc, type MoneyFormat } from '../lib/format.ts';
 import { useCountUp } from './motion.ts';
 import { usePeekHandlers, usePrefs } from './prefs.tsx';
 
@@ -22,25 +22,31 @@ interface AmountProps {
    * differ by a cent. Without it, USD is `sats × price` (half-up).
    */
   valueCents?: number | null;
+  /**
+   * For a figure that must not look better than it is: `up` for a shortfall, `down` for something left over. BTC (with
+   * `short`) rounds that way at 4 decimals, USD that way to the cent (shown with cents); sats are exact anyway.
+   */
+  round?: 'up' | 'down';
   className?: string;
 }
 
 /** A BTC amount. Shows `0.0074 2665` (8 decimals in two groups) and cycles BTC, sats, USD when tapped. Honors hide-amounts. */
-export function Amount({ sats, showUnit = false, interactive = true, countUp = false, short = false, alwaysBtc = false, valueCents = null, className }: AmountProps) {
+export function Amount({ sats, showUnit = false, interactive = true, countUp = false, short = false, alwaysBtc = false, valueCents = null, round, className }: AmountProps) {
   const { masked, unit, cycleUnit } = usePrefs();
   const { quote } = usePrice();
   const peek = usePeekHandlers();
   // USD needs a price; without one the amount stays in BTC.
   const effective = alwaysBtc || (unit === 'usd' && quote === null) ? 'btc' : unit;
-  const target = effective === 'usd' && quote !== null ? (valueCents ?? satsToCents(sats, quote.usdCents)) : sats;
+  const target =
+    effective === 'usd' && quote !== null ? (round !== undefined ? satsToCentsRounded(sats, quote.usdCents, round) : (valueCents ?? satsToCents(sats, quote.usdCents))) : sats;
   const shown = useCountUp(target, countUp);
 
   const text =
     effective === 'usd'
-      ? formatMoney(shown, short ? { precision: 'dollars' } : {})
+      ? formatMoney(shown, short && round === undefined ? { precision: 'dollars' } : {})
       : effective === 'sats'
         ? `${groupedSats(shown)}${showUnit ? ' sats' : ''}`
-        : `${short ? shortBtc(shown) : groupedBtc(shown)}${showUnit ? ' BTC' : ''}`;
+        : `${short ? shortBtc(shown, round) : groupedBtc(shown)}${showUnit ? ' BTC' : ''}`;
   const label = effective === 'usd' ? 'US dollars' : effective === 'sats' ? 'sats' : 'BTC';
 
   if (masked) {

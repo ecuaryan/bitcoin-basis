@@ -369,6 +369,11 @@ export interface LoanSummary {
   interestOnPurchasesEstimated: boolean;
   /** Interest paid for days with no balance and no draws yet (e.g. dated before any purchase): on nothing. */
   unallocatedInterestCents: Cents;
+  /**
+   * The rest of the interest paid: interest paid − interest on purchases (the draws for other things' shares, an
+   * ESTIMATE, plus `unallocatedInterestCents`). Never negative; 0 when every draw was a purchase and none is unallocated.
+   */
+  interestNotOnPurchasesCents: Cents;
   /** value − held cost − interest on purchases. */
   gainIncludingInterestCents: Cents | null;
   /** value + proceeds + recovered − cost of every purchase − interest on purchases: the whole result of borrowing to buy. */
@@ -532,6 +537,7 @@ export function loanSummary(state: LedgerState, loanId: LoanId, priceCents: Cent
     interestOnPurchasesCents,
     interestOnPurchasesEstimated: otherDrawsCents !== 0 || allocation.unallocatedCents !== 0,
     unallocatedInterestCents: allocation.unallocatedCents,
+    interestNotOnPurchasesCents: interestPaidCents - interestOnPurchasesCents,
     gainIncludingInterestCents: upDownCents === null ? null : upDownCents - interestOnPurchasesCents,
     recoveredCents,
     overallResultCents: valueCents === null ? null : valueCents + proceedsCents + recoveredCents - purchasesCostCents - interestOnPurchasesCents,

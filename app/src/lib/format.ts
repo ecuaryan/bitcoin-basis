@@ -32,11 +32,17 @@ export function groupedSats(sats: number): string {
 }
 
 /**
- * BTC to 4 decimals, rounded half-up on sats, for compact lists: `1.1802`. An amount too small to show in 4 decimals
- * keeps all 8 (`0.0000 4999`), so a few sats are never shown as zero.
+ * Which way a compact figure rounds: `half-up` (the nearest), `up` (never less than it is: a shortfall) or `down` (never
+ * more than it is: something left over).
  */
-export function shortBtc(sats: number): string {
-  const rounded = Math.floor((sats + 5_000) / 10_000); // units of 0.0001 BTC
+export type Rounding = 'half-up' | 'up' | 'down';
+
+/**
+ * BTC to 4 decimals, rounded half-up on sats (or `up` / `down`), for compact lists: `1.1802`. An amount too small to show
+ * in 4 decimals keeps all 8 (`0.0000 4999`), so a few sats are never shown as zero. Sats are never negative here.
+ */
+export function shortBtc(sats: number, round: Rounding = 'half-up'): string {
+  const rounded = Math.floor((sats + (round === 'up' ? 9_999 : round === 'down' ? 0 : 5_000)) / 10_000); // units of 0.0001 BTC
   if (rounded === 0 && sats !== 0) return groupedBtc(sats);
   const whole = Math.floor(rounded / 10_000);
   return `${whole}.${String(rounded % 10_000).padStart(4, '0')}`;
@@ -119,6 +125,14 @@ export function sharePercents(parts: readonly number[]): string[] {
 /** Value of `sats` at `priceCents` per BTC, in cents (half-up, no floats). */
 export function satsToCents(sats: number, priceCents: number): number {
   return mulDivRoundHalfUp(sats, priceCents, SATS_PER_BTC);
+}
+
+/** `satsToCents` rounded `up` or `down` to the cent (whole sats and cents, BigInt): a shortfall never shown smaller, a leftover never bigger. */
+export function satsToCentsRounded(sats: number, priceCents: number, round: Rounding): number {
+  if (round === 'half-up') return satsToCents(sats, priceCents);
+  const n = BigInt(sats) * BigInt(priceCents);
+  const d = BigInt(SATS_PER_BTC);
+  return Number(round === 'up' ? (n + d - 1n) / d : n / d);
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

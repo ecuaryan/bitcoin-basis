@@ -109,6 +109,9 @@ describe('loan interest against a day-by-day loop', () => {
         for (const p of ps) expect(p.interestShareCents).toBeGreaterThanOrEqual(0);
         expect(s.interestOnPurchasesCents).toBeLessThanOrEqual(s.interestPaidCents - s.unallocatedInterestCents);
         if (s.otherDrawsCents === 0) expect(s.interestOnPurchasesCents + s.unallocatedInterestCents).toBe(s.interestPaidCents);
+        // The rest of the interest paid: never negative, and the two parts add back to what was paid.
+        expect(s.interestNotOnPurchasesCents).toBeGreaterThanOrEqual(s.unallocatedInterestCents);
+        expect(s.interestOnPurchasesCents + s.interestNotOnPurchasesCents).toBe(s.interestPaidCents);
         if (s.payoffLeftoverSats !== null) expect(s.payoffLeftoverSats).toBeLessThanOrEqual(s.payoffLeftoverPrincipalOnlySats as number);
       }),
       { numRuns: 400 },

@@ -1,4 +1,4 @@
-import { formatAprPercent, loanSummary, replay } from '@bitcoin-basis/engine';
+import { formatAprPercent, loanPurchases, loanSummary, replay } from '@bitcoin-basis/engine';
 import { expect, test, type Page } from '@playwright/test';
 import { buildDemoBook, DEMO_LOAN_ID, DEMO_PRICE_CENTS, DEMO_TODAY } from '../src/demo/demo-data.ts';
 import { formatMoney, groupedBtc, shortBtc } from '../src/lib/format.ts';
@@ -11,6 +11,8 @@ const expected = (() => {
   if (s === null) throw new Error('the demo has no loan');
   return s;
 })();
+const purchases = loanPurchases(replay(buildDemoBook().entries), DEMO_LOAN_ID, DEMO_PRICE_CENTS, DEMO_TODAY);
+const total = (f: (p: (typeof purchases)[number]) => number | null) => purchases.reduce((t, p) => t + (f(p) ?? 0), 0);
 
 async function openLog(page: Page) {
   await page.getByRole('button', { name: 'Log', exact: true }).first().click();
@@ -31,23 +33,42 @@ test('Holdings: the loan card shows exactly the engine’s figures for the demo 
   await expect(card).toContainText(`Interest paid${formatMoney(expected.interestPaidCents)}`);
   // The big number, and its math: worth − cost − interest.
   await expect(card).toContainText(`Gain or loss after interest`);
-  await expect(card).toContainText(formatMoney(expected.gainIncludingInterestCents ?? 0, { precision: 'dollars', signed: true }));
+  // In cents, as on the loan page, where the purchases' Total row is the same figure.
+  await expect(card).toContainText(formatMoney(expected.gainIncludingInterestCents ?? 0, { signed: true }));
   await expect(card).toContainText(`Worth ${formatMoney(expected.valueCents ?? 0)} − cost ${formatMoney(expected.heldCostCents)} − interest ${formatMoney(expected.interestOnPurchasesCents)}`);
   expect((expected.valueCents ?? 0) - expected.heldCostCents - expected.interestOnPurchasesCents).toBe(expected.gainIncludingInterestCents);
   await expect(card).toContainText(`Break-even ${formatMoney(expected.breakEvenPriceCents ?? 0)}`);
   await expect(card.getByTestId('gauge-dot')).toBeVisible();
   const left = expected.payoffLeftoverSats ?? 0;
-  await expect(card).toContainText(`${shortBtc(Math.abs(left))} BTC ${left < 0 ? 'short' : 'left over'}`);
+  // Never better than it is: a shortfall rounds up, a leftover down.
+  await expect(card).toContainText(`${shortBtc(Math.abs(left), left < 0 ? 'up' : 'down')} BTC ${left < 0 ? 'short' : 'left over'}`);
   await expect(card).toContainText(`${left < 0 ? 'Short of the' : 'Left over after paying'} ≈ about ${formatMoney(expected.owedNowCents)}`);
   await expect(page.getByRole('region', { name: 'Loan payment reminder' })).toHaveCount(0);
   await expectNoViolations(page);
   await card.getByRole('link', { name: /Home equity line/ }).click();
   await expect(page.getByRole('heading', { name: 'Home equity line', level: 1 })).toBeVisible();
+  // The top of the page is the card's top half, figure for figure.
   const standing = page.getByRole('region', { name: 'Where it stands' });
+  await expect(standing).toContainText(formatMoney(expected.gainIncludingInterestCents ?? 0, { signed: true }));
+  await expect(standing).toContainText(`Worth ${formatMoney(expected.valueCents ?? 0)} − cost ${formatMoney(expected.heldCostCents)} − interest ${formatMoney(expected.interestOnPurchasesCents)}`);
   await expect(standing).toContainText(formatMoney(expected.principalOwedCents));
-  await expect(standing).toContainText(formatMoney(expected.owedNowCents));
-  await expect(standing).toContainText('(variable)');
-  await expect(page.getByRole('region', { name: 'Purchases' })).toContainText('4 purchases');
+  const details = page.getByRole('region', { name: 'Details' });
+  await expect(details.getByLabel('The loan')).toContainText(`Owed now, with interest≈ about ${formatMoney(expected.owedNowCents)}`);
+  await expect(details.getByLabel('The loan')).toContainText(`${formatAprPercent(expected.aprMillionths)} APR (variable)`);
+  await expect(details.getByLabel('The loan')).toContainText(`All of it for purchases, less ${formatMoney(expected.principalRepaidCents)} paid back = ${formatMoney(expected.principalOwedCents)} owed`);
+  await expect(details.getByLabel('Interest')).toContainText(`Interest paid${formatMoney(expected.interestPaidCents)}`);
+  // The purchases table: its Total row is the engine's summary, the rows add up to it, and it is the hero's figure.
+  const list = page.getByRole('region', { name: 'Purchases' });
+  await expect(list).toContainText('4 purchases');
+  await expect(list.getByRole('list', { name: 'Purchases' }).getByRole('listitem')).toHaveCount(4);
+  expect(total((p) => p.heldCostCents)).toBe(expected.heldCostCents);
+  expect(total((p) => p.valueCents)).toBe(expected.valueCents);
+  expect(total((p) => p.interestShareCents)).toBe(expected.interestOnPurchasesCents);
+  expect(total((p) => p.gainIncludingInterestCents)).toBe(expected.gainIncludingInterestCents);
+  for (const p of purchases) expect(p.gainIncludingInterestCents).toBe((p.upDownCents ?? 0) - p.interestShareCents);
+  const totalRow = list.getByRole('group', { name: 'Total' });
+  for (const cents of [expected.heldCostCents, expected.valueCents ?? 0, expected.interestOnPurchasesCents]) await expect(totalRow).toContainText(formatMoney(cents));
+  await expect(totalRow).toContainText(formatMoney(expected.gainIncludingInterestCents ?? 0, { signed: true }));
   await expect(page.getByRole('region', { name: 'Statement check' })).toContainText(`Matched Oct 31`);
   await expectNoViolations(page);
 });
@@ -66,7 +87,7 @@ test('Hide amounts masks every loan figure in one fixed shape', async ({ page })
   const standing = page.getByRole('region', { name: 'Where it stands' });
   await expect(standing).toContainText('$•••••');
   await expect(standing).toContainText(/Price is ••••••• (above|below) break-even/);
-  for (const name of ['Where it stands', 'Purchases', 'Payments', 'Statement check']) {
+  for (const name of ['Where it stands', 'Details', 'Purchases', 'Payments', 'Statement check']) {
     expect(await page.getByRole('region', { name }).innerText(), name).not.toMatch(/\$\d|\d\.\d{4}/);
   }
   await expectNoViolations(page);
@@ -128,8 +149,7 @@ test('Set up a loan, link purchases, log a payment, check the statement, change 
   await rate.getByLabel('New rate (APR)').fill('8.25');
   await expectNoViolations(page);
   await rate.getByRole('button', { name: 'Save rate' }).click();
-  await expect(page.getByRole('region', { name: 'Rate' })).toContainText('8.25%');
-  await expect(page.getByRole('region', { name: 'Where it stands' })).toContainText('8.25% (variable)');
+  await expect(page.getByRole('region', { name: 'Details' }).getByLabel('The loan')).toContainText('8.25% APR (variable)');
 
   // Loan records stay out of the everyday list; Kind = Loan shows them.
   await go(page, '/records?v=entries');
@@ -184,7 +204,7 @@ test('Bought: "Add a loan…" returns to the purchase with the new loan chosen a
   await expect(page.getByRole('heading', { name: 'Card line', level: 1 })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Purchases' })).toContainText('1 purchase');
   // The loan starts on the purchase's day, not today, so its rate covers the money drawn for it.
-  await expect(page.getByRole('region', { name: 'Rate' })).toContainText('From the start, Oct 1');
+  await expect(page.getByRole('region', { name: 'Details' })).toContainText('From the start, Oct 1, 2026.');
 });
 
 test('Bought: a loan added from the form is not saved if the purchase is not', async ({ page }) => {
@@ -282,13 +302,14 @@ test('Loan settings, removing a payment, closing and reopening', async ({ page }
 test('Loan page: Bought is everything the purchases bought; after a gift, Still held and where the rest went', async ({ page }) => {
   await openDemo(page);
   await go(page, `/loans/${DEMO_LOAN_ID}`);
-  const rows = page.getByRole('region', { name: 'Where it stands' }).getByLabel('The loan');
-  const row = (k: string) => rows.locator('div').filter({ has: page.getByText(k, { exact: true }) });
+  const details = page.getByRole('region', { name: 'Details' });
+  const rows = details.getByLabel('The Bitcoin');
+  const row = (k: string) => details.locator('dl > div').filter({ has: page.getByText(k, { exact: true }) });
   // The demo's loan purchases are all still held: one row, the full amount.
   await expect(row('Bought')).toContainText(`${groupedBtc(expected.boughtSats)} BTC`);
   await expect(rows.getByText('Still held', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'What does paying it off today use?' }).click();
-  await expect(rows).toContainText('interest not paid yet, billed or not');
+  await expect(page.getByRole('region', { name: 'Where it stands' })).toContainText('interest not paid yet, billed or not');
   // The demo pays every statement in full, so owed now adds only the days since the last one.
   await expect(row('Owed now, with interest')).toContainText('not billed yet');
   await expect(row('Owed now, with interest')).not.toContainText('billed but not yet paid');
@@ -312,5 +333,7 @@ test('Loan page: Bought is everything the purchases bought; after a gift, Still 
   await expect(row('Bought')).toContainText(`${groupedBtc(expected.boughtSats)} BTC`);
   await expect(row('Still held')).toContainText(`${groupedBtc(expected.heldSats - 100_000)} BTC`);
   await expect(row('Still held')).toContainText('0.0010 0000 BTC later given away');
+  // The purchase it came from: the coins still held of what it bought, and their cost of what it cost.
+  await expect(page.getByRole('region', { name: 'Purchases' }).getByRole('list', { name: 'Purchases' })).toContainText(/ held of \d\.\d{4} BTC/);
   await expectNoViolations(page);
 });

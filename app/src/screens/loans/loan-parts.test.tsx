@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderApp, type Rendered } from '../../test/render.tsx';
-import { floorDollars, OwedNowParts } from './loan-parts.tsx';
+import { rateHistory } from './loan-details.tsx';
+import { HeroMoney, OwedNowParts, PayoffSats } from './loan-parts.tsx';
 
 let app: Rendered | null = null;
+beforeEach(() => window.localStorage.clear());
 afterEach(() => {
   app?.unmount();
   app = null;
@@ -34,13 +36,76 @@ describe('Owed now: what it adds to the balance, each part labeled', () => {
   });
 });
 
-describe('Including interest: whole dollars rounded down', () => {
-  it('never understates a loss or overstates a gain (Example L: −$688.73 is −$689)', () => {
-    expect(floorDollars(-68_873)).toBe(-68_900);
-    expect(floorDollars(68_873)).toBe(68_800);
-    expect(floorDollars(-68_800)).toBe(-68_800);
-    // Under a dollar keeps its cents.
-    expect(floorDollars(-50)).toBe(-50);
-    expect(floorDollars(99)).toBe(99);
+describe('The result after interest: cents, the same on the card and the loan page', () => {
+  it('shows every cent (Example L: −$688.73), the cents a size smaller', async () => {
+    app = await renderApp(<HeroMoney cents={-68_873} plain />);
+    expect(text()).toBe('\u2212$688.73');
+    expect(app.container.querySelector('.text-loss')).not.toBeNull();
+    app.unmount();
+    app = await renderApp(<HeroMoney cents={68_873} plain={false} />);
+    expect(text()).toBe('+$688.73');
+    expect(app.container.querySelector('.text-gain')).not.toBeNull();
+  });
+  it('hides with Hide amounts', async () => {
+    app = await renderApp(<HeroMoney cents={-68_873} plain />, { hidden: true });
+    expect(text()).not.toMatch(/\d/);
+  });
+});
+
+describe('If paid off today: never better than it is', () => {
+  // 0.0342 0001 BTC short is more than 0.0342: it shows 0.0343. 0.2016 9999 BTC left over is less than 0.2017: 0.2016.
+  it('rounds a shortfall up and a leftover down at 4 decimals', async () => {
+    app = await renderApp(<PayoffSats sats={-3_420_001} estimated={false} />);
+    expect(text()).toBe('0.0343 BTC short');
+    app.unmount();
+    app = await renderApp(<PayoffSats sats={20_169_999} estimated={false} />);
+    expect(text()).toBe('0.2016 BTC left over');
+    app.unmount();
+    // Half-up would show 0.0342 short (understated) and 0.2017 left over (overstated).
+    app = await renderApp(<PayoffSats sats={-3_424_999} estimated />);
+    expect(text().replace(/\s+/g, ' ')).toBe('≈ about 0.0343 BTC short');
+    app.unmount();
+    app = await renderApp(<PayoffSats sats={20_165_000} estimated={false} />);
+    expect(text()).toBe('0.2016 BTC left over');
+  });
+  it('never shows a sliver as zero', async () => {
+    app = await renderApp(<PayoffSats sats={-3} estimated={false} />);
+    expect(text()).toBe('0.0001 BTC short');
+    app.unmount();
+    app = await renderApp(<PayoffSats sats={4_999} estimated={false} />);
+    expect(text()).toBe('0.0000 4999 BTC left over');
+  });
+  it('is exact in sats, and rounds the same way to the cent in USD', async () => {
+    window.localStorage.setItem('bb.unit', 'sats');
+    app = await renderApp(<PayoffSats sats={-3_424_999} estimated={false} />);
+    expect(text()).toBe('3,424,999 sats short');
+    app.unmount();
+    window.localStorage.setItem('bb.unit', 'usd');
+    // At $94,812.40: 3,424,999 sats is $3,247.3237… : $3,247.33 short, $3,247.32 left over.
+    app = await renderApp(<PayoffSats sats={-3_424_999} estimated={false} />);
+    expect(text()).toBe('$3,247.33 short');
+    app.unmount();
+    app = await renderApp(<PayoffSats sats={3_424_999} estimated={false} />);
+    expect(text()).toBe('$3,247.32 left over');
+  });
+  it('hides with Hide amounts', async () => {
+    app = await renderApp(<PayoffSats sats={-3_424_999} estimated={false} />, { hidden: true });
+    expect(text()).not.toMatch(/\d/);
+  });
+});
+
+describe('Rate history (loan.rates, oldest first)', () => {
+  const r = (from: string, apr: number) => ({ from, aprMillionths: apr, entryId: `rate-${from}` });
+  it('one rate: from the start', () => {
+    expect(rateHistory([r('2025-03-01', 67_500)], '2026-11-22')).toBe('From the start, Mar 1, 2025.');
+  });
+  it('a variable rate: since when, then what it was before, newest first', () => {
+    expect(rateHistory([r('2025-03-01', 67_500), r('2026-07-01', 72_500)], '2026-11-22')).toBe('Since Jul 1, 2026. Before that: 6.75% from the start, Mar 1, 2025.');
+    expect(rateHistory([r('2025-03-01', 67_500), r('2025-09-18', 70_000), r('2026-07-01', 72_500)], '2026-11-22')).toBe(
+      'Since Jul 1, 2026. Before that: 7.00% from Sep 18, 2025, 6.75% from the start, Mar 1, 2025.',
+    );
+  });
+  it('a rate set for a day still to come', () => {
+    expect(rateHistory([r('2025-03-01', 67_500), r('2026-12-01', 72_500)], '2026-11-22')).toBe('Then 7.25% from Dec 1, 2026. From the start, Mar 1, 2025.');
   });
 });
