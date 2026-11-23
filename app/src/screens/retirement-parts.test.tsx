@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildHoldingsView } from '../lib/holdings-view.ts';
 import { heldLabel } from '../lib/format.ts';
 import { renderApp, type Rendered } from '../test/render.tsx';
-import { HeroGainLine, heroFigures, RetirementCard, SplitCard, TaxableDivider } from './holdings-parts.tsx';
+import { HeroGainLine, heroFigures, RetirementCard, SplitCard, TAXABLE_ID } from './holdings-parts.tsx';
 import { click } from '../test/render.tsx';
 
 const TZ = 'America/Boise';
@@ -81,14 +81,13 @@ describe('Taxable and retirement split', () => {
     app = await renderApp(
       <MemoryRouter>
         <SplitCard view={view} wide={false} />
-        <TaxableDivider view={view} />
+        <section id={TAXABLE_ID} tabIndex={-1} aria-label="Your taxable figures" />
       </MemoryRouter>,
     );
     expect(app.container.querySelector('a')?.getAttribute('href')).toBe('/wallet/ira');
     expect(app.container.querySelector('a')?.textContent).toContain('Open My IRA.');
     await click(app.container.querySelector('button') as HTMLButtonElement);
-    expect(document.activeElement?.tagName).toBe('H2');
-    expect(document.activeElement?.textContent).toBe('Taxable');
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Your taxable figures');
   });
   it('with several retirement wallets, Retirement jumps to the Retirement card', async () => {
     const roth: Entry[] = [
@@ -111,12 +110,11 @@ describe('Taxable and retirement split', () => {
     await click(buttons[1] as HTMLButtonElement);
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Retirement accounts');
   });
-  it('is not shown without retirement coins, and neither is the Taxable label', async () => {
+  it('is not shown without retirement coins', async () => {
     const view = viewOf([...base, { id: 's0', kind: 'retirement-snapshot', at: '2024-04-01T19:00:00Z', tz: TZ, wallet: 'ira', sats: 0 }]);
     app = await renderApp(
       <MemoryRouter>
         <SplitCard view={view} wide />
-        <TaxableDivider view={view} />
       </MemoryRouter>,
     );
     expect(text()).toBe('');

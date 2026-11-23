@@ -290,8 +290,11 @@ export function LoanTop({ s, extras }: { s: LoanSummary; extras?: LoanTopExtras 
             sub={
               <>
                 {left > 0 ? 'Left over after paying ' : left < 0 ? 'Short of the ' : 'Exactly covers '}
-                {s.owedNowEstimated ? <Approx /> : null}
-                <PlainMoney cents={s.owedNowCents} />
+                {/* The ≈ stays with its amount, so hiding amounts never rewraps the line. */}
+                <span className="whitespace-nowrap">
+                  {s.owedNowEstimated ? <Approx /> : null}
+                  <PlainMoney cents={s.owedNowCents} />
+                </span>
                 {left > 0 ? '' : ' owed'}
               </>
             }

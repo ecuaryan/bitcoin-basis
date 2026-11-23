@@ -34,7 +34,7 @@ import {
   RetirementCard,
   SplitCard,
   StackCard,
-  TaxableDivider,
+  TAXABLE_ID,
   WalletLinkCard,
   YearSheet,
 } from './holdings-parts.tsx';
@@ -275,7 +275,7 @@ function TaxableFigures({ view }: { view: HoldingsView }) {
   const avg = view.averageCostCentsPerBtc;
   const allAverage = taxable ? (averageLines(view).find((l) => l.basis === 'all') ?? null) : null;
   return (
-    <Card as="section" aria-label="Your taxable figures" className="@container flex flex-col gap-4">
+    <Card as="section" id={TAXABLE_ID} tabIndex={-1} aria-label="Your taxable figures" className="@container flex scroll-mt-6 flex-col gap-4 outline-none focus-visible:ring-2 focus-visible:ring-accent">
       <div className="flex flex-col gap-1.5">
         <span className="flex items-baseline gap-1 text-xs text-muted @min-[40rem]:text-[13px]">
           {gain !== null && gain < 0 ? 'Unrealized loss' : 'Unrealized gain'}
@@ -392,9 +392,9 @@ function TaxableFigures({ view }: { view: HoldingsView }) {
 // ---- Phone -----------------------------------------------------------------------------
 
 /**
- * One order on both sizes. First the whole picture (taxable and retirement): the total, the split, your stack by year,
- * the price against your average cost, your retirement accounts and loans. Then, under the Taxable label, only what
- * counts for tax: average cost, unrealized gain, losses from past years, wallets, and how well it is documented.
+ * One order on both sizes, most looked-at first: what it is all worth and the gain, anything to do, the loans (above or
+ * below break-even), the taxable and retirement split with the taxable figures, the wallets, recent purchases, then the
+ * look-back cards (stack by year, average cost against price, retirement) and how well it is documented.
  */
 function PhoneHoldings({ view }: { view: HoldingsView }) {
   const { status } = usePrice();
@@ -421,23 +421,18 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
         </div>
       </section>
 
-      <SplitCard view={view} wide={false} />
-
       <BalanceNudge />
       <LoanNudge />
+      <LoansSection />
+
+      <SplitCard view={view} wide={false} />
+      <TaxableFigures view={view} />
+      <WalletsCard view={view} />
+      <RecentPurchases />
 
       <StackCard view={view} wide={false} onPick={setYear} />
       <AverageChartCard view={view} wide={false} />
       <RetirementCard view={view} />
-      <RecentPurchases />
-      <LoansSection />
-
-      <TaxableDivider view={view} />
-
-      <TaxableFigures view={view} />
-
-      <WalletsCard view={view} />
-
       <DocumentationCard view={view} />
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>
@@ -476,32 +471,28 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
         </div>
       </header>
 
-      <SplitCard view={view} wide />
-
       <BalanceNudge />
       <LoanNudge />
-
-      <StackCard view={view} wide onPick={setYear} />
-
-      {/* Cards keep their own height: a long list should not stretch the one beside it. */}
-      <div className={cx('grid items-start gap-4', retirement ? 'grid-cols-3' : 'grid-cols-1')}>
-        <AverageChartCard view={view} wide />
-        <RetirementCard view={view} />
-      </div>
-
-      <RecentPurchases />
-
       <LoansSection />
 
-      <TaxableDivider view={view} />
-
+      <SplitCard view={view} wide />
       <TaxableFigures view={view} />
 
+      {/* Cards keep their own height: a long list should not stretch the one beside it. */}
       <div className="grid grid-cols-3 items-start gap-4">
         <div className="col-span-2">
           <WalletsCard view={view} />
         </div>
         <DocumentationCard view={view} />
+      </div>
+
+      <RecentPurchases />
+
+      <StackCard view={view} wide onPick={setYear} />
+
+      <div className={cx('grid items-start gap-4', retirement ? 'grid-cols-3' : 'grid-cols-1')}>
+        <AverageChartCard view={view} wide />
+        <RetirementCard view={view} />
       </div>
       <YearSheet row={picked} onClose={() => setYear(null)} />
     </div>

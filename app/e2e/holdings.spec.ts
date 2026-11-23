@@ -95,14 +95,14 @@ test('Holdings with a retirement account: all your Bitcoin on top, split into ta
   await expect(page.getByRole('region', { name: 'All your Bitcoin', exact: true })).toHaveCount(0);
   await expect(page.getByText(/with retirement/)).toHaveCount(0);
 
-  // The taxable figures follow under their own label, with the gain called unrealized and explained.
+  // The taxable figures follow, with the gain called unrealized and explained.
   await expect(page.getByText('Gain on paper')).toHaveCount(0);
   await expect(page.getByText(/^Unrealized gain/)).toBeVisible();
   await page.getByRole('button', { name: 'What is an unrealized gain?' }).click();
   await expect(page.getByText('Unrealized: what you would gain if you sold today. No tax is due until you sell.')).toBeVisible();
 
   await taxable.click();
-  await expect(page.getByRole('heading', { name: 'Taxable', exact: true })).toBeFocused();
+  await expect(page.getByRole('region', { name: 'Your taxable figures' })).toBeFocused();
   await retirement.click();
   await expect(page).toHaveURL(/\/wallet\/wallet-retirement$/);
   await expect(page.getByRole('region', { name: 'Balance', exact: true })).toContainText('unrealized');
@@ -135,20 +135,28 @@ test('the all-Bitcoin hero shows the average cost of all your Bitcoin', async ({
   await expect(page.getByText(/Average cost of all your Bitcoin: \$[\d,]+\.\d\d per BTC/).first()).toBeVisible();
 });
 
-test('Your stack, by year bought is all your Bitcoin: above the taxable figures, retirement in its year and colour', async ({ page }) => {
+test('Holdings runs most looked-at first; the stack by year is all your Bitcoin, retirement in its year and colour', async ({ page }) => {
   await openHoldingsWithDemo(page);
   const stack = page.getByRole('region', { name: 'Your coins by year bought' });
   await expect(stack.getByRole('heading', { name: 'Your stack, by year bought' })).toBeVisible();
-  // Whole picture: above the Taxable label. The documentation card stays below it and says it is taxable only.
-  const divider = page.getByRole('heading', { name: 'Taxable', exact: true });
-  expect((await stack.boundingBox())?.y ?? Infinity).toBeLessThan((await divider.boundingBox())?.y ?? 0);
-  const docs = page.getByRole('region', { name: 'How well your taxable coins are documented' });
-  expect((await docs.boundingBox())?.y ?? 0).toBeGreaterThan((await divider.boundingBox())?.y ?? Infinity);
-  // The chart, retirement and loans are the whole picture too; wallets and the taxable figures count for tax.
+  // Worth and gain, the loans, the split and taxable figures, wallets, recent purchases, then the look-back cards.
+  await expect(page.getByRole('heading', { name: 'Taxable', exact: true })).toHaveCount(0);
   const y = async (l: Locator) => (await l.boundingBox())?.y ?? NaN;
-  const d = await y(divider);
-  for (const above of ['Average cost versus price', 'Retirement accounts', 'Recent purchases']) expect(await y(page.getByRole('region', { name: above }))).toBeLessThan(d);
-  expect(await y(page.getByRole('region', { name: 'Wallets' }))).toBeGreaterThan(d);
+  const order = [
+    page.getByRole('region', { name: 'What all your Bitcoin is worth' }),
+    page.getByRole('region', { name: 'Loans' }).first(),
+    page.getByRole('region', { name: 'Taxable and retirement' }),
+    page.getByRole('region', { name: 'Your taxable figures' }),
+    page.getByRole('region', { name: 'Wallets' }),
+    page.getByRole('region', { name: 'Recent purchases' }),
+    stack,
+    page.getByRole('region', { name: 'Average cost versus price' }),
+  ];
+  const ys = [];
+  for (const l of order) ys.push(await y(l));
+  for (let i = 1; i < ys.length; i++) expect(ys[i], `card ${i} comes after card ${i - 1}`).toBeGreaterThan(ys[i - 1] ?? Infinity);
+  const docs = page.getByRole('region', { name: 'How well your taxable coins are documented' });
+  expect(await y(docs)).toBeGreaterThanOrEqual(await y(page.getByRole('region', { name: 'Wallets' })));
   await expect(page.getByText('Held apart')).toHaveCount(0);
 
   await expect(stack).toContainText('Retirement');
@@ -189,9 +197,10 @@ test('Recent purchases: the latest five, newest first, with worth now and the pe
   const card = page.getByRole('region', { name: 'Recent purchases' });
   const list = card.getByRole('list', { name: 'Purchases, newest first' });
   await expect(list.getByRole('listitem')).toHaveCount(5);
-  // Under the chart and the retirement accounts, above the loans and the taxable figures.
+  // Under the wallets, above the stack by year and the chart.
   const y = async (l: Locator) => (await l.boundingBox())?.y ?? NaN;
-  expect(await y(card)).toBeGreaterThan(await y(page.getByRole('region', { name: 'Retirement accounts' })));
+  expect(await y(card)).toBeGreaterThan(await y(page.getByRole('region', { name: 'Wallets' })));
+  expect(await y(card)).toBeLessThan(await y(page.getByRole('region', { name: 'Your coins by year bought' })));
   const rows = list.getByRole('button');
   await expect(rows.first()).toHaveAccessibleName(/Paid \$[\d,]+\.\d\d .*now \$[\d,]+\.\d\d (up|down) [+−]\$[\d,]+\.\d\d [+−]\d+%.*Strike/);
   await expect(card.getByText(/^[+−]\d+%$/).first()).toBeVisible();
@@ -240,4 +249,24 @@ test('Wallets: one aligned table whose rows add up to the total and the unrealiz
   expect(new Set(rights).size).toBe(1);
   await expect(card.getByRole('list', { name: 'Frozen wallets, not counted' })).toContainText('Not counted');
   await expectNoViolations(page);
+});
+
+test('/demo is a link to share: it opens straight into the made-up demo, with no outside requests', async ({ page }) => {
+  const external: string[] = [];
+  page.on('request', (r) => {
+    if (new URL(r.url()).hostname !== '127.0.0.1') external.push(r.url());
+  });
+  await page.goto('/demo');
+  await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('region', { name: 'What all your Bitcoin is worth' })).toContainText('$352,391');
+  expect(external).toEqual([]);
+});
+
+test('/demo on a device with real records opens those records, never the demo', async ({ page }) => {
+  await setUp(page);
+  await go(page, '/demo');
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { name: 'Holdings' })).toBeVisible();
+  await expect(page.getByText('All your Bitcoin is worth', { exact: true })).toHaveCount(0);
 });

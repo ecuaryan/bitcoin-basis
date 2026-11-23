@@ -401,7 +401,7 @@ export function WalletLinkCard({ w }: { w: WalletCard }) {
 
 /** Targets for the split rows under the hero. */
 const RETIREMENT_ID = 'retirement';
-const TAXABLE_ID = 'taxable';
+export const TAXABLE_ID = 'taxable';
 
 export function DocumentationCard({ view }: { view: HoldingsView }) {
   const total = Math.max(1, view.totalSats);
@@ -637,16 +637,5 @@ export function SplitCard({ view, wide }: { view: HoldingsView; wide: boolean })
       </ul>
       {unknown ? <p className="m-0 px-2 pb-1 text-xs text-muted">Gain counts only coins with a logged cost. Log a retirement account&apos;s purchases to include it.</p> : null}
     </Card>
-  );
-}
-
-/** The quiet label that starts the taxable figures under the all-Bitcoin hero. Only with retirement coins. */
-export function TaxableDivider({ view }: { view: HoldingsView }) {
-  if (view.all === null) return null;
-  return (
-    <h2 id={TAXABLE_ID} tabIndex={-1} className="m-0 -mb-1 flex scroll-mt-6 items-center gap-3 rounded-md pt-1 text-[11px] font-bold uppercase tracking-[0.1em] text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent">
-      Taxable
-      <span className="h-px flex-1 bg-line" aria-hidden="true" />
-    </h2>
   );
 }

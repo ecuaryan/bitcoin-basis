@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed (Holdings order and the demo link)
+
+- Holdings runs most looked-at first on phone and desktop: worth and gain, anything to do, loans, the taxable and retirement split, the taxable figures, wallets, recent purchases, then the stack by year, the average-cost chart, retirement and documentation. The separate "Taxable" heading is gone; the Taxable row now jumps to the taxable figures card.
+- `/demo` is a link to share: it opens straight into the made-up demo (in the browser's memory only, never sent to the server). On a device that holds real records it opens those instead.
+- Loan card: the ≈ in "Left over after paying ≈ $…" stays with its amount, so hiding amounts no longer rewraps the line.
+
 ### Added
 
 - **"I bought it to give"** on the Gave tab: for the buy-then-send routine (a birthday, a holiday). Switch it on and the purchase fields (amount, wallet, total paid with fees, when, defaulting to now) sit above the gift (who it's for, an optional note). One review shows both, under Purchase and Gift, and one Save logs a purchase and, a second later, a gift of exactly that purchase's lot: all of it by default (give less under More details and the rest stays in the wallet), worth what was paid unless you change it, so the gift is never below cost by default. Each entry is its own row ("Bought", "Gave to Mom") and can be edited or removed as usual. The switch starts on when your last gift was logged this way.

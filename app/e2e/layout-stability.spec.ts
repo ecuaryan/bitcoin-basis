@@ -2,15 +2,18 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { go, openDemo } from './helpers.ts';
 
 /**
- * Things that should never jump. Every layout shift is counted, including the ones right after a tap (the browser's
- * CLS leaves those out, but a Save button sliding under your thumb is exactly what we do not want).
+ * Things that should never jump. Every layout shift that moves something up or down is counted, including the ones
+ * right after a tap (the browser's CLS leaves those out, but a Save button sliding under your thumb is exactly what we
+ * do not want). A shift that only slides words sideways within their line (a hidden amount is shorter) moves no row.
  */
 async function watchShifts(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const w = window as unknown as { __shift: number };
     w.__shift = 0;
+    type Source = { previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly };
+    const vertical = (s: Source) => s.previousRect.y !== s.currentRect.y || s.previousRect.height !== s.currentRect.height;
     new PerformanceObserver((list) => {
-      for (const e of list.getEntries()) w.__shift += (e as unknown as { value: number }).value;
+      for (const e of list.getEntries() as unknown as { value: number; sources: Source[] }[]) if (e.sources.some(vertical)) w.__shift += e.value;
     }).observe({ type: 'layout-shift', buffered: true });
   });
 }
@@ -26,7 +29,7 @@ async function shiftDuring(page: Page, act: () => Promise<void>): Promise<number
 
 const top = async (l: Locator): Promise<number> => Math.round((await l.boundingBox())?.y ?? -1);
 
-// A tiny horizontal nudge of a right-aligned figure is fine; anything that moves rows is not.
+// Anything that moves rows up or down counts; this leaves room for a rounding-sized nudge.
 const NEAR_ZERO = 0.005;
 
 test.beforeEach(async ({ page }) => {

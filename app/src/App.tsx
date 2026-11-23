@@ -4,7 +4,9 @@ import { NotFound } from './screens/stubs.tsx';
 import { RequireVault } from './screens/auth/RequireVault.tsx';
 import { ReadyGate } from './ui/ready-gate.tsx';
 import { AppShell, useLogSheet } from './ui/AppShell.tsx';
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { useLedger } from './data/ledger-provider.tsx';
+import { useVaultStatusOptional } from './data/vault-provider.tsx';
 import { useServiceWorkerUpdateToast } from './register-sw.ts';
 import { UpdateBoundary } from './ui/UpdateBoundary.tsx';
 import { useScrollBehavior } from './ui/scroll-behavior.ts';
@@ -26,6 +28,24 @@ function LogRoute() {
   const { open } = useLogSheet();
   useEffect(() => open(), [open]);
   return <Navigate to="/" replace />;
+}
+
+/**
+ * `/demo`: a link to share. Opens the made-up demo, which lives only in this browser's memory and never reaches the
+ * server. On a device that holds real records it opens those instead (the demo is never allowed beside a vault).
+ */
+function DemoRoute() {
+  const status = useVaultStatusOptional();
+  const { isDemo, loadDemo } = useLedger();
+  const allowed = status === null || status.state === 'empty';
+  const started = useRef(false);
+  useEffect(() => {
+    if (!allowed || isDemo || started.current) return;
+    started.current = true;
+    void loadDemo();
+  }, [allowed, isDemo, loadDemo]);
+  if (!allowed || isDemo) return <Navigate to="/" replace />;
+  return <div aria-busy="true" className="min-h-[60dvh]" />;
 }
 
 export function App() {
@@ -55,6 +75,7 @@ export function App() {
           <Route path="tax/summary/:year" element={<RequireVault><ReadyGate><TaxSummary /></ReadyGate></RequireVault>} />
           <Route path="gift-note/:id" element={<RequireVault><ReadyGate><GiftNotePage /></ReadyGate></RequireVault>} />
           <Route path="welcome" element={<Welcome />} />
+          <Route path="demo" element={<DemoRoute />} />
           <Route path="unlock" element={<RequireVault><Navigate to="/" replace /></RequireVault>} />
           <Route path="kit" element={<RequireVault><Kit /></RequireVault>} />
           <Route path="*" element={<NotFound />} />
