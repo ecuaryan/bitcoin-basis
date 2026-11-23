@@ -4,7 +4,7 @@ For agents building the remaining screens. The approved mockups are the source o
 
 ## Rules
 
-1. Bitcoin orange `#F7931A` is the only accent. Amber `#FFB547` only for the gradient end, hover, active nav text and "up" arrows. No other hues, with one exception for data: documentation tiers use orange, cream, tan, grey (see below), and retirement Bitcoin is a soft slate blue (`retire`), the one cool colour, so it never reads as a tier. Never use `retire` for buttons, links, text or anything but marking retirement Bitcoin.
+1. Bitcoin orange `#F7931A` is the only accent. Amber `#FFB547` only for the gradient end, hover and active nav text. No other hues, with two exceptions for data: gains (and other good-news money: "left over", a price above your average, the 24-hour "up" arrow) are green (`gain`), so they never read like the orange accent or the red loss; and documentation tiers use orange, cream, tan, grey (see below), and retirement Bitcoin is a soft slate blue (`retire`), the one cool colour, so it never reads as a tier. Never use `retire` for buttons, links, text or anything but marking retirement Bitcoin.
 2. Every number is tabular (`font-variant-numeric: tabular-nums` is set globally). Big numbers use `font-display` (Space Grotesk); everything else Inter.
 3. Money is cents, BTC is sats, integers only. Format with `lib/format.ts`; show them with `<Money>` and `<Amount>` so hide-amounts works. Never print a raw number that is the user's money.
 4. Whole-dollar display rounds toward zero (never overstates a gain); an amount under $1 that is not $0 keeps its cents (`+$0.40`, never `+$0` or `down $0`). Where whole-dollar parts sit under a whole-dollar total (the Taxable and Retirement rows under the hero, the Retirement card's wallets), the parts use `wholeDollarParts` (largest remainder) so they add up to it; the taxable Unrealized gain shows the Taxable row's figure (`view.split`, `taxableGainShownCents`). The Holdings loan lines show cents, like the loan page. Coins are valued lot by lot everywhere (`valueOfPieces`). A short BTC amount (`short`, 4 decimals) too small to show keeps all 8 (`0.0000 4999`), never `0.0000`.
@@ -31,7 +31,8 @@ For agents building the remaining screens. The approved mockups are the source o
 | `amber` | #FFB547 | hover, active, "up" |
 | `cream` | #FFE2B8 | reconstructed tier |
 | `retire` | #8FB3D9 | retirement Bitcoin wherever it is colour-coded: the split card's bar and swatch, the stack's segment and legend, the year sheet's bar (8.4:1 on `surface`; blue against orange stays apart for colour-blind readers; always beside the word "Retirement") |
-| `loss` | #D98578 | losses, errors (muted red, never bright) |
+| `loss` | #F4524D | losses, errors (a true red, not pink; 5.3:1 on `surface`) |
+| `gain` | #5BD68F | gains and good-news money (soft green, 9.9:1 on `surface`) |
 | `tier-estimated` / `tier-unknown` | #A8794A / #5D5750 | estimated / unknown tier |
 
 Radii: cards 20px (`Card`), small tiles 16-18px, buttons 12px, sheets 28px, FAB full round. Hero glow: radial orange at 20% (phone) / 16% (desktop) behind the top (already in `AppShell`).

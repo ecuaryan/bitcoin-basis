@@ -139,7 +139,7 @@ export function PriceChart({
               <span className="text-soft">
                 BTC price <span className="font-semibold text-text">{text.price}</span>
               </span>
-              {text.gap !== null && <span className={text.gap.startsWith('\u2212') ? 'text-loss' : 'text-accent'}>{text.gap}</span>}
+              {text.gap !== null && <span className={text.gap.startsWith('\u2212') ? 'text-loss' : 'text-gain'}>{text.gap}</span>}
             </div>
           </div>
         )}

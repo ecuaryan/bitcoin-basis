@@ -167,7 +167,7 @@ function Standing({ loan, s, purchases }: { loan: Loan; s: LoanSummary; purchase
                 ) : (
                   <>
                     <Amount sats={Math.abs(left)} showUnit interactive={false} />
-                    <span className={left < 0 ? 'text-loss' : 'text-accent'}>{left < 0 ? ' short' : ' left over'}</span>
+                    <span className={left < 0 ? 'text-loss' : 'text-gain'}>{left < 0 ? ' short' : ' left over'}</span>
                   </>
                 )}
               </>

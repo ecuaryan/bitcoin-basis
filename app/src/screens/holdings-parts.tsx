@@ -36,7 +36,7 @@ export function DayChange({ tenths, className }: { tenths: number; className?: s
   const text = `${(Math.abs(tenths) / 10).toFixed(1)}% in 24h`;
   if (tenths === 0) return <span className={cx('text-muted', className)}>{text}</span>;
   return (
-    <span className={cx(tenths > 0 ? 'text-amber' : 'text-loss', className)}>
+    <span className={cx(tenths > 0 ? 'text-gain' : 'text-loss', className)}>
       <span aria-hidden="true">{tenths > 0 ? '▲' : '▼'} </span>
       <span className="sr-only">{tenths > 0 ? 'Up ' : 'Down '}</span>
       {text}
@@ -77,7 +77,7 @@ export function PriceLine({ className }: { className?: string }) {
 /** A gain or loss with its sign and color. Whole dollars by default; `precision="cents"` where it sits beside parts in cents. */
 export function GainText({ cents, precision = 'dollars', className }: { cents: number | null; precision?: 'cents' | 'dollars'; className?: string }) {
   if (cents === null) return <span className={className}>—</span>;
-  return <Money cents={cents} precision={precision} signed className={cx(cents < 0 && 'text-loss', cents >= 0 && 'text-accent', className)} />;
+  return <Money cents={cents} precision={precision} signed className={cx(cents < 0 && 'text-loss', cents >= 0 && 'text-gain', className)} />;
 }
 
 // ---- Stack -----------------------------------------------------------------------------

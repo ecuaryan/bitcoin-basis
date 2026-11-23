@@ -17,7 +17,9 @@
   --color-cream: #ffe2b8;
   /* Retirement Bitcoin wherever it is colour-coded (split bar, stack): a cool slate blue, apart from the warm tiers. */
   --color-retire: #8fb3d9;
-  --color-loss: #d98578;
+  --color-loss: #f4524d;
+  /* Gains and other good-news numbers: green, so they never read like the orange accent or the red-orange loss. */
+  --color-gain: #5bd68f;
   --color-tier-estimated: #a8794a;
   --color-tier-unknown: #5d5750;
 

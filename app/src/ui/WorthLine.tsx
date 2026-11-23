@@ -21,7 +21,7 @@ export function GainWords({ worth, plain = false, precision = 'cents', showPerce
   const pct = masked ? maskDigits(shown) : shown;
   const dollars = Math.abs(gainCents);
   return (
-    <span className={cx('whitespace-nowrap', up ? 'text-accent' : 'text-loss', className)}>
+    <span className={cx('whitespace-nowrap', up ? 'text-gain' : 'text-loss', className)}>
       {up ? 'up' : 'down'} {plain ? <PlainMoney cents={dollars} precision={precision} /> : <Money cents={dollars} precision={precision} />}
       {pct}
     </span>

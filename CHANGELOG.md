@@ -13,6 +13,11 @@
 - **Import and export**: rows in the coins spreadsheet whose wallet is one of your retirement wallets become retirement purchases (leave tier and the loan columns empty on those rows; if the wallet is new, the preview asks whether it is a retirement account and never assumes it). The spreadsheet export includes them, and the backup file carries them with their history.
 - The demo's retirement account has three made-up purchases.
 
+### Changed (colors)
+
+- **Gains are green.** Every gain, "left over" and price-above-your-average figure (and the 24-hour "up" arrow) is now a soft green instead of orange, so gains and losses are easy to tell apart at a glance. Orange stays the app's accent.
+- **Losses are a true red** instead of a pinkish one, also used for errors.
+
 ### Added (Holdings)
 
 - **Recent purchases** on Holdings, under the chart and your retirement accounts: your latest five purchases, newest first, in the same table as a wallet's lots (Date, Paid, Bitcoin with the cost per BTC, Now with the gain or loss and its percent), with the wallet on each row. It counts logged purchases, retirement purchases (tagged Retirement) and imported lots that cost something, dated when they were bought. "Show 10 more" adds rows; tap one to open it. On desktop it spans the page, one line per purchase.

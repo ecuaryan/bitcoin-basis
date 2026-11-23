@@ -34,7 +34,7 @@ export const WIDE_ONLY = 'hidden @min-[56rem]:inline';
 export const NARROW_ONLY = '@min-[56rem]:hidden';
 
 export function tone(cents: number | null): string {
-  return cents === null || cents === 0 ? 'text-muted' : cents > 0 ? 'text-accent' : 'text-loss';
+  return cents === null || cents === 0 ? 'text-muted' : cents > 0 ? 'text-gain' : 'text-loss';
 }
 
 /** `−10%`, `+6%`, `under 1%`; digits hidden with the amounts. Empty with no percent. */

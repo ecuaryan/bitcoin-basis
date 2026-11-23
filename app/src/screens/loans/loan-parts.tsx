@@ -71,7 +71,7 @@ export function LoanBadge({ tag, className }: { tag: string; className?: string 
 
 /** Dollars with a sign and the gain or loss color. `plain` inside links and buttons. */
 export function SignedMoney({ cents, plain = false, precision = 'dollars', className }: { cents: number; plain?: boolean; precision?: 'dollars' | 'cents'; className?: string }) {
-  const tone = cents < 0 ? 'text-loss' : 'text-accent';
+  const tone = cents < 0 ? 'text-loss' : 'text-gain';
   return <span className={cx(tone, className)}>{plain ? <PlainMoney cents={cents} precision={precision} signed /> : <Money cents={cents} precision={precision} signed />}</span>;
 }
 
@@ -146,7 +146,7 @@ export function loanLines(s: LoanSummary, plain: boolean, masked: boolean): { ke
           ) : (
             <>
               <Amount sats={Math.abs(left)} short showUnit interactive={false} />
-              <span className={left < 0 ? 'text-loss' : 'text-accent'}>{left < 0 ? ' short' : ' left over'}</span>
+              <span className={left < 0 ? 'text-loss' : 'text-gain'}>{left < 0 ? ' short' : ' left over'}</span>
             </>
           )}
         </>
