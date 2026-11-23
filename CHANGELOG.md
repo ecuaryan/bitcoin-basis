@@ -7,6 +7,7 @@
 - Holdings runs most looked-at first on phone and desktop: worth and gain, anything to do, loans, the taxable and retirement split, the taxable figures, wallets, recent purchases, then the stack by year, the average-cost chart, retirement and documentation. The separate "Taxable" heading is gone; the Taxable row now jumps to the taxable figures card.
 - `/demo` is a link to share: it opens straight into the made-up demo (in the browser's memory only, never sent to the server). To show someone the demo on your own phone, the lock screen has "Show the demo", and `/demo` with records open locks them first. Exit demo goes back to the lock screen; the demo never sits beside open records.
 - The demo is smaller and simpler: 2.1 BTC in all (1.85 taxable in Cold storage and Strike, 0.25 in a retirement account), about 50 purchases instead of 186, no frozen platform (Harbor Earn) and no River wallet. Same loan, gift in and out, spend, past losses and 94% documented.
+- For my CPA opens in the same tab (Back to Tax season returns). In a new tab it started locked, so from the demo it asked you to sign in and then showed your own records.
 - Loan card: the ≈ in "Left over after paying ≈ $…" stays with its amount, so hiding amounts no longer rewraps the line.
 
 ### Added

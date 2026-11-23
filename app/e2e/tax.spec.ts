@@ -45,6 +45,18 @@ test('Tax summary page prints for a CPA', async ({ page }) => {
   await expectNoViolations(page);
 });
 
+test('For my CPA opens in the same tab, so the demo stays the demo, and Back returns to Tax season', async ({ page, context }) => {
+  await openDemo(page);
+  await go(page, '/tax?year=2026');
+  let opened = false;
+  context.on('page', () => (opened = true));
+  await page.getByRole('link', { name: 'For my CPA' }).click();
+  await expect(page.getByRole('heading', { name: 'Bitcoin tax year summary: 2026' })).toBeVisible();
+  expect(opened).toBe(false);
+  await page.getByRole('link', { name: 'Back to Tax season' }).click();
+  await expect(page.getByRole('region', { name: 'Demo mode' })).toBeVisible();
+});
+
 test('Tax season: the year’s result shows exactly the engine’s netting, in words', async ({ page }) => {
   const state = replay(buildDemoBook().entries);
   const v = yearTaxView(state, state.settings, 2026, DEMO_TODAY);

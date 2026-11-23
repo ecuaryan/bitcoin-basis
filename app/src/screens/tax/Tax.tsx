@@ -326,7 +326,8 @@ export function Tax() {
 
   const downloads = (
     <div className="grid grid-cols-2 gap-2.5">
-      <Link to={`/tax/summary/${year}`} target="_blank" className={buttonClasses('secondary', 'min-h-[52px] !rounded-2xl !px-3 text-sm no-underline text-text')}>
+      {/* Same tab: a new tab would start locked (and without the demo, which lives only in this page's memory). */}
+      <Link to={`/tax/summary/${year}`} className={buttonClasses('secondary', 'min-h-[52px] !rounded-2xl !px-3 text-sm no-underline text-text')}>
         <DownloadIcon size={18} />
         For my CPA
       </Link>
