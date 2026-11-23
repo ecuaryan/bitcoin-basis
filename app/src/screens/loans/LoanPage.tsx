@@ -1,4 +1,4 @@
-import { formatAprPercent, isValidLocalDate, loanPurchases, loanSummary, parseDollars, type Loan, type LoanPurchase, type LoanSummary } from '@bitcoin-basis/engine';
+import { isValidLocalDate, loanPurchases, loanSummary, parseDollars, type Loan, type LoanSummary } from '@bitcoin-basis/engine';
 import { BackLink } from '../../ui/BackLink.tsx';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
@@ -7,7 +7,7 @@ import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { buildItems, type EntryItem, type EntryRun } from '../../lib/entry-list.ts';
 import { countOf, shortDate } from '../../lib/format.ts';
-import { breakEvenWords, goneWords, purchaseWorth, recordedBalanceOn, statementDayText, statementToCheck } from '../../lib/loans-view.ts';
+import { recordedBalanceOn, statementDayText, statementToCheck } from '../../lib/loans-view.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { HideButton, LockButton, useIsWide } from '../../ui/AppShell.tsx';
 import { Button, buttonClasses } from '../../ui/Button.tsx';
@@ -21,12 +21,12 @@ import { PlainMoney } from '../../ui/plain-money.tsx';
 import { EmptyLine, SectionCount, SectionHeader, ShowMore } from '../../ui/SectionHeader.tsx';
 import { useToast } from '../../ui/Toast.tsx';
 import { useSubmit } from '../../ui/use-submit.ts';
-import { usePrefs } from '../../ui/prefs.tsx';
 import { useTitle } from '../../ui/use-title.ts';
-import { GainWords } from '../../ui/WorthLine.tsx';
 import { EntrySheet } from '../entry-parts.tsx';
 import { cleanNumber } from '../log/model.ts';
-import { Approx, BREAK_EVEN_HELP, BREAK_EVEN_LABEL, IncludingInterest, LOAN_ESTIMATE_HELP, OwedNowParts, PAYOFF_HELP, SignedMoney } from './loan-parts.tsx';
+import { Details } from './loan-details.tsx';
+import { BREAK_EVEN_HELP, LOAN_ESTIMATE_HELP, LoanTop, PAYOFF_HELP, SignedMoney } from './loan-parts.tsx';
+import { Purchases } from './loan-purchases.tsx';
 import { CloseLoanSheet, LoanSettingsSheet, PaymentSheet, RateSheet, useReopen } from './loan-sheets.tsx';
 import { ManagePurchasesSheet } from './LoanSetup.tsx';
 import { useLoanWriter } from './loan-writer.ts';
@@ -62,208 +62,22 @@ const runOf = (item: EntryItem): EntryRun => ({ item, count: 1, items: [item], n
 
 // ---- Where it stands -------------------------------------------------------------------------
 
-function Standing({ loan, s, purchases }: { loan: Loan; s: LoanSummary; purchases: readonly LoanPurchase[] }) {
-  const { today } = useLedger();
-  const { masked } = usePrefs();
-  const help = useHelp('What does ≈ mean?', LOAN_ESTIMATE_HELP);
-  const breakEvenHelp = useHelp('What is in the break-even price?', BREAK_EVEN_HELP);
-  const payoffHelp = useHelp('What does paying it off today use?', PAYOFF_HELP);
-  const gone = goneWords(purchases);
-  const variable = loan.rates.length > 1;
-  const left = s.payoffLeftoverSats;
-  const rows: Row[] = [
-    { k: 'Owed', v: <Money cents={s.principalOwedCents} /> },
-    ...(s.owedNowEstimated
-      ? [
-          {
-            k: 'Owed now, with interest',
-            v: (
-              <>
-                <Approx />
-                <Money cents={s.owedNowCents} />
-              </>
-            ),
-            sub: <OwedNowParts s={s} today={today} />,
-          },
-        ]
-      : []),
-    ...(s.creditCents > 0 ? [{ k: 'Paid in advance', v: <Money cents={s.creditCents} /> }] : []),
-    ...(s.availableCreditCents !== null ? [{ k: s.availableCreditCents < 0 ? 'Over the limit by' : 'Available', v: <Money cents={Math.abs(s.availableCreditCents)} /> }] : []),
-    { k: 'Rate', v: `${formatAprPercent(s.aprMillionths)}${variable ? ' (variable)' : ''}` },
-    // Everything the purchases bought, then (when some has left or is frozen) what is still held and where the rest went.
-    { k: 'Bought', v: <Amount sats={s.boughtSats} showUnit interactive={false} /> },
-    ...(s.heldSats !== s.boughtSats
-      ? [
-          {
-            k: 'Still held',
-            v: <Amount sats={s.heldSats} showUnit interactive={false} />,
-            sub: (
-              <>
-                {gone !== null ? (
-                  <span className="block">
-                    <Amount sats={gone.sats} showUnit interactive={false} /> {gone.words}
-                  </span>
-                ) : null}
-                {s.frozenSats > 0 ? (
-                  <span className="block">
-                    <Amount sats={s.frozenSats} showUnit interactive={false} /> in a frozen wallet
-                  </span>
-                ) : null}
-              </>
-            ),
-          },
-        ]
-      : []),
-    { k: 'Worth now', v: s.valueCents === null ? '—' : <Money cents={s.valueCents} /> },
-    {
-      k: 'Interest paid',
-      v: <Money cents={s.interestPaidCents} />,
-      ...(s.interestPaidThrough || s.unallocatedInterestCents > 0
-        ? {
-            sub: (
-              <>
-                {s.interestPaidThrough ? `Through ${shortDate(s.interestPaidThrough)}` : ''}
-                {s.unallocatedInterestCents > 0 ? (
-                  <>
-                    {s.interestPaidThrough ? '. ' : ''}
-                    <Money cents={s.unallocatedInterestCents} /> of it was for days before any purchase, so no lot carries it
-                  </>
-                ) : null}
-              </>
-            ),
-          }
-        : {}),
-    },
-    ...(s.proceedsCents > 0 ? [{ k: 'Sold or spent for', v: <Money cents={s.proceedsCents} /> }] : []),
-    ...(s.recoveredCents > 0 ? [{ k: 'Paid back by a frozen platform', v: <Money cents={s.recoveredCents} /> }] : []),
-    ...(s.overallResultCents !== null && (s.proceedsCents > 0 || s.recoveredCents > 0)
-      ? [{ k: 'Whole result, with what already left', v: <SignedMoney cents={s.overallResultCents} precision="cents" />, sub: 'Worth now, plus sales and payouts, less every purchase’s cost and the interest' }]
-      : []),
-    ...(s.breakEvenPriceCents !== null
-      ? [
-          {
-            k: BREAK_EVEN_LABEL,
-            help: breakEvenHelp,
-            v: (
-              <>
-                {s.interestOnPurchasesEstimated ? <Approx /> : null}
-                <Money cents={s.breakEvenPriceCents} />
-              </>
-            ),
-            sub: breakEvenWords(s.priceCents, s.breakEvenPriceCents, masked),
-          },
-        ]
-      : []),
-    ...(left !== null && s.heldSats > 0
-      ? [
-          {
-            k: 'If you paid it off today',
-            help: payoffHelp,
-            v: (
-              <>
-                {s.owedNowEstimated ? <Approx /> : null}
-                {left === 0 ? (
-                  'Just enough'
-                ) : (
-                  <>
-                    <Amount sats={Math.abs(left)} showUnit interactive={false} />
-                    <span className={left < 0 ? 'text-loss' : 'text-gain'}>{left < 0 ? ' short' : ' left over'}</span>
-                  </>
-                )}
-              </>
-            ),
-            sub: left < 0 ? 'Selling all of it still held would not cover what you owe.' : 'Selling just enough of what is still held to pay it off leaves this.',
-          },
-        ]
-      : []),
-  ];
+/** The top of the page: the Holdings card's top half (`LoanTop`), with its "?"s and, once coins have left, the whole result. */
+function Standing({ s }: { s: LoanSummary }) {
+  const estimate = useHelp('What does ≈ mean?', LOAN_ESTIMATE_HELP);
+  const breakEven = useHelp('What is in the break-even price?', BREAK_EVEN_HELP);
+  const payoff = useHelp('What does paying it off today use?', PAYOFF_HELP);
+  const whole = s.overallResultCents !== null && (s.proceedsCents > 0 || s.recoveredCents > 0) ? s.overallResultCents : null;
+  const note =
+    whole === null ? undefined : (
+      <>
+        Counts the <Amount sats={s.heldSats} short showUnit interactive={false} /> still held. With what already left, the whole result is{' '}
+        <SignedMoney cents={whole} precision="cents" className="font-semibold" />.
+      </>
+    );
   return (
-    <section aria-label="Where it stands" className="flex flex-col gap-3">
-      <span className="text-xs normal-nums tracking-[0.06em] text-muted">{loan.closed ? 'CLOSED LOAN' : 'LOAN'} · TRACKING ONLY</span>
-      <IncludingInterest s={s} plain={false} size="page" />
-      <p className="m-0 flex items-center gap-1 text-[13px] leading-snug text-muted">
-        What the coins it bought are worth, less what they cost and the interest paid.
-        {help.button}
-      </p>
-      {help.panel}
-      <Rows label="The loan" rows={rows} />
-    </section>
-  );
-}
-
-// ---- Purchases --------------------------------------------------------------------------------
-
-function PurchaseRow({ p, onOpen, last }: { p: LoanPurchase; onOpen(): void; last: boolean }) {
-  const { entries, state } = useLedger();
-  const wallet = useMemo(() => {
-    const e = entries.find((x) => x.id === p.lotId);
-    return e && 'wallet' in e ? (state.wallets.find((w) => w.id === e.wallet)?.name ?? '') : '';
-  }, [entries, state.wallets, p.lotId]);
-  const gone = p.soldSats + p.otherGoneSats;
-  return (
-    <li className={cx(!last && 'border-b border-line')}>
-      <button type="button" aria-haspopup="dialog" onClick={onOpen} className="flex min-h-[64px] w-full items-center gap-3 bg-transparent py-2 text-left text-text">
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex items-baseline justify-between gap-3 text-sm font-semibold">
-            <Amount sats={p.sats} short showUnit interactive={false} />
-            <span className="text-xs font-normal text-muted">
-              cost <PlainMoney cents={p.costCents} />
-            </span>
-          </span>
-          <span className="text-xs text-muted [overflow-wrap:anywhere]">
-            {shortDate(p.drawDate)}
-            {wallet !== '' ? ` · ${wallet}` : ''}
-            {gone > 0 ? (
-              <>
-                {' '}
-                · <Amount sats={gone} short interactive={false} /> no longer held
-              </>
-            ) : null}
-          </span>
-          <span className="text-xs">
-            <span className="text-soft">Now {p.valueCents === null ? '—' : <PlainMoney cents={p.valueCents} />} · </span>
-            <GainWords worth={purchaseWorth(p)} plain className="font-semibold" />
-          </span>
-          <span className="text-xs text-muted">
-            Share of interest <Approx />
-            <PlainMoney cents={p.interestShareCents} />
-          </span>
-        </span>
-        <ChevronRightIcon size={16} className="flex-none text-muted" />
-      </button>
-    </li>
-  );
-}
-
-function Purchases({ loan, purchases, onManage, onOpen }: { loan: Loan; purchases: LoanPurchase[]; onManage(): void; onOpen(item: EntryItem): void }) {
-  const { entries } = useLedger();
-  const [all, setAll] = useState(false);
-  const items = useMemo(() => new Map(buildItems(entries).map((i) => [i.id, i])), [entries]);
-  const newest = useMemo(() => [...purchases].sort((a, b) => (a.drawDate > b.drawDate ? -1 : a.drawDate < b.drawDate ? 1 : 0)), [purchases]);
-  const shown = all ? newest : newest.slice(0, 5);
-  return (
-    <Card as="section" aria-label="Purchases" className="flex flex-col">
-      <SectionHeader title="Purchases, newest first" right={<SectionCount>{countOf(purchases.length, 'purchase')}</SectionCount>} className="-mt-2" />
-      {purchases.length === 0 ? <EmptyLine>Nothing linked yet. Add the purchases {loan.name} paid for.</EmptyLine> : null}
-      <ul className="m-0 flex list-none flex-col p-0">
-        {shown.map((p, i) => (
-          <PurchaseRow
-            key={p.lotId}
-            p={p}
-            last={i === shown.length - 1}
-            onOpen={() => {
-              const item = items.get(p.lotId);
-              if (item) onOpen(item);
-            }}
-          />
-        ))}
-      </ul>
-      {purchases.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {countOf(purchases.length, 'purchase')}</ShowMore> : null}
-      {!loan.closed ? (
-        <Button variant="secondary" onClick={onManage} className="mt-2 self-start">
-          {purchases.length === 0 ? 'Add purchases' : 'Add or remove purchases'}
-        </Button>
-      ) : null}
+    <Card as="section" aria-label="Where it stands" className="@container flex flex-col gap-4 lg:gap-5 lg:px-6 lg:py-5">
+      <LoanTop s={s} extras={{ estimate, breakEven, payoff, note }} />
     </Card>
   );
 }
@@ -320,30 +134,6 @@ function Payments({ loan, onPay, onOpen }: { loan: Loan; onPay(): void; onOpen(i
         ))}
       </ul>
       {list.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {countOf(list.length, 'payment')}</ShowMore> : null}
-    </Card>
-  );
-}
-
-// ---- Rate --------------------------------------------------------------------------------------
-
-function Rate({ loan, rate, onChange }: { loan: Loan; rate: number; onChange(): void }) {
-  const history = [...loan.rates].reverse();
-  return (
-    <Card as="section" aria-label="Rate" className="flex flex-col gap-2">
-      <SectionHeader title="Rate" right={<span className="text-[15px] font-semibold">{formatAprPercent(rate)}</span>} className="-my-2" />
-      <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-muted">
-        {history.map((r, i) => (
-          <li key={r.from} className="flex justify-between gap-3">
-            <span>{i === history.length - 1 ? `From the start, ${shortDate(r.from)}` : `From ${shortDate(r.from)}`}</span>
-            <span className={i === 0 ? 'font-semibold text-soft' : ''}>{formatAprPercent(r.aprMillionths)}</span>
-          </li>
-        ))}
-      </ul>
-      {!loan.closed ? (
-        <Button variant="secondary" onClick={onChange} className="mt-1 self-start">
-          Rate changed
-        </Button>
-      ) : null}
     </Card>
   );
 }
@@ -578,10 +368,10 @@ export function LoanPage() {
     );
   }
   const close = () => setSheet(null);
-  const standing = <Standing loan={loan} s={s} purchases={purchases} />;
-  const purchaseList = <Purchases loan={loan} purchases={purchases} onManage={() => setSheet('purchases')} onOpen={setEntry} />;
+  const standing = <Standing s={s} />;
+  const details = <Details loan={loan} s={s} purchases={purchases} onRate={() => setSheet('rate')} />;
+  const purchaseList = <Purchases loan={loan} s={s} purchases={purchases} onManage={() => setSheet('purchases')} onOpen={setEntry} />;
   const payments = <Payments loan={loan} onPay={() => setSheet('pay')} onOpen={setEntry} />;
-  const rate = <Rate loan={loan} rate={s.aprMillionths} onChange={() => setSheet('rate')} />;
   const check = <StatementCheck key={`${loan.id}-${s.statements.length}`} loan={loan} s={s} onPay={() => setSheet('pay')} />;
   const settings = <Settings loan={loan} onEdit={() => setSheet('settings')} onClose={() => setSheet('close')} />;
   return (
@@ -590,30 +380,32 @@ export function LoanPage() {
         <BackLink fallback="/" fallbackLabel="Back to Holdings" className={ROUND_BTN}>
           <ChevronLeftIcon size={18} />
         </BackLink>
-        <h1 className="m-0 min-w-0 flex-1 truncate font-display text-[28px] font-semibold tracking-tight lg:text-4xl">{loan.name}</h1>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h1 className="m-0 truncate font-display text-[28px] font-semibold leading-tight tracking-tight lg:text-4xl">{loan.name}</h1>
+          <span className="text-xs text-muted lg:text-[13px]">{loan.closed ? 'Closed loan' : 'Loan'} · tracking only</span>
+        </span>
         {wide ? <HideButton variant="text" /> : null}
         {wide ? <LockButton variant="text" /> : null}
       </header>
       {loan.closed ? <Callout>This loan is closed. It is kept here with its records.</Callout> : null}
+      {standing}
       {wide ? (
-        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-6">
+        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-5">
           <div className="flex flex-col gap-5">
-            {standing}
+            {details}
             {check}
-            {rate}
+            {settings}
           </div>
           <div className="flex flex-col gap-5">
             {purchaseList}
             {payments}
-            {settings}
           </div>
         </div>
       ) : (
         <>
-          {standing}
+          {details}
           {purchaseList}
           {payments}
-          {rate}
           {check}
           {settings}
         </>

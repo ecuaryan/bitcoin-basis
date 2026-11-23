@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
-import { shortDate } from '../../lib/format.ts';
+import { formatMoney, shortDate } from '../../lib/format.ts';
 import { breakEvenWords, gaugeLeft, loanNudgeSnoozed, paymentNudge, snoozeLoanNudge } from '../../lib/loans-view.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { useHelp } from '../../ui/Help.tsx';
@@ -17,8 +17,7 @@ import { usePrefs } from '../../ui/prefs.tsx';
 export const LOAN_ESTIMATE_HELP =
   '≈ marks an estimate. Interest you have not paid yet (since your last payment, or left over from a statement paid in part) is worked out from your rate, and each purchase’s share of the interest is split by how long its money was borrowed. Everything else comes from what you entered.';
 
-/** The break-even label everywhere, and what its "?" says. */
-export const BREAK_EVEN_LABEL = 'Break-even price (with interest paid so far)';
+/** What the break-even's "?" says. */
 export const BREAK_EVEN_HELP =
   'Uses the Bitcoin from this loan’s purchases that you still hold: the price at which it would cover what it cost plus the interest you have paid so far. Interest not billed or paid yet is not included until you pay it.';
 
@@ -75,33 +74,22 @@ export function SignedMoney({ cents, plain = false, precision = 'dollars', class
   return <span className={cx(tone, className)}>{plain ? <PlainMoney cents={cents} precision={precision} signed /> : <Money cents={cents} precision={precision} signed />}</span>;
 }
 
-/**
- * Whole dollars rounded down (toward −∞), so a gain never shows more than it is and a loss never less: −$688.73 is
- * −$689, $688.73 is $688. Under a dollar either way keeps its cents (formatMoney shows them).
- */
-export function floorDollars(cents: number): number {
-  return Math.abs(cents) < 100 ? cents : Math.floor(cents / 100) * 100;
-}
-
 /** The big honest number's name, on the card and the loan page. */
 export const GAIN_AFTER_INTEREST = 'Gain or loss after interest';
 
-/** The big honest number (value − cost of the coins still held − interest on them). */
-export function IncludingInterest({ s, plain, size = 'card' }: { s: LoanSummary; plain: boolean; size?: 'card' | 'page' }) {
-  const cents = s.gainIncludingInterestCents === null ? null : floorDollars(s.gainIncludingInterestCents);
+/**
+ * The big number in cents, signed and in the gain or loss color, the cents a size smaller (`−$13,662` `.16`). Cents on
+ * the card and the loan page alike, so the hero is exactly the purchases table's Total. `plain` inside links.
+ */
+export function HeroMoney({ cents, plain }: { cents: number; plain: boolean }) {
+  const { masked } = usePrefs();
+  if (masked) return <SignedMoney cents={cents} plain={plain} precision="cents" />;
+  const text = formatMoney(cents, { signed: true });
+  const dot = text.lastIndexOf('.');
   return (
-    <span className="flex flex-col gap-1">
-      <span className={cx('text-muted', size === 'page' ? 'text-[13px]' : 'text-xs')}>{GAIN_AFTER_INTEREST}</span>
-      <span className={cx('font-display font-semibold leading-none tracking-[-0.02em]', size === 'page' ? 'text-[34px] lg:text-5xl' : 'text-[28px]')}>
-        {cents === null ? (
-          '—'
-        ) : (
-          <>
-            {s.interestOnPurchasesEstimated ? <Approx /> : null}
-            <SignedMoney cents={cents} plain={plain} />
-          </>
-        )}
-      </span>
+    <span className={cx('whitespace-nowrap tabular-nums', cents < 0 ? 'text-loss' : 'text-gain')}>
+      {text.slice(0, dot)}
+      <span className="text-[0.62em]">{text.slice(dot)}</span>
     </span>
   );
 }
@@ -114,11 +102,17 @@ export function useLoanSummaries(): LoanSummary[] {
   return useMemo(() => state.loans.filter((l) => !l.closed).flatMap((l) => loanSummary(state, l.id, price, today) ?? []), [state, today, price]);
 }
 
-/** One labeled figure on the loan card: a small label, the value, and an optional line under it. */
-function Tile({ label, children, sub }: { label: string; children: ReactNode; sub?: ReactNode }) {
+/** A "?" and what it opens (from `useHelp`). */
+type HelpParts = { button: ReactNode; panel: ReactNode };
+
+/** One labeled figure on the loan card: a small label (and its "?" on the loan page), the value, and an optional line under it. */
+function Tile({ label, help, children, sub }: { label: string; help?: ReactNode; children: ReactNode; sub?: ReactNode }) {
   return (
     <span className="flex min-w-0 flex-col gap-1 @min-[40rem]:px-5 @min-[40rem]:first:pl-0 @min-[40rem]:last:pr-0">
-      <span className="text-xs text-muted">{label}</span>
+      <span className="flex items-center gap-1 text-xs text-muted">
+        {label}
+        {help}
+      </span>
       <span className="text-base font-semibold leading-snug @min-[40rem]:text-lg">{children}</span>
       {sub ? <span className="text-xs leading-snug text-muted">{sub}</span> : null}
     </span>
@@ -126,7 +120,7 @@ function Tile({ label, children, sub }: { label: string; children: ReactNode; su
 }
 
 /** Price against break-even: break-even is the mark in the middle, the dot is today’s price (red below, green above). */
-function BreakEvenGauge({ s, breakEven, masked }: { s: LoanSummary; breakEven: number; masked: boolean }) {
+function BreakEvenGauge({ s, breakEven, masked, help }: { s: LoanSummary; breakEven: number; masked: boolean; help?: ReactNode }) {
   const price = s.priceCents;
   const words = breakEvenWords(price, breakEven, masked);
   const short = breakEvenWords(price, breakEven, masked, true);
@@ -135,12 +129,15 @@ function BreakEvenGauge({ s, breakEven, masked }: { s: LoanSummary; breakEven: n
   return (
     <span className="flex flex-col gap-2.5 rounded-2xl bg-bg px-3 pb-2.5 pt-3 @min-[40rem]:px-4 @min-[40rem]:pt-4">
       <span className="flex items-baseline justify-between gap-2 text-xs @min-[40rem]:text-[13px]">
-        <span className="text-muted">
-          Break-even{' '}
-          <span className="font-semibold text-text">
-            {s.interestOnPurchasesEstimated ? <Approx /> : null}
-            <PlainMoney cents={breakEven} />
+        <span className="flex items-center gap-1 text-muted">
+          <span>
+            Break-even{' '}
+            <span className="font-semibold text-text">
+              {s.interestOnPurchasesEstimated ? <Approx /> : null}
+              <PlainMoney cents={breakEven} />
+            </span>
           </span>
+          {help}
         </span>
         {short !== null ? (
           <span className={cx('flex-none font-semibold', tone)}>
@@ -174,9 +171,22 @@ function BreakEvenGauge({ s, breakEven, masked }: { s: LoanSummary; breakEven: n
   );
 }
 
-/** One loan on Holdings: the result after interest, price against break-even, and four labeled figures. The whole card opens the loan page. */
-function LoanBlock({ s }: { s: LoanSummary }) {
+/** The loan page's additions to the top half: its "?"s (the card is one link, so it has none) and a line under the math. */
+export interface LoanTopExtras {
+  estimate: HelpParts;
+  breakEven: HelpParts;
+  payoff: HelpParts;
+  /** Under the hero's math (the whole result, once some coins have left). */
+  note?: ReactNode;
+}
+
+/**
+ * The top half of a loan, the same on the Holdings card and the loan page: the result after interest with its math, price
+ * against break-even, and four labeled figures. Put it in a container (`@container`): wide from 40rem of it.
+ */
+export function LoanTop({ s, extras }: { s: LoanSummary; extras?: LoanTopExtras }) {
   const { masked } = usePrefs();
+  const plain = extras === undefined;
   const bought = s.purchaseCount > 0;
   const allHeld = s.frozenSats === 0 && s.soldSats === 0 && s.otherGoneSats === 0;
   const unpaid = s.owedNowCents - s.principalOwedCents;
@@ -185,29 +195,21 @@ function LoanBlock({ s }: { s: LoanSummary }) {
   const left = s.payoffLeftoverSats;
   const used = limit === null || available === null || limit <= 0 ? null : Math.min(100, Math.max(0, ((limit - available) / limit) * 100));
   return (
-    <Link
-      to={`/loans/${s.loanId}`}
-      className="press-soft @container flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4 text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2 lg:gap-5 lg:px-6 lg:py-5"
-    >
-      <span className="flex items-center gap-2">
-        <span className="truncate text-[15px] font-semibold @min-[40rem]:text-base">{s.name}</span>
-        <span className="flex-none rounded-md border border-line px-1.5 text-[11px] font-semibold leading-5 text-soft">{formatAprPercent(s.aprMillionths)} APR</span>
-        <span className="ml-auto flex flex-none items-center gap-1 text-[13px] font-semibold text-soft">
-          <span className="hidden @min-[40rem]:inline">Open loan</span>
-          <ChevronRightIcon size={16} className="text-muted" />
-        </span>
-      </span>
+    <>
       {bought ? (
         <span className="flex flex-col gap-4 @min-[40rem]:grid @min-[40rem]:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] @min-[40rem]:items-center @min-[40rem]:gap-8">
           <span className="flex flex-col gap-1.5 @min-[40rem]:gap-2">
-            <span className="text-xs text-muted @min-[40rem]:text-[13px]">{GAIN_AFTER_INTEREST}</span>
+            <span className="flex items-center gap-1 text-xs text-muted @min-[40rem]:text-[13px]">
+              {GAIN_AFTER_INTEREST}
+              {extras?.estimate.button}
+            </span>
             <span className="font-display text-[34px] font-semibold leading-none tracking-[-0.02em] @min-[40rem]:text-5xl">
               {s.gainIncludingInterestCents === null ? (
                 '—'
               ) : (
                 <>
                   {s.interestOnPurchasesEstimated ? <Approx /> : null}
-                  <SignedMoney cents={floorDollars(s.gainIncludingInterestCents)} plain />
+                  <HeroMoney cents={s.gainIncludingInterestCents} plain={plain} />
                 </>
               )}
             </span>
@@ -228,12 +230,15 @@ function LoanBlock({ s }: { s: LoanSummary }) {
                 </span>
               </span>
             )}
+            {extras?.note ? <span className="text-xs leading-normal text-muted @min-[40rem]:text-[13px]">{extras.note}</span> : null}
           </span>
-          {s.breakEvenPriceCents === null ? null : <BreakEvenGauge s={s} breakEven={s.breakEvenPriceCents} masked={masked} />}
+          {s.breakEvenPriceCents === null ? null : <BreakEvenGauge s={s} breakEven={s.breakEvenPriceCents} masked={masked} help={extras?.breakEven.button} />}
         </span>
       ) : (
-        <span className="text-[13px] text-muted">No purchases linked yet. Open it to add them.</span>
+        <span className="text-[13px] text-muted">{plain ? 'No purchases linked yet. Open it to add them.' : 'No purchases linked yet. Add them below.'}</span>
       )}
+      {extras?.estimate.panel}
+      {extras?.breakEven.panel}
       <span className="grid grid-cols-2 gap-x-3.5 gap-y-4 @min-[40rem]:grid-cols-4 @min-[40rem]:gap-0 @min-[40rem]:divide-x @min-[40rem]:divide-line @min-[40rem]:border-t @min-[40rem]:border-line @min-[40rem]:pt-4">
         <Tile
           label="Owed"
@@ -281,6 +286,7 @@ function LoanBlock({ s }: { s: LoanSummary }) {
         {left !== null && s.heldSats > 0 ? (
           <Tile
             label="If paid off today"
+            help={extras?.payoff.button}
             sub={
               <>
                 {left > 0 ? 'Left over after paying ' : left < 0 ? 'Short of the ' : 'Exactly covers '}
@@ -290,18 +296,46 @@ function LoanBlock({ s }: { s: LoanSummary }) {
               </>
             }
           >
-            {left === 0 ? (
-              'Just enough'
-            ) : (
-              <span className={left < 0 ? 'text-loss' : 'text-gain'}>
-                {s.owedNowEstimated ? <Approx /> : null}
-                <Amount sats={Math.abs(left)} short showUnit interactive={false} />
-                <span className="sr-only">{left < 0 ? ' short' : ' left over'}</span>
-              </span>
-            )}
+            {left === 0 ? 'Just enough' : <PayoffSats sats={left} estimated={s.owedNowEstimated} />}
           </Tile>
         ) : null}
       </span>
+      {extras?.payoff.panel}
+    </>
+  );
+}
+
+/**
+ * What paying it off today leaves (positive) or lacks (negative), never better than it is: a shortfall rounds up and a
+ * leftover down at 4 decimals (or to the cent in USD; sats are exact), so a shortfall is never shown smaller and a
+ * leftover never bigger.
+ */
+export function PayoffSats({ sats, estimated }: { sats: number; estimated: boolean }) {
+  return (
+    <span className={sats < 0 ? 'text-loss' : 'text-gain'}>
+      {estimated ? <Approx /> : null}
+      <Amount sats={Math.abs(sats)} short showUnit interactive={false} round={sats < 0 ? 'up' : 'down'} />
+      <span className="sr-only">{sats < 0 ? ' short' : ' left over'}</span>
+    </span>
+  );
+}
+
+/** One loan on Holdings: its name and rate over `LoanTop`. The whole card opens the loan page. */
+function LoanBlock({ s }: { s: LoanSummary }) {
+  return (
+    <Link
+      to={`/loans/${s.loanId}`}
+      className="press-soft @container flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4 text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2 lg:gap-5 lg:px-6 lg:py-5"
+    >
+      <span className="flex items-center gap-2">
+        <span className="truncate text-[15px] font-semibold @min-[40rem]:text-base">{s.name}</span>
+        <span className="flex-none rounded-md border border-line px-1.5 text-[11px] font-semibold leading-5 text-soft">{formatAprPercent(s.aprMillionths)} APR</span>
+        <span className="ml-auto flex flex-none items-center gap-1 text-[13px] font-semibold text-soft">
+          <span className="hidden @min-[40rem]:inline">Open loan</span>
+          <ChevronRightIcon size={16} className="text-muted" />
+        </span>
+      </span>
+      <LoanTop s={s} />
     </Link>
   );
 }

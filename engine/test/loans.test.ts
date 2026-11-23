@@ -96,6 +96,7 @@ describe('Example L: four $5,000 purchases on a 6.5% HELOC', () => {
       interestOnPurchasesCents: 52_603,
       interestOnPurchasesEstimated: false,
       unallocatedInterestCents: 0,
+      interestNotOnPurchasesCents: 0,
       recoveredCents: 0,
       gainIncludingInterestCents: -68_873,
       overallResultCents: -63_045,
@@ -175,7 +176,7 @@ describe('interest allocation edge cases', () => {
   test('with a non-purchase draw, the purchases get an estimated share (by dollar-days)', () => {
     const state = replay([...coins(), loan('h', '2025-01-01', 73_000), link('K1', 'h', 'A'), draw('D', 'h', '2025-01-10', '10000'), payment('Y', 'h', '2025-02-01', '100', '0', { interestThrough: '2025-01-31' })]);
     const s = loanSummary(state, 'h', PRICE, '2025-02-01');
-    expect(s).toMatchObject({ interestPaidCents: 10_000, interestOnPurchasesCents: 5_000, interestOnPurchasesEstimated: true, otherDrawsCents: 1_000_000 });
+    expect(s).toMatchObject({ interestPaidCents: 10_000, interestOnPurchasesCents: 5_000, interestNotOnPurchasesCents: 5_000, interestOnPurchasesEstimated: true, otherDrawsCents: 1_000_000 });
     expect(loanInterestByYear(state)).toEqual([{ year: 2025, interestPaidCents: 10_000, onPurchasesCents: 5_000, loans: [{ loanId: 'h', name: 'HELOC', interestPaidCents: 10_000, onPurchasesCents: 5_000 }], paidBefore: [] }]);
   });
 
@@ -185,7 +186,7 @@ describe('interest allocation edge cases', () => {
     expect(loanPurchases(state, 'h', PRICE, '2025-03-05').map((p) => p.interestShareCents)).toEqual([3_000, 1_000]);
     // Interest recorded as paid through a day before any draw: on nothing.
     const early = replay([...coins(), loan('h', '2025-01-01', 65_000), link('K1', 'h', 'A'), payment('Y', 'h', '2025-01-05', '40', '0', { interestThrough: '2025-01-05' })]);
-    expect(loanSummary(early, 'h', PRICE, '2025-01-05')).toMatchObject({ interestPaidCents: 4_000, interestOnPurchasesCents: 0, unallocatedInterestCents: 4_000, interestOnPurchasesEstimated: true });
+    expect(loanSummary(early, 'h', PRICE, '2025-01-05')).toMatchObject({ interestPaidCents: 4_000, interestOnPurchasesCents: 0, unallocatedInterestCents: 4_000, interestNotOnPurchasesCents: 4_000, interestOnPurchasesEstimated: true });
     const none = replay([loan('h', '2025-01-01', 65_000), payment('Y', 'h', '2025-01-31', '12.34')]);
     expect(loanSummary(none, 'h', PRICE, '2025-02-01')).toMatchObject({ interestPaidCents: 1_234, interestOnPurchasesCents: 0, accruedInterestCents: 0, owedNowEstimated: false });
     const zero = replay([...coins(), loan('h', '2025-01-01', 65_000), link('K', 'h', 'A', { drawCents: 0 }), payment('Y', 'h', '2025-01-31', '1')]);
