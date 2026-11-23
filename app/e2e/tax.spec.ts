@@ -1,4 +1,8 @@
+import { replay } from '@bitcoin-basis/engine';
 import { expect, test } from '@playwright/test';
+import { buildDemoBook, DEMO_TODAY } from '../src/demo/demo-data.ts';
+import { formatMoney } from '../src/lib/format.ts';
+import { yearTaxView } from '../src/screens/tax/tax-logic.ts';
 import { expectNoViolations, go, openDemo } from './helpers.ts';
 
 test('Tax season: year view and 8949 download', async ({ page }) => {
@@ -39,4 +43,28 @@ test('Tax summary page prints for a CPA', async ({ page }) => {
   await go(page, '/tax/summary/2026');
   await expect(page.getByRole('heading', { name: 'Bitcoin tax year summary: 2026' })).toBeVisible();
   await expectNoViolations(page);
+});
+
+test('Tax season: the year’s result shows exactly the engine’s netting, in words', async ({ page }) => {
+  const state = replay(buildDemoBook().entries);
+  const v = yearTaxView(state, state.settings, 2026, DEMO_TODAY);
+  const carried = v.carriedIn.st + v.carriedIn.lt;
+  // The math under the big number adds up to it.
+  expect(v.stCents + v.ltCents - carried).toBe(v.netting.net);
+  await openDemo(page);
+  await go(page, '/tax');
+  const result = page.getByRole('region', { name: 'Your 2026 result' });
+  await expect(result).toContainText(formatMoney(v.netting.net, { signed: true }));
+  await expect(result).toContainText(`This year ${formatMoney(v.stCents + v.ltCents, { signed: true })} − losses from past years ${formatMoney(carried)}`);
+  await expect(result).toContainText('No tax on Bitcoin gains for 2026');
+  await expect(result).toContainText(`${formatMoney(v.netting.lossDeduction)} lowers your other income. ${formatMoney(v.carryOut.st + v.carryOut.lt)} carries into 2027.`);
+  await expect(result).toContainText(`Losses left for 2027${formatMoney(v.carryOut.st + v.carryOut.lt)}`);
+  await expect(result.getByRole('list', { name: 'What happened in 2026' })).toContainText('1 purchase paid in Bitcoin');
+  await result.getByRole('button', { name: 'How it nets out, for Schedule D' }).click();
+  const netted = result.getByRole('region', { name: 'After losses from past years' });
+  await expect(netted).toContainText(`Short-term after past losses${formatMoney(v.netting.st, { signed: true })}`);
+  await expect(netted).toContainText(`Long-term after past losses${formatMoney(v.netting.lt, { signed: true })}`);
+  await expectNoViolations(page);
+  await page.getByRole('button', { name: 'Hide amounts' }).first().click();
+  expect(await result.innerText()).not.toMatch(/\$\d/);
 });

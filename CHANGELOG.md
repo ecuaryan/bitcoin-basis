@@ -22,6 +22,10 @@
 
 - **Recent purchases** on Holdings, under the chart and your retirement accounts: your latest five purchases, newest first, in the same table as a wallet's lots (Date, Paid, Bitcoin with the cost per BTC, Now with the gain or loss and its percent), with the wallet on each row. It counts logged purchases, retirement purchases (tagged Retirement) and imported lots that cost something, dated when they were bought. "Show 10 more" adds rows; tap one to open it. On desktop it spans the page, one line per purchase.
 
+### Changed (Tax season)
+
+- **One "Your 2026 result" card** replaces the two plain row cards. It leads with the net gain or loss after losses from past years, with the math under it (this year − losses from past years), then says what it means in words: "No tax on Bitcoin gains for 2026" with how much lowers your other income and how much carries into next year, or "Taxed on $X of gains" split into short-term (taxed like wages) and long-term (lower rate), as Schedule D nets them. Four labeled figures follow (Short-term, Long-term, Used against other income with the yearly limit for your filing status, Losses left for next year), then "What happened in 2026" with plain counts ("1 purchase paid in Bitcoin", "12 tiny sales"). "How it nets out, for Schedule D" opens the short-term and long-term after past losses.
+
 ### Changed (loan card)
 
 - **The loan card on Holdings is redesigned.** Its big number is now named "Gain or loss after interest" (on the loan page too) and shows its math underneath: worth − cost − interest. A small gauge shows today's price against your break-even (red below, green above, with how far off it is), and four labeled figures replace the lines of text: Owed (with a bar for how much of the credit line is used and what's available), Bitcoin it bought, Interest paid (with about how much is not paid yet), and If paid off today (how much Bitcoin would be left over or short, and the total owed with interest). The rate shows beside the loan's name. Phone shows the figures two by two; desktop puts the number beside the gauge and the four figures in a row. Hide amounts hides the gauge's dot along with every figure.

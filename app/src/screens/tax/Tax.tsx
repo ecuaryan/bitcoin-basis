@@ -1,7 +1,7 @@
 import { form8949Csv, incomeCsv, LOAN_INTEREST_CPA_NOTE, loanInterestByYear, yearOf, yearSummary } from '@bitcoin-basis/engine';
 import { taxTableNotice } from '../../lib/tax-table-notice.ts';
 import { useSubmit } from '../../ui/use-submit.ts';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { cx } from '../../lib/cx.ts';
@@ -22,39 +22,10 @@ import { answerReason, CHARITY_RULE, charityRows, defaultTaxYear, TERM_WORDS, FE
 import { LOSSES_CHECK, staleLosses } from '../../lib/losses.ts';
 import { useWriter } from '../../ui/use-writer.ts';
 import { useTitle } from '../../ui/use-title.ts';
-import { TERM_HELP } from '../../lib/terms.ts';
 import { useHelp } from '../../ui/Help.tsx';
 import { NoIncomeNote, TaxProfilePrompt } from './TaxProfilePrompt.tsx';
+import { YearResult } from './YearResult.tsx';
 import { newestFirst } from '../../lib/newest-first.ts';
-
-/** A card of label/value rows. `help` puts a "?" after one row's label, with its answer under the rows. */
-function Rows({ rows, label, help }: { rows: readonly [string, ReactNode][]; label: string; help?: { row: string; label: string; text: string } }) {
-  const h = useHelp(help?.label ?? '', help?.text ?? '');
-  return (
-    <section aria-label={label} className="rounded-[18px] border border-line bg-surface px-4 py-1">
-      <dl className="m-0">
-        {rows.map(([k, v], i) => (
-          <div key={k} className={cx('flex min-h-12 items-center justify-between gap-4', i < rows.length - 1 && 'border-b border-line')}>
-            <dt className="flex items-center gap-1 text-sm text-soft">
-              {k}
-              {help?.row === k ? h.button : null}
-            </dt>
-            <dd className="m-0 text-right text-sm font-semibold">{v}</dd>
-          </div>
-        ))}
-      </dl>
-      {help && h.panel ? <div className="border-t border-line py-3">{h.panel}</div> : null}
-    </section>
-  );
-}
-
-function Count({ n, children }: { n: number; children: ReactNode }) {
-  return (
-    <>
-      {n} · {children}
-    </>
-  );
-}
 
 // ---- Close and unlock ---------------------------------------------------------------------
 
@@ -205,47 +176,6 @@ export function Tax() {
       {feeOnly ? feeHelp.panel : null}
     </section>
   );
-
-  const kindRows: [string, ReactNode][] = (
-    [
-      ['Sales', totals.sales],
-      ['Spending', totals.spending],
-      ['Network fees (tiny sales)', totals.fees],
-      ['Frozen platform loss or payout', totals.other],
-    ] as const
-  )
-    .filter(([, t]) => t.count > 0)
-    .map(([label, t]) => [
-      label,
-      <Count key={label} n={t.count}>
-        {/* A fee is a tiny sale: its dollar value (from the price then) says more than a gain of a few cents or $0.00. */}
-        {t === totals.fees && t.proceedsCents > 0 ? (
-          <>
-            worth <Money cents={t.proceedsCents} />
-            {t.gainCents !== 0 ? (
-              <span className="font-normal text-muted">
-                {' '}
-                (gain <Money cents={t.gainCents} signed />)
-              </span>
-            ) : null}
-          </>
-        ) : (
-          <Money cents={t.gainCents} signed />
-        )}
-      </Count>,
-    ]);
-  const summaryRows: [string, ReactNode][] = [
-    ...(kindRows.length > 0 ? kindRows : ([['Sales and spending', 'None this year.']] as [string, ReactNode][])),
-    ['Short-term total', <Money key="st" cents={view.stCents} signed />],
-    ['Long-term total', <Money key="lt" cents={view.ltCents} signed />],
-  ];
-  const afterRows: [string, ReactNode][] = [
-    ...(view.carriedIn.st + view.carriedIn.lt > 0 ? ([['Losses from past years', <Money key="ci" cents={view.carriedIn.st + view.carriedIn.lt} />]] as [string, ReactNode][]) : []),
-    ['Short-term after losses from past years', <Money key="ast" cents={view.netting.st} signed />],
-    ['Long-term after losses from past years', <Money key="alt" cents={view.netting.lt} signed />],
-    ...(view.netting.lossDeduction > 0 ? ([['Used against other income', <Money key="ld" cents={view.netting.lossDeduction} />]] as [string, ReactNode][]) : []),
-    [`Losses left for ${year + 1}`, <Money key="co" cents={view.carryOut.st + view.carryOut.lt} />],
-  ];
 
   const income = (
     <Card as="section" aria-label="Income received" className="flex flex-col gap-2.5 !rounded-[18px] !p-4">
@@ -456,8 +386,7 @@ export function Tax() {
               </Link>
             </p>
           )}
-          <Rows label="Summary" rows={summaryRows} help={{ row: 'Short-term total', label: 'What are short-term and long-term?', text: TERM_HELP }} />
-          <Rows label="After losses from past years" rows={afterRows} />
+          <YearResult year={year} view={view} totals={totals} />
           {income}
         </div>
         <div className="flex flex-col gap-3">

@@ -262,3 +262,24 @@ export function nextYearLosses(state: LedgerState, settings: Settings, year: num
   const saved = next !== undefined && next.st === out.st && next.lt === out.lt;
   return saved ? null : out;
 }
+
+/**
+ * The year's result in plain words, from the engine's netting. A net gain is split by character as Schedule D does:
+ * the long-term part is the smaller of net long-term and the net gain (when long-term is a gain), the rest is
+ * short-term, taxed like wages. A net loss lowers other income by `lossDeduction` and the rest carries forward.
+ */
+export type YearVerdict =
+  | { kind: 'nothing' }
+  | { kind: 'even' }
+  | { kind: 'loss'; deductionCents: Cents; carryCents: Cents }
+  | { kind: 'gain'; netCents: Cents; shortCents: Cents; longCents: Cents };
+
+export function yearVerdict(view: Pick<YearTaxView, 'netting' | 'carryOut' | 'carriedIn'>, disposals: number): YearVerdict {
+  const { net, lt, lossDeduction } = view.netting;
+  if (net > 0) {
+    const longCents = lt > 0 ? Math.min(lt, net) : 0;
+    return { kind: 'gain', netCents: net, shortCents: net - longCents, longCents };
+  }
+  if (net < 0) return { kind: 'loss', deductionCents: lossDeduction, carryCents: view.carryOut.st + view.carryOut.lt };
+  return disposals === 0 && view.carriedIn.st + view.carriedIn.lt === 0 ? { kind: 'nothing' } : { kind: 'even' };
+}

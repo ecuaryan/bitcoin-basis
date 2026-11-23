@@ -1,7 +1,7 @@
 import { createUuidV7, federalTableFor, giftAnnualExclusionFor, replay, type Entry } from '@bitcoin-basis/engine';
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_TODAY } from '../../demo/demo-data.ts';
-import { answerReason, charityRows, feeOnlyYes, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, form8949Detail, joinWords, overExclusion, termWord, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory, nextYearLosses } from './tax-logic.ts';
+import { answerReason, charityRows, feeOnlyYes, defaultTaxYear, yearIsOver, flagsForYear, form1099Rows, form8949Detail, joinWords, overExclusion, termWord, totalsByKind, yearsAvailable, yearTaxView, yearLockHistory, nextYearLosses, yearVerdict } from './tax-logic.ts';
 import { yearSummary } from '@bitcoin-basis/engine';
 
 const state = replay(buildDemoBook().entries);
@@ -250,5 +250,25 @@ describe('charity gifts', () => {
       { key: 'c1', date: '2026-03-01', recipient: 'Church', valueCents: 900_000, deductionCents: 900_000, term: 'long', appraisal: true },
     ]);
     expect(charityRows(yearSummary(s, 2025))).toEqual([]);
+  });
+});
+
+describe('yearVerdict: the year in plain words', () => {
+  const netting = (st: number, lt: number, lossDeduction = 0) => ({ st, lt, net: st + lt, lossDeduction, includedInIncome: 0, preferential: 0, taxableIncome: 0 });
+  const none = { st: 0, lt: 0 };
+  it('splits a net gain by character, as Schedule D does', () => {
+    expect(yearVerdict({ netting: netting(224_000, 1_051_000), carryOut: none, carriedIn: none }, 3)).toEqual({ kind: 'gain', netCents: 1_275_000, shortCents: 224_000, longCents: 1_051_000 });
+    // A long-term loss eats into the short-term gain: all of what is left is short-term.
+    expect(yearVerdict({ netting: netting(500_000, -200_000), carryOut: none, carriedIn: none }, 2)).toEqual({ kind: 'gain', netCents: 300_000, shortCents: 300_000, longCents: 0 });
+    // A short-term loss eats into the long-term gain: what is left is long-term.
+    expect(yearVerdict({ netting: netting(-200_000, 500_000), carryOut: none, carriedIn: none }, 2)).toEqual({ kind: 'gain', netCents: 300_000, shortCents: 0, longCents: 300_000 });
+  });
+  it('a net loss: what lowers other income and what carries forward', () => {
+    expect(yearVerdict({ netting: netting(41_250, -1_078_000, 300_000), carryOut: { st: 0, lt: 736_750 }, carriedIn: { st: 0, lt: 960_000 } }, 4)).toEqual({ kind: 'loss', deductionCents: 300_000, carryCents: 736_750 });
+  });
+  it('nothing sold and no past losses, or gains and losses that cancel', () => {
+    expect(yearVerdict({ netting: netting(0, 0), carryOut: none, carriedIn: none }, 0)).toEqual({ kind: 'nothing' });
+    expect(yearVerdict({ netting: netting(5_000, -5_000), carryOut: none, carriedIn: none }, 2)).toEqual({ kind: 'even' });
+    expect(yearVerdict({ netting: netting(5_000, -5_000), carryOut: none, carriedIn: { st: 0, lt: 5_000 } }, 0)).toEqual({ kind: 'even' });
   });
 });

@@ -104,5 +104,8 @@ test('year close: offers the losses left for next year and saves them', async ({
   await go(page, '/settings');
   await expect(page.getByRole('group', { name: 'Losses from past years' })).toContainText('for 2026');
   await go(page, '/tax');
+  const result = page.getByRole('region', { name: /^Your \d{4} result$/ });
+  await expect(result).toContainText('after losses from past years');
+  await result.getByRole('button', { name: 'How it nets out, for Schedule D' }).click();
   await expect(page.getByRole('region', { name: 'After losses from past years' })).toContainText('Losses from past years');
 });
