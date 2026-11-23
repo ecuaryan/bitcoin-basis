@@ -1,4 +1,4 @@
-import { planSale, type LedgerState, type Lot, type LotPick, type SalePlan, type SalePlanError, type SalePlans, type Settings, type Result } from '@bitcoin-basis/engine';
+import { isBetterPlan, planSale, type DisposalPick, type LedgerState, type Lot, type LotPick, type SalePlan, type SalePlanError, type SalePlans, type Settings, type Result } from '@bitcoin-basis/engine';
 
 /** The amount What if starts on: 0.25 BTC, or a round quarter of a smaller wallet. */
 export function defaultSats(balance: number): number {
@@ -101,6 +101,59 @@ export function documentationNote(oldest: SalePlan, lowest: SalePlan): string {
 /** The exchange follows its own default (oldest first) unless told which coins to sell. */
 export function needsBrokerInstruction(plan: SalePlan): boolean {
   return plan.brokerInstructionNeeded;
+}
+
+/**
+ * The small pill on the plan cards, by the engine's own rule (`isBetterPlan`: less tax wins; at equal tax, more loss left
+ * for next year). Every plan no other plan beats gets one, unless no plan beats any other (then there is nothing to point
+ * at). The words say why it won: `Least tax` (`Saves the most` when it saves tax), or `Keeps more losses` when another
+ * plan costs the same tax.
+ */
+export function bestPills(plans: readonly SalePlan[]): (string | null)[] {
+  const unbeaten = plans.map((p) => !plans.some((o) => isBetterPlan(o, p)));
+  if (unbeaten.every(Boolean)) return plans.map(() => null);
+  return plans.map((p, i) => {
+    if (!unbeaten[i]) return null;
+    const onTax = plans.every((o, j) => unbeaten[j] || o.totalTaxCents > p.totalTaxCents);
+    if (!onTax) return 'Keeps more losses';
+    return p.totalTaxCents < 0 ? 'Saves the most' : 'Least tax';
+  });
+}
+
+/** Which plans' "Losses left for next year" stands out: the one plan that leaves the most (more than $0). */
+export function mostCarried(plans: readonly SalePlan[]): boolean[] {
+  const most = Math.max(...plans.map(carriedOut));
+  const count = plans.filter((p) => carriedOut(p) === most).length;
+  return plans.map((p) => most > 0 && count === 1 && carriedOut(p) === most);
+}
+
+/** `Short-term gain` or `Short-term loss`, by the sign ($0 is a gain of nothing). */
+export function termLabel(term: 'Short-term' | 'Long-term', cents: number): string {
+  return `${term} ${cents < 0 ? 'loss' : 'gain'}`;
+}
+
+/**
+ * The tax as shown on a card: what it adds, or (negative tax) what it saves, as a positive figure, with its federal and
+ * state parts flipped the same way so `Federal $X + state $Y` adds up to it (the engine splits them so they do).
+ */
+export function taxShown(plan: SalePlan): { label: string; saves: boolean; cents: number; federal: number; state: number } {
+  const saves = plan.totalTaxCents < 0;
+  const flip = saves ? -1 : 1;
+  return { ...taxEffectLabel(plan.totalTaxCents), saves, federal: flip * plan.federalTaxCents, state: flip * plan.stateTaxCents };
+}
+
+export interface LotsUsed {
+  rows: readonly DisposalPick[];
+  /** Sum of the rows' sats; cost, proceeds and gain are the plan's own totals (the rows add up to them). */
+  total: { sats: number; costCents: number; proceedsCents: number; gainCents: number };
+}
+
+/** The selected plan's lots, in the order the plan uses them, and the Total row. */
+export function lotsUsed(plan: SalePlan): LotsUsed {
+  return {
+    rows: plan.pieces,
+    total: { sats: plan.pieces.reduce((s, p) => s + p.sats, 0), costCents: plan.costCents, proceedsCents: plan.proceedsCents, gainCents: plan.gainCents },
+  };
 }
 
 export type PlanKey = 'oldest-first' | 'lowest-tax' | 'hand-picked';

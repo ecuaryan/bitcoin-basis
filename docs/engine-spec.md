@@ -116,13 +116,13 @@ Data files by year (federal brackets for all filing statuses, standard deduction
 - `taxForYear({ year, filingStatus, wages, st, lt, carryforward, state })` → federal (ordinary + LT + NIIT), state, total, and carryforward out by character.
 - Netting: ST and LT net within themselves; carryforward joins its own character first; then cross-net; a net loss deducts up to the limit against ordinary income (ST loss used first); the rest carries forward keeping character.
 - **Capital tax effect** = tax with the capital items − tax with none (wages only).
-- **Incremental tax of a sale** = capital tax effect with the sale − capital tax effect without it (this is "Tax this adds" on the Sell screen, or "Tax this saves" when it is negative).
+- **Incremental tax of a sale** = capital tax effect with the sale − capital tax effect without it (this is "Tax this adds" on the Sell screen, or "Tax this saves" when it is negative). For both effects the total is the exact sum rounded half-up, and federal and state split it by largest remainder (`addingParts`: each part its exact value rounded down or up), so federal + state = total to the cent. (`taxForYear` rounds each on its own; its total can differ from federal + state by a cent.)
 - Marginal rates for ranking lots.
 - State: flat rate on net capital gain included in income (net loss deduction as federal), Idaho 5.3%.
 
 ## Planner
 
-- **Sell:** for a wallet and amount: oldest-first vs lowest-tax side by side: coins used, ST/LT gain, after carryforward, incremental federal + state tax, carryforward into next year, portion on Estimated/Unknown cost. Heads-up if tax > $1,000 (estimated payment may be needed). Plans other than oldest first carry `brokerInstructionNeeded` (tell the exchange which coins by the time of sale, Treas. Reg. 1.1012-1(j)(3), or its default applies). The price must be above $0 and the date inside the plan's year.
+- **Sell:** for a wallet and amount: oldest-first vs lowest-tax side by side: coins used, ST/LT gain, after carryforward, incremental federal + state tax, carryforward into next year, portion on Estimated/Unknown cost, and each lot's part (`pieces`: sats, cost, proceeds split by sats, gain, term; for a dual-basis gift the basis the rule used, so proceeds − cost = gain; they add up to the plan's cost, proceeds and gain). Heads-up if tax > $1,000 (estimated payment may be needed). Plans other than oldest first carry `brokerInstructionNeeded` (tell the exchange which coins by the time of sale, Treas. Reg. 1.1012-1(j)(3), or its default applies). The price must be above $0 and the date inside the plan's year.
 - **Borrow:** loan, rate, margin-call LTV, liquidation LTV, BTC pledged, price → LTV now, margin-call and liquidation prices, interest per year, if liquidated: BTC sold (loan ÷ liquidation price), oldest first, and the tax that sale would add. The pledging wallet must exist and not be frozen, retirement or archived; the pledged coins come from its lots.
 
 ## Worked examples (must match exactly)

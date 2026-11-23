@@ -1,4 +1,4 @@
-import { formatBtc, oldestFirstOrder, parseBtc, yearOf } from '@bitcoin-basis/engine';
+import { formatBtc, oldestFirstOrder, parseBtc, yearOf, type SalePlan } from '@bitcoin-basis/engine';
 import { TaxTableNotice } from '../../ui/TaxTableNotice.tsx';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { Link } from 'react-router';
@@ -17,10 +17,12 @@ import { PriceUnavailable } from '../../ui/PriceProblem.tsx';
 import { NoIncomeNote, TaxProfilePrompt } from '../tax/TaxProfilePrompt.tsx';
 import { BtcInput } from '../../ui/formatted-inputs.tsx';
 import { ChevronDownIcon } from '../../ui/more-icons.tsx';
-import { Note, PlanCard, PlanChoice, Sentence } from './sell-parts.tsx';
+import { LotsUsedTable, Note, PlanCard, PlanChoice, Sentence } from './sell-parts.tsx';
+import { SectionHeader } from '../../ui/SectionHeader.tsx';
+import { useLotHelp } from '../../ui/Help.tsx';
 import { TERM_HELP } from '../../lib/terms.ts';
 import { PickCoinsSheet, PrepareSaleSheet, SaleReviewSheet, WalletSheet } from './sell-sheets.tsx';
-import { carriedOut, defaultSats, documentationNote, needsBrokerInstruction, picksFromSelection, planFor, planForWallet, stepFor, summarize, type PlanKey } from './sell-logic.ts';
+import { bestPills, defaultSats, mostCarried, documentationNote, needsBrokerInstruction, picksFromSelection, planFor, planForWallet, stepFor, summarize, type PlanKey } from './sell-logic.ts';
 
 export const PLAN_LABEL: Record<PlanKey, string> = { 'oldest-first': 'Oldest first', 'lowest-tax': 'Lowest tax', 'hand-picked': 'Lots you picked' };
 
@@ -49,6 +51,7 @@ export function Sell() {
   const [handOrder, setHandOrder] = useState<string[] | null>(null);
   const [planKey, setPlanKey] = useState<PlanKey>('lowest-tax');
   const [sheet, setSheet] = useState<'wallet' | 'pick' | 'review' | 'prepare' | null>(null);
+  const lotHelp = useLotHelp();
 
   const lots = useMemo(() => (wallet ? oldestFirstOrder(state.lots, wallet.wallet) : []), [state.lots, wallet]);
   const hand = useMemo(() => (handOrder ? picksFromSelection(lots, handOrder, deferred) : null), [handOrder, lots, deferred]);
@@ -168,13 +171,34 @@ export function Sell() {
     body = <Card className="text-[15px] text-loss">{planned.plans.error.message}</Card>;
   } else if (plans && active) {
     const summary = summarize(plans.oldestFirst, plans.lowestTax);
+    const choices: { key: PlanKey; plan: SalePlan }[] = [
+      { key: 'oldest-first', plan: plans.oldestFirst },
+      { key: 'lowest-tax', plan: plans.lowestTax },
+      ...(plans.handPicked ? [{ key: 'hand-picked' as const, plan: plans.handPicked }] : []),
+    ];
+    const pills = bestPills(choices.map((c) => c.plan));
+    const carryBest = mostCarried(choices.map((c) => c.plan));
     body = (
       <>
-        <PlanChoice label="Lots to use" className={cx('grid gap-2.5', plans.handPicked ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2')}>
-          <PlanCard title="Oldest first" plan={plans.oldestFirst} active={activeKey === 'oldest-first'} onSelect={() => setPlanKey('oldest-first')} carryBest={carriedOut(plans.oldestFirst) > carriedOut(plans.lowestTax)} />
-          <PlanCard title="Lowest tax" plan={plans.lowestTax} active={activeKey === 'lowest-tax'} onSelect={() => setPlanKey('lowest-tax')} carryBest={carriedOut(plans.lowestTax) > carriedOut(plans.oldestFirst)} />
-          {plans.handPicked && <PlanCard title={PLAN_LABEL['hand-picked']} plan={plans.handPicked} active={activeKey === 'hand-picked'} onSelect={() => setPlanKey('hand-picked')} className="col-span-2 lg:col-span-1" />}
-        </PlanChoice>
+        <div className="flex flex-col gap-2">
+          <SectionHeader title="Which lots to sell" help={lotHelp.button} className="px-0.5" />
+          {lotHelp.panel}
+          <PlanChoice label="Which lots to sell" className={cx('grid grid-cols-2 gap-x-2.5 pt-2.5 lg:gap-x-3', choices.length === 3 && 'lg:grid-cols-3')}>
+            {choices.map((c, i) => (
+              <PlanCard
+                key={c.key}
+                title={PLAN_LABEL[c.key]}
+                plan={c.plan}
+                active={activeKey === c.key}
+                onSelect={() => setPlanKey(c.key)}
+                pill={pills[i] ?? null}
+                carryBest={carryBest[i] ?? false}
+                className={c.key === 'hand-picked' ? 'col-span-2 mt-5 lg:col-span-1 lg:mt-0' : ''}
+              />
+            ))}
+          </PlanChoice>
+        </div>
+        <LotsUsedTable planName={PLAN_LABEL[activeKey]} plan={active} />
         <Card as="section" aria-label="What this means" className="flex flex-col gap-3 !rounded-2xl !p-3.5">
           <Note tone="warn">
             <Sentence parts={summary} />

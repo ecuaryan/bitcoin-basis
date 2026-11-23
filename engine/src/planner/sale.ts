@@ -50,8 +50,8 @@ export interface SalePlans {
 }
 
 const carried = (p: SalePlan): Cents => p.carryforwardOut.st + p.carryforwardOut.lt;
-/** Cheaper wins; at equal tax, more loss carried forward. */
-const better = (a: SalePlan, b: SalePlan): boolean => a.totalTaxCents < b.totalTaxCents || (a.totalTaxCents === b.totalTaxCents && carried(a) > carried(b));
+/** Whether plan `a` beats plan `b`: cheaper wins; at equal tax, more loss carried forward. Equal on both: neither. */
+export const isBetterPlan = (a: SalePlan, b: SalePlan): boolean => a.totalTaxCents < b.totalTaxCents || (a.totalTaxCents === b.totalTaxCents && carried(a) > carried(b));
 
 export const DEFERRED_NOTE = 'Lowest tax defers tax rather than removing it: the coins left in your wallet keep a higher cost-to-gain gap, so more tax may come later.';
 export const TIER_NOTE = 'Oldest first costs less here because it leans on coins whose cost is less well documented. Lowest tax prefers well-documented coins.';
@@ -94,7 +94,7 @@ export function planSale(state: LedgerState, settings: Settings, req: SaleReques
     lowestTaxOrder(state.lots, wallet.id, { ...opts, stRate: 1, ltRate: 1 }),
     [...oldestFirstOrder(state.lots, wallet.id)].sort((a, b) => TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier)),
   ].map((order) => build('lowest-tax', takeInOrder(order, req.sats)));
-  const lowest = candidates.reduce((best, c) => (better(c, best) ? c : best));
+  const lowest = candidates.reduce((best, c) => (isBetterPlan(c, best) ? c : best));
   // Tiers outrank tax on purpose (estimated costs should not be leaned on to cut tax); say so when it matters.
   const lowestTax = oldestFirst.totalTaxCents < lowest.totalTaxCents ? { ...lowest, note: TIER_NOTE } : lowest;
   let handPicked: SalePlan | null = null;
