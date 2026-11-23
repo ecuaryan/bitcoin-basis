@@ -340,3 +340,40 @@ test('Loan page: Bought is everything the purchases bought; after a gift, Still 
   await expect(page.getByRole('region', { name: 'Purchases' }).getByRole('list', { name: 'Purchases' })).toContainText(/ held of \d\.\d{4} BTC/);
   await expectNoViolations(page);
 });
+
+test('Loan purchases: a long wallet name, a purchase partly given away and Show all never push the figures off the card', async ({ page }) => {
+  await openDemo(page);
+  // Give away a little from a lot the loan paid for: its row gets the long "held of" line.
+  await page.getByRole('button', { name: 'Log', exact: true }).first().click();
+  const log = page.getByRole('dialog', { name: 'Log' });
+  await log.getByRole('tab', { name: 'Gave' }).click();
+  await log.getByLabel('Who is it for?').fill('Sam');
+  await log.getByLabel('From wallet').selectOption({ label: 'Strike' });
+  await log.getByLabel('Amount', { exact: true }).fill('0.001');
+  await log.getByRole('radio', { name: 'Pick lots' }).click();
+  const lots = log.getByRole('list', { name: 'Lots in this wallet' });
+  for (const box of await lots.getByRole('checkbox').all()) if (await box.isChecked()) await box.uncheck();
+  await lots.getByRole('listitem').filter({ hasText: 'HELOC' }).first().getByRole('checkbox').check();
+  await log.getByRole('button', { name: 'Review gift' }).click();
+  await page.getByRole('dialog').last().getByRole('button', { name: 'Save gift' }).click();
+  await page.getByRole('dialog').last().getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await go(page, '/wallet/wallet-strike');
+  await page.getByRole('button', { name: 'Wallet options' }).click();
+  await page.getByRole('button', { name: /^Rename/ }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Strike long-term savings (business account)');
+  await page.getByRole('button', { name: 'Save name' }).click();
+  await expect(page.getByRole('heading', { name: 'Strike long-term savings (business account)', level: 1 })).toBeVisible();
+  await go(page, `/loans/${DEMO_LOAN_ID}`);
+  const card = page.getByRole('region', { name: 'Purchases' });
+  await expect(card).toContainText('Strike long-term savings');
+  await expect(card).toContainText(/ held of \d\.\d{4} BTC/);
+  const show = card.getByRole('button', { name: /^Show all/ });
+  if (await show.count()) await show.click();
+  // Nothing in the card is wider than the card, and every row's Now is inside it.
+  const fits = await card.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    return [...el.querySelectorAll('*')].every((c) => c.getBoundingClientRect().right <= box.right + 0.5);
+  });
+  expect(fits).toBe(true);
+});

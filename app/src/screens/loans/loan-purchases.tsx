@@ -20,10 +20,14 @@ export const LOAN_PURCHASES_SHOWN = 5;
 // Bitcoin (@ cost per BTC) · Now (gain, percent), then a line across the row with the interest and the gain after it.
 // Wide (56rem of card and up): Date · Paid · Bitcoin · Cost per BTC · Now · Gain or loss · % · Interest · After interest.
 const TABLE =
-  'grid grid-cols-[max-content_repeat(3,minmax(max-content,1fr))] gap-x-2 tabular-nums @min-[56rem]:grid-cols-[minmax(max-content,1.2fr)_repeat(5,minmax(max-content,1fr))_max-content_repeat(2,minmax(max-content,1fr))] @min-[56rem]:gap-x-4';
+  'grid grid-cols-[max-content_repeat(3,minmax(max-content,1fr))] gap-x-2 tabular-nums @min-[56rem]:grid-cols-[minmax(7rem,1.2fr)_repeat(5,minmax(max-content,1fr))_max-content_repeat(2,minmax(max-content,1fr))] @min-[56rem]:gap-x-4';
 const L = {
-  date: 'col-start-1 row-span-3 flex flex-col gap-0.5 @min-[56rem]:row-span-1',
-  interest: 'col-span-full col-start-1 row-start-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg bg-bg px-2.5 py-1.5 @min-[56rem]:contents',
+  date: 'col-start-1 row-span-2 flex flex-col gap-0.5 @min-[56rem]:row-span-1',
+  // The wallet (or the count) on its own line under the date, across three columns, so a long name never widens the
+  // date column and pushes the figures off the card. Wide: under the date, cut short with an ellipsis.
+  tail: 'col-span-3 col-start-1 row-start-3 w-0 min-w-full truncate text-muted @min-[56rem]:col-span-1 @min-[56rem]:row-start-2',
+  // w-0 min-w-full: the line fills the row but never sizes the columns, so a long one wraps instead of widening the table.
+  interest: 'col-span-full col-start-1 row-start-4 flex w-0 min-w-full flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg bg-bg px-2.5 py-1.5 @min-[56rem]:contents',
   share: '@min-[56rem]:col-start-8 @min-[56rem]:row-start-1 @min-[56rem]:text-right',
   after: '@min-[56rem]:col-start-9 @min-[56rem]:row-start-1 @min-[56rem]:text-right',
 };
@@ -100,8 +104,8 @@ function Cells({ f, total = false }: { f: Figures; total?: boolean }) {
   );
 }
 
-/** Date over year over wallet on a phone; `Oct 13, 2025` over the wallet when wide. A `title` (Total) in place of a date. */
-function When({ date = '', title, children }: { date?: string; title?: string; children: ReactNode }) {
+/** Date over year on a phone; `Oct 13, 2025` when wide. A `title` (Total) in place of a date. */
+function When({ date = '', title }: { date?: string; title?: string }) {
   const [monthDay = '', year = ''] = date === '' ? [] : shortDate(date).split(', ');
   return (
     <span className={L.date}>
@@ -114,7 +118,16 @@ function When({ date = '', title, children }: { date?: string; title?: string; c
         )}
       </span>
       {title === undefined ? <span className={cx(SUB, NARROW_ONLY, 'text-muted')}>{year}</span> : null}
-      <span className={cx(SUB, 'min-w-0 truncate text-muted')}>{children}</span>
+    </span>
+  );
+}
+
+/** The line under the date: the wallet, or the Total's count. */
+function Tail({ children }: { children: ReactNode }) {
+  return (
+    <span className={cx(L.tail, SUB)}>
+      <span className="sr-only">, </span>
+      {children}
     </span>
   );
 }
@@ -124,8 +137,8 @@ function PurchaseRow({ p, wallet, onOpen }: { p: LoanPurchase; wallet: string; o
   return (
     <li className={cx(ROW, 'border-b border-line-soft')}>
       <button type="button" aria-haspopup="dialog" onClick={onOpen} className={cx(ROW, 'gap-y-0.5 bg-transparent py-2.5 text-left text-text @min-[56rem]:min-h-12 @min-[56rem]:items-center')}>
-        <When date={p.drawDate}>
-          <span className="sr-only">, </span>
+        <When date={p.drawDate} />
+        <Tail>
           {wallet}
           {partly ? (
             <span className={WIDE_ONLY}>
@@ -133,7 +146,7 @@ function PurchaseRow({ p, wallet, onOpen }: { p: LoanPurchase; wallet: string; o
               <Amount sats={p.heldSats} short showUnit interactive={false} /> held of <Amount sats={p.sats} short showUnit interactive={false} />
             </span>
           ) : null}
-        </When>
+        </Tail>
         <Cells
           f={{
             costCents: p.heldCostCents,
@@ -198,10 +211,8 @@ export function Purchases({ loan, s, purchases, onManage, onOpen }: { loan: Loan
               ))}
             </ul>
             <div role="group" aria-label="Total" className={cx(ROW, 'gap-y-0.5 pt-3 @min-[56rem]:items-center')}>
-              <When title="Total">
-                <span className="sr-only">, </span>
-                {countOf(purchases.length, 'purchase')}
-              </When>
+              <When title="Total" />
+              <Tail>{countOf(purchases.length, 'purchase')}</Tail>
               <Cells
                 total
                 f={{
