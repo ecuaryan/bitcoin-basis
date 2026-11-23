@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useLedger } from '../data/ledger-provider.tsx';
 import { createLocalPriceCache, createLocalSeriesCache, floorToHour, loadChartHistory, seriesPoints, seriesTimes, type ChartHistory, type PricePoint } from '../data/price-history.ts';
@@ -9,6 +9,9 @@ import { averageLines, buildHoldingsView, type AverageBasis, type HoldingsView }
 import { BalanceNudge } from './BalanceNudge.tsx';
 import { LoanNudge, LoansSection } from './loans/loan-parts.tsx';
 import { RecentPurchases } from './RecentPurchases.tsx';
+import { WalletsCard } from './WalletsTable.tsx';
+import { Percent } from './purchase-table.tsx';
+import { countOf } from '../lib/format.ts';
 import { LOSSES_HELP, LOSSES_TITLE } from '../lib/losses.ts';
 import { useHelp } from '../ui/Help.tsx';
 import { AddWalletButton, AddWalletSheet } from './wallet/AddWallet.tsx';
@@ -24,7 +27,6 @@ import { PriceChart } from '../ui/PriceChart.tsx';
 import { Segmented } from '../ui/Segmented.tsx';
 import {
   DocumentationCard,
-  GainText,
   HeroAverageLine,
   HeroGainLine,
   heroFigures,
@@ -34,7 +36,6 @@ import {
   StackCard,
   TaxableDivider,
   WalletLinkCard,
-  WalletRow,
   YearSheet,
 } from './holdings-parts.tsx';
 import { useTitle } from '../ui/use-title.ts';
@@ -102,47 +103,6 @@ function useUnrealizedHelp() {
 }
 
 /** The unused losses from earlier returns, with a "?" that says what they are. */
-function LossesStat({ view, variant }: { view: HoldingsView; variant: 'row' | 'tile' }) {
-  const help = useHelp(`What are ${LOSSES_TITLE.toLowerCase()}?`, LOSSES_HELP);
-  const { today } = useLedger();
-  const money = <Money cents={view.carryforwardCents} precision="dollars" />;
-  // As on Sell and Tax season: only an earlier year's losses are saved, so ask for this year's.
-  const stale =
-    view.staleLossesFor === null ? null : (
-      <span className="text-[13px] leading-snug text-amber">
-        Saved for {view.staleLossesFor}.{' '}
-        <Link to="/settings#taxes" className="font-semibold text-amber underline underline-offset-2 hover:text-text">
-          Update them for {today.slice(0, 4)}
-        </Link>
-      </span>
-    );
-  if (variant === 'row') {
-    return (
-      <div className="flex flex-col gap-2 border-t border-line pt-2.5">
-        <div className="flex items-baseline justify-between">
-          <span className="flex items-baseline gap-1 text-xs text-muted">
-            {LOSSES_TITLE}
-            {help.button}
-          </span>
-          <span className="text-[15px] font-semibold">{money}</span>
-        </div>
-        {stale}
-        {help.panel}
-      </div>
-    );
-  }
-  return (
-    <>
-      <span className="flex items-baseline gap-1 text-[13px] text-muted">
-        {LOSSES_TITLE}
-        {help.button}
-      </span>
-      <span className="text-2xl font-semibold">{money}</span>
-      {stale}
-      {help.panel}
-    </>
-  );
-}
 
 /** No wallet yet: one card, one button, and the sheet opens right here. */
 function FirstRun() {
@@ -205,7 +165,7 @@ function WalletReady({ view }: { view: HoldingsView }) {
           <WalletLinkCard key={w.id} w={w} />
         ))}
         {view.retirement.map((r) => (
-          <WalletLinkCard key={r.id} w={{ id: r.id, name: r.name, type: 'retirement', typeLabel: 'Retirement', sats: r.sats, costCents: r.worth.costCents, averageCostCentsPerBtc: null, confirmedLabel: 'Kept apart from tax', needsAttention: false, frozen: false }} />
+          <WalletLinkCard key={r.id} w={{ id: r.id, name: r.name, type: 'retirement', typeLabel: 'Retirement', sats: r.sats, costCents: r.worth.costCents, averageCostCentsPerBtc: null, confirmedLabel: 'Kept apart from tax', needsAttention: false, frozen: false, worth: null, shown: null }} />
         ))}
       </section>
     </DesktopCenter>
@@ -288,48 +248,143 @@ function AverageChartCard({ view, wide }: { view: HoldingsView; wide: boolean })
   );
 }
 
-/** Your average cost, unrealized gain and losses from past years: what counts for tax. */
-function TaxableFigures({ view, wide }: { view: HoldingsView; wide: boolean }) {
-  const gainHelp = useUnrealizedHelp();
-  const avg = view.averageCostCentsPerBtc;
-  if (wide) {
-    return (
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
-          <span className="text-[13px] text-muted">Your average cost</span>
-          <span className="text-2xl font-semibold">{avg === null ? '—' : <Money cents={avg} />}</span>
-        </Card>
-        <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
-          <span className="flex items-baseline gap-1 text-[13px] text-muted">
-            Unrealized gain
-            {gainHelp.button}
-          </span>
-          <GainText cents={view.taxableGainShownCents} className="text-2xl font-semibold" />
-          {gainHelp.panel}
-        </Card>
-        <Card className="flex flex-col gap-1.5 !rounded-[18px] !p-[18px]">
-          <LossesStat view={view} variant="tile" />
-        </Card>
-      </div>
-    );
-  }
+/** A figure in the taxable card: a small label, the value, and the lines under it. */
+function Figure({ label, children, sub, className }: { label: ReactNode; children: ReactNode; sub: ReactNode; className?: string }) {
   return (
-    <Card as="section" aria-label="Your taxable figures" className="flex flex-col gap-3">
-      <div className="flex items-start justify-between">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs text-muted">Your average cost</span>
-          <span className="text-xl font-semibold">{avg === null ? '—' : <Money cents={avg} />}</span>
-        </div>
-        <div className="flex flex-col items-end gap-0.5">
-          <span className="flex items-baseline gap-1 text-xs text-muted">
-            Unrealized gain
-            {gainHelp.button}
+    <div className={cx('flex min-w-0 flex-col gap-1', className)}>
+      <span className="flex items-baseline gap-1 text-xs text-muted">{label}</span>
+      <span className="text-lg font-semibold leading-snug">{children}</span>
+      <span className="flex flex-col gap-0.5 text-xs leading-snug text-muted">{sub}</span>
+    </div>
+  );
+}
+
+/**
+ * What counts for tax, each figure saying exactly what it is: the unrealized gain with its math (worth − cost, in
+ * cents), the taxable Bitcoin, the taxable average cost per BTC (beside the average of all your Bitcoin, so the two never
+ * look like a contradiction), and losses from past years.
+ */
+function TaxableFigures({ view }: { view: HoldingsView }) {
+  const gainHelp = useUnrealizedHelp();
+  const lossHelp = useHelp(`What are ${LOSSES_TITLE.toLowerCase()}?`, LOSSES_HELP);
+  const { today } = useLedger();
+  const year = today.slice(0, 4);
+  const taxable = view.split !== null;
+  const worth = view.walletsTotal.worth;
+  const gain = worth.gainCents;
+  const avg = view.averageCostCentsPerBtc;
+  const allAverage = taxable ? (averageLines(view).find((l) => l.basis === 'all') ?? null) : null;
+  return (
+    <Card as="section" aria-label="Your taxable figures" className="@container flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <span className="flex items-baseline gap-1 text-xs text-muted @min-[40rem]:text-[13px]">
+          {gain !== null && gain < 0 ? 'Unrealized loss' : 'Unrealized gain'}
+          {taxable ? ' on taxable Bitcoin' : ''}
+          {gainHelp.button}
+        </span>
+        <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+          <span className="font-display text-[30px] font-semibold leading-none tracking-[-0.02em] @min-[40rem]:text-4xl">
+            {gain === null ? '—' : <Money cents={gain} signed className={gain < 0 ? 'text-loss' : 'text-gain'} />}
           </span>
-          <GainText cents={view.taxableGainShownCents} className="text-xl font-semibold" />
-        </div>
+          <Percent worth={worth} className="text-base" />
+        </span>
+        {worth.valueCents === null ? null : (
+          <span className="text-xs leading-normal text-muted @min-[40rem]:text-[13px]">
+            Worth{' '}
+            <span className="text-soft">
+              <Money cents={worth.valueCents} />
+            </span>{' '}
+            − cost{' '}
+            <span className="text-soft">
+              <Money cents={worth.costCents} />
+            </span>
+          </span>
+        )}
+        {gainHelp.panel}
       </div>
-      {gainHelp.panel}
-      <LossesStat view={view} variant="row" />
+      <div className="grid grid-cols-2 gap-x-3.5 gap-y-4 border-t border-line pt-4 @min-[40rem]:grid-cols-3 @min-[40rem]:gap-x-6">
+        <Figure
+          label={taxable ? 'Taxable Bitcoin' : 'Your Bitcoin'}
+          sub={
+            <>
+              <span>In {countOf(view.wallets.length, 'wallet')}</span>
+              {view.all !== null ? (
+                <span>
+                  Of <Amount sats={view.all.total.sats} short showUnit interactive={false} /> in all
+                </span>
+              ) : null}
+            </>
+          }
+        >
+          <Amount sats={view.totalSats} short showUnit alwaysBtc />
+        </Figure>
+        <Figure
+          label={taxable ? 'Taxable average cost' : 'Your average cost'}
+          sub={
+            avg === null ? (
+              <span>Some costs are not known yet</span>
+            ) : (
+              <>
+                <span>
+                  <Money cents={view.totalCostCents} /> ÷ <Amount sats={view.totalSats} short showUnit interactive={false} alwaysBtc />
+                </span>
+                {allAverage !== null ? (
+                  <span>
+                    All your Bitcoin: <Money cents={allAverage.centsPerBtc} /> per BTC
+                  </span>
+                ) : null}
+              </>
+            )
+          }
+        >
+          {avg === null ? (
+            '—'
+          ) : (
+            <>
+              <Money cents={avg} /> <span className="text-xs font-normal text-muted">per BTC</span>
+            </>
+          )}
+        </Figure>
+        <Figure
+          className="col-span-2 @min-[40rem]:col-span-1"
+          label={
+            <>
+              {LOSSES_TITLE}
+              {lossHelp.button}
+            </>
+          }
+          sub={
+            <>
+              {view.carryforwardCents > 0 ? (
+                <span>
+                  {view.carryforward.st > 0 && view.carryforward.lt > 0 ? (
+                    <>
+                      Short-term <Money cents={view.carryforward.st} /> + long-term <Money cents={view.carryforward.lt} />
+                    </>
+                  ) : view.carryforward.st > 0 ? (
+                    'All short-term'
+                  ) : (
+                    'All long-term'
+                  )}
+                </span>
+              ) : view.staleLossesFor === null ? (
+                <span>None saved for {year}</span>
+              ) : null}
+              {view.staleLossesFor === null ? null : (
+                <span className="leading-snug text-amber">
+                  Saved for {view.staleLossesFor}.{' '}
+                  <Link to="/settings#taxes" className="font-semibold text-amber underline underline-offset-2 hover:text-text">
+                    Update them for {year}
+                  </Link>
+                </span>
+              )}
+            </>
+          }
+        >
+          <Money cents={view.carryforwardCents} />
+        </Figure>
+      </div>
+      {lossHelp.panel}
     </Card>
   );
 }
@@ -379,17 +434,9 @@ function PhoneHoldings({ view }: { view: HoldingsView }) {
 
       <TaxableDivider view={view} />
 
-      <TaxableFigures view={view} wide={false} />
+      <TaxableFigures view={view} />
 
-      <section aria-label="Wallets" className="flex flex-col gap-2">
-        <div className="flex items-center justify-between px-0.5 pt-1">
-          <h2 className="m-0 text-[15px] font-semibold">Wallets</h2>
-          <AddWalletButton compact />
-        </div>
-        {[...view.wallets, ...view.frozen].map((w) => (
-          <WalletLinkCard key={w.id} w={w} />
-        ))}
-      </section>
+      <WalletsCard view={view} />
 
       <DocumentationCard view={view} />
       <YearSheet row={picked} onClose={() => setYear(null)} />
@@ -448,16 +495,12 @@ function DesktopHoldings({ view }: { view: HoldingsView }) {
 
       <TaxableDivider view={view} />
 
-      <TaxableFigures view={view} wide />
+      <TaxableFigures view={view} />
 
-      <div className="grid grid-cols-2 items-start gap-4">
-        <Card as="section" aria-label="Wallets" className="flex flex-col gap-1">
-          <h2 className="m-0 mb-2 text-[15px] font-semibold">Wallets</h2>
-          {[...view.wallets, ...view.frozen].map((w) => (
-            <WalletRow key={w.id} w={w} />
-          ))}
-          <AddWalletButton className="mt-2 self-start" />
-        </Card>
+      <div className="grid grid-cols-3 items-start gap-4">
+        <div className="col-span-2">
+          <WalletsCard view={view} />
+        </div>
         <DocumentationCard view={view} />
       </div>
       <YearSheet row={picked} onClose={() => setYear(null)} />

@@ -16,7 +16,8 @@ export function worthNow(sats: number, costCents: number, priceCents: number | n
   return fromParts(sats, costCents, priceCents === null ? null : satsToCents(sats, priceCents));
 }
 
-function fromParts(sats: number, costCents: number, valueCents: number | null): WorthNow {
+/** Coins whose value is already known (for example valued lot by lot): the gain and percent from it. */
+export function fromParts(sats: number, costCents: number, valueCents: number | null): WorthNow {
   if (valueCents === null) return { sats, costCents, valueCents: null, gainCents: null, percent: null };
   const gainCents = valueCents - costCents;
   let percent: number | null = null;

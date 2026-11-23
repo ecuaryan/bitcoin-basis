@@ -1,6 +1,7 @@
 import { allBitcoin, averageCostPerBtc, carryforwardFor, retirementPurchases, retirementWorth, TIERS, valueOfPieces, yearOf, type AllBitcoin, type Holdings, type LedgerState, type Lot, type RetirementHolding, type RetirementPurchaseView, type Tier, type WalletType, type Worth, type WorthWithUnknown } from '@bitcoin-basis/engine';
 import { confirmedLabel, sharePercents, wholeDollarParts } from './format.ts';
 import { staleLosses } from './losses.ts';
+import { fromParts, type WorthNow } from './worth-now.ts';
 import { WALLET_TYPE_LABEL } from './wallet-label.ts';
 
 /** A retirement purchase in the stack: its own colour, no tax tier. */
@@ -50,6 +51,13 @@ export interface WalletCard {
   /** The last balance check did not match what the wallet's own app showed. */
   needsAttention: boolean;
   frozen: boolean;
+  /** Its lots at the price, valued lot by lot (exact cents). Null for a frozen wallet (not counted). */
+  worth: WorthNow | null;
+  /**
+   * Worth and gain in whole dollars that add up to the Wallets total (`wholeDollarParts`), so the rows match the total
+   * and the unrealized gain. Null for a frozen wallet or before a price is known.
+   */
+  shown: { valueCents: number; gainCents: number } | null;
 }
 
 /** A retirement wallet on Holdings. Never part of the taxable figures. */
@@ -95,8 +103,12 @@ export interface HoldingsView {
   split: { taxable: Worth; retirement: WorthWithUnknown } | null;
   /** The taxable unrealized gain as shown in whole dollars: the same figure as the Taxable row when there is one. */
   taxableGainShownCents: number | null;
+  /** The counted wallets together (exact), and in whole dollars as the Wallets total row shows them. */
+  walletsTotal: { worth: WorthNow; shownValueCents: number | null; shownGainCents: number | null };
   /** Losses from past years saved for this tax year. */
   carryforwardCents: number;
+  /** The same, short-term and long-term. */
+  carryforward: { st: number; lt: number };
   /** None are saved for this year but an earlier year has some: the latest such year (ask to update them), else null. */
   staleLossesFor: number | null;
   isEmpty: boolean;
@@ -185,6 +197,8 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
       confirmedLabel: confirmedLabel(lastMatch, today),
       needsAttention: last !== null && !last.matches,
       frozen: w.frozen,
+      worth: w.frozen ? null : fromParts(w.sats, w.costCents, valueOfPieces(lots.filter((l) => l.wallet === w.wallet), priceCents)),
+      shown: null,
     };
   };
 
@@ -201,6 +215,24 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
   const values = wholeDollarParts(cards.map((c) => c.worth.valueCents), split?.retirement.valueCents ?? 0);
   const gains = wholeDollarParts(cards.map((c) => c.worth.gainCents), split?.retirement.gainCents ?? 0);
   const retirement: RetirementCard[] = cards.map((c, i) => ({ ...c, shown: split === null ? c.worth : { ...c.worth, valueCents: values[i] ?? null, gainCents: gains[i] ?? null } }));
+  // The counted wallets, biggest first, with whole dollars that add up to the total row (the taxable worth and the
+  // unrealized gain as shown above).
+  const counted = h.wallets
+    .filter((w) => !w.frozen && !(w.archived && w.sats === 0))
+    .map(card)
+    .sort((a, b) => b.sats - a.sats);
+  const walletsWorth = fromParts(h.totalSats, h.totalCostCents, worthCents);
+  const taxableGainShownCents = split === null ? (worthCents === null ? null : worthCents - h.totalCostCents) : split.taxable.gainCents;
+  const shownValueCents = worthCents === null ? null : split === null ? Math.trunc(worthCents / 100) * 100 : split.taxable.valueCents;
+  const shownGainCents = taxableGainShownCents === null ? null : split === null ? Math.trunc(taxableGainShownCents / 100) * 100 : taxableGainShownCents;
+  if (shownValueCents !== null && shownGainCents !== null) {
+    const values = wholeDollarParts(counted.map((c) => c.worth?.valueCents ?? null), shownValueCents);
+    const gains = wholeDollarParts(counted.map((c) => c.worth?.gainCents ?? null), shownGainCents);
+    counted.forEach((c, i) => {
+      c.shown = { valueCents: values[i] ?? 0, gainCents: gains[i] ?? 0 };
+    });
+  }
+  const carryforward = carryforwardFor(state.settings, yearOf(today), yearOf(today));
   return {
     totalSats: h.totalSats,
     totalCostCents: h.totalCostCents,
@@ -212,16 +244,15 @@ export function buildHoldingsView(state: LedgerState, h: Holdings, priceCents: n
     mix: h.documentationMix,
     stack,
     stackUndated,
-    wallets: h.wallets
-      .filter((w) => !w.frozen && !(w.archived && w.sats === 0))
-      .map(card)
-      .sort((a, b) => b.sats - a.sats),
+    wallets: counted,
     frozen: h.wallets.filter((w) => w.frozen).map(card),
     retirement,
     all,
     split,
-    taxableGainShownCents: split === null ? worthCents === null ? null : worthCents - h.totalCostCents : split.taxable.gainCents,
-    carryforwardCents: (({ st, lt }) => st + lt)(carryforwardFor(state.settings, yearOf(today), yearOf(today))),
+    taxableGainShownCents,
+    walletsTotal: { worth: walletsWorth, shownValueCents, shownGainCents },
+    carryforwardCents: carryforward.st + carryforward.lt,
+    carryforward: { st: carryforward.st, lt: carryforward.lt },
     staleLossesFor: staleLosses(state.settings, yearOf(today))?.savedFor ?? null,
     isEmpty: state.wallets.length === 0 && state.lots.length === 0,
   };

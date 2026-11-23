@@ -397,25 +397,6 @@ export function WalletLinkCard({ w }: { w: WalletCard }) {
   );
 }
 
-/** The desktop card is narrow, so the check status sits under the amount instead of after the type. */
-export function WalletRow({ w }: { w: WalletCard }) {
-  return (
-    <Link to={`/wallet/${w.id}`} className="group -mx-2 flex min-h-14 items-center justify-between gap-3 rounded-xl border-b border-line px-2 text-text no-underline transition-colors last:border-b-0 hover:bg-surface-2 hover:text-text">
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-sm font-semibold">{w.name}</span>
-        <span className="text-xs normal-nums text-muted">{w.typeLabel}</span>
-      </span>
-      <span className="flex flex-col items-end gap-0.5 text-right">
-        <span className={cx('text-sm font-semibold', w.frozen && 'text-muted')}>
-          <Amount sats={w.sats} interactive={false} />
-        </span>
-        <span className={cx('text-xs', w.needsAttention && !w.frozen ? 'text-amber' : 'text-muted')}>{w.frozen ? FROZEN_LABEL : w.needsAttention ? 'Needs a check' : w.confirmedLabel}</span>
-      </span>
-      <ChevronRightIcon size={16} className="-ml-1 flex-none text-muted transition-transform group-hover:translate-x-0.5" />
-    </Link>
-  );
-}
-
 // ---- Extra cards (below the design's first screen) -------------------------------------
 
 /** Targets for the split rows under the hero. */

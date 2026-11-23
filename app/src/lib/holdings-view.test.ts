@@ -39,6 +39,29 @@ describe('Holdings: every worth is lot by lot, so the parts add up to the totals
     expect(view.retirement.map((r) => [r.shown.valueCents, r.shown.gainCents])).toEqual([[split.retirement.valueCents, split.retirement.gainCents]]);
   });
 
+  it('the wallets add up: exact cents to the taxable worth and cost, whole dollars to the total row and the unrealized gain', () => {
+    const counted = view.wallets;
+    expect(counted.reduce((t, w) => t + (w.worth?.valueCents as number), 0)).toBe(view.worthCents);
+    expect(counted.reduce((t, w) => t + w.costCents, 0)).toBe(view.totalCostCents);
+    expect(counted.reduce((t, w) => t + w.sats, 0)).toBe(view.totalSats);
+    const total = view.walletsTotal;
+    expect(total.worth.valueCents).toBe(view.worthCents);
+    expect(total.shownValueCents).toBe(view.split?.taxable.valueCents);
+    expect(total.shownGainCents).toBe(view.taxableGainShownCents);
+    expect(counted.reduce((t, w) => t + (w.shown?.valueCents as number), 0)).toBe(total.shownValueCents);
+    expect(counted.reduce((t, w) => t + (w.shown?.gainCents as number), 0)).toBe(total.shownGainCents);
+    for (const w of counted) expect((w.shown?.valueCents as number) % 100).toBe(0);
+    // Frozen wallets are listed but never counted.
+    expect(view.frozen.every((w) => w.worth === null && w.shown === null)).toBe(true);
+  });
+
+  it('without a price: no worth or gain, nothing shown in dollars', () => {
+    const v = buildHoldingsView(state, holdings(state), null, DEMO_TODAY);
+    expect(v.walletsTotal.shownValueCents).toBeNull();
+    expect(v.walletsTotal.shownGainCents).toBeNull();
+    expect(v.wallets.every((w) => w.shown === null && w.worth?.valueCents === null)).toBe(true);
+  });
+
   it('a loan’s coins are worth the same here as on the loan page', () => {
     for (const loan of state.loans) {
       const s = loanSummary(state, loan.id, DEMO_PRICE_CENTS, DEMO_TODAY);

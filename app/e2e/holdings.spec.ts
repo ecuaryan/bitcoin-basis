@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { setUp } from './fake.ts';
-import { go, openDemo } from './helpers.ts';
+import { expectNoViolations, go, openDemo } from './helpers.ts';
 
 /** Open the app with the demo book, amounts shown. Network calls to mempool.space are never made (demo uses a fixed price). */
 export async function openHoldingsWithDemo(page: Page): Promise<void> {
@@ -215,4 +215,29 @@ test('the chart’s average-cost line switches between all your Bitcoin, taxable
   await pick.getByRole('radio', { name: 'Retirement' }).click();
   await expect(card).toContainText('Average cost of your retirement Bitcoin: $45,457.14');
   expect((await new AxeBuilder({ page }).include('section[aria-label="Average cost versus price"]').analyze()).violations).toEqual([]);
+});
+
+test('Wallets: one aligned table whose rows add up to the total and the unrealized gain', async ({ page }) => {
+  await openDemo(page);
+  const card = page.getByRole('region', { name: 'Wallets' });
+  const rows = card.getByRole('list', { name: 'Wallets, biggest first' }).getByRole('link');
+  await expect(rows).toHaveCount(3);
+  const total = card.getByRole('group', { name: 'All counted wallets' });
+  await expect(total).toContainText('3 wallets');
+  // Every wallet's worth and gain in whole dollars adds up to the total row.
+  const dollars = async (loc: Locator, n: number) => Number(((await loc.innerText()).match(/[+−]?\$[\d,]+/g) ?? [])[n]?.replace(/[$,+]/g, '').replace('−', '-'));
+  let worth = 0;
+  let gain = 0;
+  for (let i = 0; i < 3; i++) {
+    worth += await dollars(rows.nth(i), 0);
+    gain += await dollars(rows.nth(i), 1);
+  }
+  expect(worth).toBe(await dollars(total, 0));
+  expect(gain).toBe(await dollars(total, 1));
+  await expect(page.getByRole('region', { name: 'Your taxable figures' })).toContainText(`Unrealized gain on taxable Bitcoin`);
+  // The BTC figures share one right edge, so the decimals line up.
+  const rights = await card.locator('a > span:nth-child(3)').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
+  expect(new Set(rights).size).toBe(1);
+  await expect(card.getByRole('list', { name: 'Frozen wallets, not counted' })).toContainText('Not counted');
+  await expectNoViolations(page);
 });
