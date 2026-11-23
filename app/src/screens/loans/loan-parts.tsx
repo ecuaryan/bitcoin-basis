@@ -1,11 +1,11 @@
-import { loanSummary, type LoanSummary } from '@bitcoin-basis/engine';
+import { formatAprPercent, loanSummary, type LoanSummary } from '@bitcoin-basis/engine';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useLedger } from '../../data/ledger-provider.tsx';
 import { usePrice } from '../../data/price-provider.tsx';
 import { cx } from '../../lib/cx.ts';
 import { shortDate } from '../../lib/format.ts';
-import { breakEvenWords, loanNudgeSnoozed, paymentNudge, snoozeLoanNudge } from '../../lib/loans-view.ts';
+import { breakEvenWords, gaugeLeft, loanNudgeSnoozed, paymentNudge, snoozeLoanNudge } from '../../lib/loans-view.ts';
 import { Amount, Money } from '../../ui/Amount.tsx';
 import { useHelp } from '../../ui/Help.tsx';
 import { ChevronRightIcon } from '../../ui/icons.tsx';
@@ -75,87 +75,6 @@ export function SignedMoney({ cents, plain = false, precision = 'dollars', class
   return <span className={cx(tone, className)}>{plain ? <PlainMoney cents={cents} precision={precision} signed /> : <Money cents={cents} precision={precision} signed />}</span>;
 }
 
-/** The loan figures every view shares, as plain lines. Values come straight from the engine's summary. */
-export function loanLines(s: LoanSummary, plain: boolean, masked: boolean): { key: string; node: ReactNode }[] {
-  // Cents, as on the loan page: Owed and Available add up to the credit limit exactly, and the break-even is never cut short.
-  const M = ({ cents }: { cents: number }) => (plain ? <PlainMoney cents={cents} /> : <Money cents={cents} />);
-  const lines: { key: string; node: ReactNode }[] = [];
-  lines.push({
-    key: 'owed',
-    node: (
-      <>
-        Owed <M cents={s.principalOwedCents} />
-        {s.availableCreditCents !== null ? (
-          <>
-            {' '}
-            · {s.availableCreditCents < 0 ? 'Over the limit by ' : 'Available '}
-            <M cents={Math.abs(s.availableCreditCents)} />
-          </>
-        ) : null}
-      </>
-    ),
-  });
-  if (s.purchaseCount > 0) {
-    const allHeld = s.frozenSats === 0 && s.soldSats === 0 && s.otherGoneSats === 0;
-    lines.push({
-      key: 'bought',
-      node: (
-        <>
-          {allHeld ? 'Bought ' : 'Still held '}
-          <Amount sats={s.heldSats} short showUnit interactive={false} />
-          {s.valueCents !== null ? (
-            <>
-              {' '}
-              · worth <M cents={s.valueCents} />
-            </>
-          ) : null}
-        </>
-      ),
-    });
-  }
-  lines.push({
-    key: 'interest',
-    node: (
-      <>
-        Interest paid <M cents={s.interestPaidCents} />
-      </>
-    ),
-  });
-  if (s.breakEvenPriceCents !== null) {
-    const words = breakEvenWords(s.priceCents, s.breakEvenPriceCents, masked);
-    lines.push({
-      key: 'break-even',
-      node: (
-        <>
-          {BREAK_EVEN_LABEL} {s.interestOnPurchasesEstimated ? <Approx /> : null}
-          <M cents={s.breakEvenPriceCents} />
-          {words !== null ? <span className="text-muted"> · {words}</span> : null}
-        </>
-      ),
-    });
-  }
-  if (s.payoffLeftoverSats !== null && s.heldSats > 0) {
-    const left = s.payoffLeftoverSats;
-    lines.push({
-      key: 'payoff',
-      node: (
-        <>
-          If you paid it off today: {s.owedNowEstimated ? <Approx /> : null}
-          {left === 0 ? (
-            'just enough'
-          ) : (
-            <>
-              <Amount sats={Math.abs(left)} short showUnit interactive={false} />
-              <span className={left < 0 ? 'text-loss' : 'text-gain'}>{left < 0 ? ' short' : ' left over'}</span>
-            </>
-          )}
-        </>
-      ),
-    });
-  }
-  return lines;
-}
-
 /**
  * Whole dollars rounded down (toward −∞), so a gain never shows more than it is and a loss never less: −$688.73 is
  * −$689, $688.73 is $688. Under a dollar either way keeps its cents (formatMoney shows them).
@@ -164,12 +83,15 @@ export function floorDollars(cents: number): number {
   return Math.abs(cents) < 100 ? cents : Math.floor(cents / 100) * 100;
 }
 
-/** "Including interest": the big honest number (value − cost of the coins still held − interest on them). */
+/** The big honest number's name, on the card and the loan page. */
+export const GAIN_AFTER_INTEREST = 'Gain or loss after interest';
+
+/** The big honest number (value − cost of the coins still held − interest on them). */
 export function IncludingInterest({ s, plain, size = 'card' }: { s: LoanSummary; plain: boolean; size?: 'card' | 'page' }) {
   const cents = s.gainIncludingInterestCents === null ? null : floorDollars(s.gainIncludingInterestCents);
   return (
     <span className="flex flex-col gap-1">
-      <span className={cx('text-muted', size === 'page' ? 'text-[13px]' : 'text-xs')}>Including interest</span>
+      <span className={cx('text-muted', size === 'page' ? 'text-[13px]' : 'text-xs')}>{GAIN_AFTER_INTEREST}</span>
       <span className={cx('font-display font-semibold leading-none tracking-[-0.02em]', size === 'page' ? 'text-[34px] lg:text-5xl' : 'text-[28px]')}>
         {cents === null ? (
           '—'
@@ -192,30 +114,193 @@ export function useLoanSummaries(): LoanSummary[] {
   return useMemo(() => state.loans.filter((l) => !l.closed).flatMap((l) => loanSummary(state, l.id, price, today) ?? []), [state, today, price]);
 }
 
-/** One loan on Holdings: the whole block opens the loan page. */
+/** One labeled figure on the loan card: a small label, the value, and an optional line under it. */
+function Tile({ label, children, sub }: { label: string; children: ReactNode; sub?: ReactNode }) {
+  return (
+    <span className="flex min-w-0 flex-col gap-1 @min-[40rem]:px-5 @min-[40rem]:first:pl-0 @min-[40rem]:last:pr-0">
+      <span className="text-xs text-muted">{label}</span>
+      <span className="text-base font-semibold leading-snug @min-[40rem]:text-lg">{children}</span>
+      {sub ? <span className="text-xs leading-snug text-muted">{sub}</span> : null}
+    </span>
+  );
+}
+
+/** Price against break-even: break-even is the mark in the middle, the dot is today’s price (red below, green above). */
+function BreakEvenGauge({ s, breakEven, masked }: { s: LoanSummary; breakEven: number; masked: boolean }) {
+  const price = s.priceCents;
+  const words = breakEvenWords(price, breakEven, masked);
+  const short = breakEvenWords(price, breakEven, masked, true);
+  const tone = price === null || price === breakEven ? 'text-soft' : price < breakEven ? 'text-loss' : 'text-gain';
+  const dot = price === null || price === breakEven ? 'bg-soft' : price < breakEven ? 'bg-loss' : 'bg-gain';
+  return (
+    <span className="flex flex-col gap-2.5 rounded-2xl bg-bg px-3 pb-2.5 pt-3 @min-[40rem]:px-4 @min-[40rem]:pt-4">
+      <span className="flex items-baseline justify-between gap-2 text-xs @min-[40rem]:text-[13px]">
+        <span className="text-muted">
+          Break-even{' '}
+          <span className="font-semibold text-text">
+            {s.interestOnPurchasesEstimated ? <Approx /> : null}
+            <PlainMoney cents={breakEven} />
+          </span>
+        </span>
+        {short !== null ? (
+          <span className={cx('flex-none font-semibold', tone)}>
+            <span aria-hidden="true">{short}</span>
+            <span className="sr-only">. {words}</span>
+          </span>
+        ) : null}
+      </span>
+      <span aria-hidden="true" className="relative block h-6">
+        <span className="absolute left-0 right-1/2 top-[9px] h-1.5 rounded-l-full bg-loss/30" />
+        <span className="absolute left-1/2 right-0 top-[9px] h-1.5 rounded-r-full bg-gain/30" />
+        <span className="absolute left-1/2 top-1 -ml-px h-4 w-0.5 rounded-sm bg-text" />
+        {price === null || masked ? null : (
+          <span data-testid="gauge-dot" className={cx('absolute top-[5px] -ml-[7px] size-3.5 rounded-full ring-[3px] ring-bg', dot)} style={{ left: `${gaugeLeft(price, breakEven)}%` }} />
+        )}
+      </span>
+      <span className="-mt-1.5 flex justify-between gap-2 text-[11px] text-muted @min-[40rem]:text-xs">
+        <span>
+          {price === null ? null : (
+            <>
+              Price now{' '}
+              <span className="font-semibold text-text">
+                <PlainMoney cents={price} precision="dollars" />
+              </span>
+            </>
+          )}
+        </span>
+        <span>Includes interest paid so far</span>
+      </span>
+    </span>
+  );
+}
+
+/** One loan on Holdings: the result after interest, price against break-even, and four labeled figures. The whole card opens the loan page. */
 function LoanBlock({ s }: { s: LoanSummary }) {
   const { masked } = usePrefs();
-  const lines = loanLines(s, true, masked);
+  const bought = s.purchaseCount > 0;
+  const allHeld = s.frozenSats === 0 && s.soldSats === 0 && s.otherGoneSats === 0;
+  const unpaid = s.owedNowCents - s.principalOwedCents;
+  const limit = s.creditLimitCents;
+  const available = s.availableCreditCents;
+  const left = s.payoffLeftoverSats;
+  const used = limit === null || available === null || limit <= 0 ? null : Math.min(100, Math.max(0, ((limit - available) / limit) * 100));
   return (
     <Link
       to={`/loans/${s.loanId}`}
-      className="press-soft flex flex-col gap-3 rounded-2xl border border-line bg-surface p-3.5 text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] lg:items-center lg:gap-6 lg:p-5"
+      className="press-soft @container flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4 text-text no-underline hover:bg-surface-2 hover:text-text active:bg-surface-2 lg:gap-5 lg:px-6 lg:py-5"
     >
-      <span className="flex flex-col gap-3">
-        <span className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-semibold">{s.name}</span>
-          <ChevronRightIcon size={16} className="flex-none text-muted lg:hidden" />
+      <span className="flex items-center gap-2">
+        <span className="truncate text-[15px] font-semibold @min-[40rem]:text-base">{s.name}</span>
+        <span className="flex-none rounded-md border border-line px-1.5 text-[11px] font-semibold leading-5 text-soft">{formatAprPercent(s.aprMillionths)} APR</span>
+        <span className="ml-auto flex flex-none items-center gap-1 text-[13px] font-semibold text-soft">
+          <span className="hidden @min-[40rem]:inline">Open loan</span>
+          <ChevronRightIcon size={16} className="text-muted" />
         </span>
-        <IncludingInterest s={s} plain />
-        {s.purchaseCount === 0 ? <span className="text-xs text-muted">No purchases linked yet. Open it to add them.</span> : null}
       </span>
-      <span className="flex items-center gap-3">
-        <span className="flex min-w-0 flex-1 flex-col gap-1 text-[13px] leading-snug text-soft">
-          {lines.map((l) => (
-            <span key={l.key}>{l.node}</span>
-          ))}
+      {bought ? (
+        <span className="flex flex-col gap-4 @min-[40rem]:grid @min-[40rem]:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] @min-[40rem]:items-center @min-[40rem]:gap-8">
+          <span className="flex flex-col gap-1.5 @min-[40rem]:gap-2">
+            <span className="text-xs text-muted @min-[40rem]:text-[13px]">{GAIN_AFTER_INTEREST}</span>
+            <span className="font-display text-[34px] font-semibold leading-none tracking-[-0.02em] @min-[40rem]:text-5xl">
+              {s.gainIncludingInterestCents === null ? (
+                '—'
+              ) : (
+                <>
+                  {s.interestOnPurchasesEstimated ? <Approx /> : null}
+                  <SignedMoney cents={floorDollars(s.gainIncludingInterestCents)} plain />
+                </>
+              )}
+            </span>
+            {s.valueCents === null ? null : (
+              <span className="text-xs leading-normal text-muted @min-[40rem]:text-[13px]">
+                Worth{' '}
+                <span className="text-soft">
+                  <PlainMoney cents={s.valueCents} />
+                </span>{' '}
+                − cost{' '}
+                <span className="text-soft">
+                  <PlainMoney cents={s.heldCostCents} />
+                </span>{' '}
+                − interest{' '}
+                <span className="text-soft">
+                  {s.interestOnPurchasesEstimated ? <Approx /> : null}
+                  <PlainMoney cents={s.interestOnPurchasesCents} />
+                </span>
+              </span>
+            )}
+          </span>
+          {s.breakEvenPriceCents === null ? null : <BreakEvenGauge s={s} breakEven={s.breakEvenPriceCents} masked={masked} />}
         </span>
-        <ChevronRightIcon size={16} className="hidden flex-none text-muted lg:block" />
+      ) : (
+        <span className="text-[13px] text-muted">No purchases linked yet. Open it to add them.</span>
+      )}
+      <span className="grid grid-cols-2 gap-x-3.5 gap-y-4 @min-[40rem]:grid-cols-4 @min-[40rem]:gap-0 @min-[40rem]:divide-x @min-[40rem]:divide-line @min-[40rem]:border-t @min-[40rem]:border-line @min-[40rem]:pt-4">
+        <Tile
+          label="Owed"
+          sub={
+            available === null || limit === null ? null : (
+              <>
+                {used === null ? null : (
+                  <span aria-hidden="true" className="mb-1.5 mt-0.5 block h-1 overflow-hidden rounded-full bg-line">
+                    <span className={cx('block h-1 rounded-full', available < 0 ? 'bg-loss' : 'bg-accent')} style={{ width: `${used}%` }} />
+                  </span>
+                )}
+                {available < 0 ? (
+                  <span className="text-loss">
+                    Over the limit by <PlainMoney cents={-available} />
+                  </span>
+                ) : (
+                  <>
+                    <PlainMoney cents={available} /> available of <PlainMoney cents={limit} />
+                  </>
+                )}
+              </>
+            )
+          }
+        >
+          <PlainMoney cents={s.principalOwedCents} />
+        </Tile>
+        {bought ? (
+          <Tile label={allHeld ? 'Bitcoin it bought' : 'Bitcoin still held'} sub={allHeld ? 'All still held' : <>Of <Amount sats={s.boughtSats} short showUnit interactive={false} /> bought</>}>
+            <Amount sats={s.heldSats} short showUnit interactive={false} />
+          </Tile>
+        ) : null}
+        <Tile
+          label="Interest paid"
+          sub={
+            unpaid > 0 ? (
+              <>
+                <Approx />
+                <PlainMoney cents={unpaid} /> not paid yet
+              </>
+            ) : null
+          }
+        >
+          <PlainMoney cents={s.interestPaidCents} />
+        </Tile>
+        {left !== null && s.heldSats > 0 ? (
+          <Tile
+            label="If paid off today"
+            sub={
+              <>
+                {left > 0 ? 'Left over after paying ' : left < 0 ? 'Short of the ' : 'Exactly covers '}
+                {s.owedNowEstimated ? <Approx /> : null}
+                <PlainMoney cents={s.owedNowCents} />
+                {left > 0 ? '' : ' owed'}
+              </>
+            }
+          >
+            {left === 0 ? (
+              'Just enough'
+            ) : (
+              <span className={left < 0 ? 'text-loss' : 'text-gain'}>
+                {s.owedNowEstimated ? <Approx /> : null}
+                <Amount sats={Math.abs(left)} short showUnit interactive={false} />
+                <span className="sr-only">{left < 0 ? ' short' : ' left over'}</span>
+              </span>
+            )}
+          </Tile>
+        ) : null}
       </span>
     </Link>
   );

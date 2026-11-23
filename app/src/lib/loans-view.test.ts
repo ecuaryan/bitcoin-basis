@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_LOAN_ID, DEMO_TODAY } from '../demo/demo-data.ts';
 import { describeEntry } from './describe-entry.ts';
 import { buildItems, entryRows, kindGroup, NO_FILTER } from './entry-list.ts';
-import { breakEvenWords, fundedRemoval, goneWords, loanTag, loanTagFor, loanTags, paymentNudge, planLinks, purchaseOptions, purchaseWorth, recordedBalanceOn, statementDayText, statementToCheck, type LinkPlan, type PurchaseOption } from './loans-view.ts';
+import { breakEvenWords, fundedRemoval, gaugeLeft, goneWords, loanTag, loanTagFor, loanTags, paymentNudge, planLinks, purchaseOptions, purchaseWorth, recordedBalanceOn, statementDayText, statementToCheck, type LinkPlan, type PurchaseOption } from './loans-view.ts';
 
 const book = buildDemoBook();
 const state = replay(book.entries);
@@ -21,6 +21,12 @@ describe('loan words', () => {
     expect(breakEvenWords(10_000_000, 10_000_000)).toBe('Price is at break-even');
     expect(breakEvenWords(10_049_999, 10_000_000)).toBe('Price is within 1% of break-even');
     expect(breakEvenWords(10_050_000, 10_000_000)).toBe('Price is 1% above break-even');
+    // Short, for the loan card's gauge.
+    expect(breakEvenWords(7_000_000, 10_000_000, false, true)).toBe('30% below');
+    expect(breakEvenWords(12_299_999, 10_000_000, false, true)).toBe('23% above');
+    expect(breakEvenWords(10_000_000, 10_000_000, false, true)).toBe('At break-even');
+    expect(breakEvenWords(10_049_999, 10_000_000, false, true)).toBe('Within 1%');
+    expect(breakEvenWords(7_000_000, 10_000_000, true, true)).not.toMatch(/\d/);
     expect(breakEvenWords(null, 10_000_000)).toBeNull();
     expect(breakEvenWords(10_000_000, null)).toBeNull();
     // Hide amounts: the percent hides (one fixed shape), the words stay.
@@ -207,5 +213,17 @@ describe('the statement check after paying more than was drawn', () => {
     const after = replay([...entries, { id: 'D', kind: 'loan-draw', at: noon('2025-02-28'), tz: TZ, loan: 'h', cents: gap }, { id: 'T', kind: 'loan-statement', at: noon('2025-02-28'), tz: TZ, loan: 'h', balanceCents: 50_000 }]);
     expect(gap).toBe(60_000);
     expect(loanSummary(after, 'h', null, '2025-03-05')?.statements.map((s) => s.matches)).toEqual([true]);
+  });
+});
+
+describe('gaugeLeft: where the price sits on the break-even gauge', () => {
+  it('puts break-even in the middle and each percent away one percent of the width', () => {
+    expect(gaugeLeft(10_000_000, 10_000_000)).toBe(50);
+    expect(gaugeLeft(7_800_000, 10_000_000)).toBeCloseTo(28);
+    expect(gaugeLeft(12_100_000, 10_000_000)).toBeCloseTo(71);
+  });
+  it('keeps the dot on the track far from break-even', () => {
+    expect(gaugeLeft(1_000_000, 10_000_000)).toBe(4);
+    expect(gaugeLeft(40_000_000, 10_000_000)).toBe(96);
   });
 });

@@ -49,16 +49,29 @@ export function loanTagFor(state: LedgerState, lotId: LotId): LoanTagInfo | null
 
 /**
  * How far the price is from break-even, in the nearest whole percent (under half a percent says within 1%): `Price is 22% below
- * break-even`. Null when either is unknown. `masked` (Hide amounts) hides the percent like every other gain percent; the
+ * break-even`, or with `short` just `22% below`. Null when either is unknown. `masked` (Hide amounts) hides the percent like every other gain percent; the
  * words stay.
  */
-export function breakEvenWords(priceCents: number | null, breakEvenCents: number | null, masked = false): string | null {
+export function breakEvenWords(priceCents: number | null, breakEvenCents: number | null, masked = false, short = false): string | null {
   if (priceCents === null || breakEvenCents === null || breakEvenCents <= 0) return null;
   const diff = BigInt(priceCents - breakEvenCents);
   const pct = Number(((diff < 0n ? -diff : diff) * 200n + BigInt(breakEvenCents)) / (2n * BigInt(breakEvenCents)));
   const shown = (text: string): string => (masked ? maskDigits(text) : text);
-  if (pct === 0) return priceCents === breakEvenCents ? 'Price is at break-even' : `Price is within ${shown('1%')} of break-even`;
-  return `Price is ${shown(`${pct}%`)} ${diff < 0n ? 'below' : 'above'} break-even`;
+  if (pct === 0) {
+    if (priceCents === breakEvenCents) return short ? 'At break-even' : 'Price is at break-even';
+    return short ? `Within ${shown('1%')}` : `Price is within ${shown('1%')} of break-even`;
+  }
+  const side = diff < 0n ? 'below' : 'above';
+  return short ? `${shown(`${pct}%`)} ${side}` : `Price is ${shown(`${pct}%`)} ${side} break-even`;
+}
+
+/**
+ * Where the price sits on the break-even gauge, as a percent of its width: break-even in the middle, each percent away one
+ * percent of the width, kept 4% from either end so the dot stays on the track.
+ */
+export function gaugeLeft(priceCents: number, breakEvenCents: number): number {
+  const away = ((priceCents - breakEvenCents) / breakEvenCents) * 100;
+  return 50 + Math.max(-46, Math.min(46, away));
 }
 
 /** The statement day in words: `the 15th`, `the last day of the month`. */

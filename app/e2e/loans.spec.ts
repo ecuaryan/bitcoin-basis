@@ -1,4 +1,4 @@
-import { loanSummary, replay } from '@bitcoin-basis/engine';
+import { formatAprPercent, loanSummary, replay } from '@bitcoin-basis/engine';
 import { expect, test, type Page } from '@playwright/test';
 import { buildDemoBook, DEMO_LOAN_ID, DEMO_PRICE_CENTS, DEMO_TODAY } from '../src/demo/demo-data.ts';
 import { formatMoney, groupedBtc, shortBtc } from '../src/lib/format.ts';
@@ -23,15 +23,22 @@ test('Holdings: the loan card shows exactly the engine’s figures for the demo 
   await openDemo(page);
   const card = page.getByRole('region', { name: 'Loans' });
   await expect(card).toContainText('Home equity line');
+  await expect(card).toContainText(`${formatAprPercent(expected.aprMillionths)} APR`);
   // Cents, as on the loan page: Owed plus Available is the credit limit exactly, and the break-even is never cut short.
-  await expect(card).toContainText(`Owed ${formatMoney(expected.principalOwedCents)} · Available ${formatMoney(expected.availableCreditCents ?? 0)}`);
+  await expect(card).toContainText(`Owed${formatMoney(expected.principalOwedCents)}${formatMoney(expected.availableCreditCents ?? 0)} available of ${formatMoney(expected.creditLimitCents ?? 0)}`);
   expect(expected.principalOwedCents + (expected.availableCreditCents ?? 0)).toBe(expected.creditLimitCents);
-  await expect(card).toContainText(`Bought ${shortBtc(expected.heldSats)} BTC · worth ${formatMoney(expected.valueCents ?? 0)}`);
-  await expect(card).toContainText(`Interest paid ${formatMoney(expected.interestPaidCents)}`);
+  await expect(card).toContainText(`Bitcoin it bought${shortBtc(expected.heldSats)} BTCAll still held`);
+  await expect(card).toContainText(`Interest paid${formatMoney(expected.interestPaidCents)}`);
+  // The big number, and its math: worth − cost − interest.
+  await expect(card).toContainText(`Gain or loss after interest`);
   await expect(card).toContainText(formatMoney(expected.gainIncludingInterestCents ?? 0, { precision: 'dollars', signed: true }));
-  await expect(card).toContainText(`Break-even price (with interest paid so far) ${formatMoney(expected.breakEvenPriceCents ?? 0)}`);
+  await expect(card).toContainText(`Worth ${formatMoney(expected.valueCents ?? 0)} − cost ${formatMoney(expected.heldCostCents)} − interest ${formatMoney(expected.interestOnPurchasesCents)}`);
+  expect((expected.valueCents ?? 0) - expected.heldCostCents - expected.interestOnPurchasesCents).toBe(expected.gainIncludingInterestCents);
+  await expect(card).toContainText(`Break-even ${formatMoney(expected.breakEvenPriceCents ?? 0)}`);
+  await expect(card.getByTestId('gauge-dot')).toBeVisible();
   const left = expected.payoffLeftoverSats ?? 0;
   await expect(card).toContainText(`${shortBtc(Math.abs(left))} BTC ${left < 0 ? 'short' : 'left over'}`);
+  await expect(card).toContainText(`${left < 0 ? 'Short of the' : 'Left over after paying'} ≈ about ${formatMoney(expected.owedNowCents)}`);
   await expect(page.getByRole('region', { name: 'Loan payment reminder' })).toHaveCount(0);
   await expectNoViolations(page);
   await card.getByRole('link', { name: /Home equity line/ }).click();
@@ -53,7 +60,8 @@ test('Hide amounts masks every loan figure in one fixed shape', async ({ page })
   expect(await card.innerText()).not.toMatch(/\$\d|\d\.\d{4}/);
   // The distance from break-even is a gain percent: hidden too, the words kept.
   await expect(card).toContainText(/Price is ••••••• (above|below) break-even/);
-  expect(await card.innerText()).not.toMatch(/\d%/);
+  expect(await card.innerText()).not.toMatch(/\d%(?! APR)/);
+  await expect(card.getByTestId('gauge-dot')).toHaveCount(0);
   await go(page, `/loans/${DEMO_LOAN_ID}`);
   const standing = page.getByRole('region', { name: 'Where it stands' });
   await expect(standing).toContainText('$•••••');
@@ -233,7 +241,7 @@ test('Import: a funded_by column creates the loan in the preview and links its r
   await expect(page.getByText('Added 3 lots, 1 wallet and 1 loan.')).toBeVisible();
   const card = page.getByRole('region', { name: 'Loans' });
   await expect(card).toContainText('HELOC');
-  await expect(card).toContainText('Owed $12,600');
+  await expect(card).toContainText('Owed$12,600.00');
 });
 
 test('Loan settings, removing a payment, closing and reopening', async ({ page }) => {
