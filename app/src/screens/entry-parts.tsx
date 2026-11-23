@@ -1,13 +1,11 @@
-import { formatAprPercent, localDate, retirementPurchases, type Entry, type LedgerState, type Wallet } from '@bitcoin-basis/engine';
+import { formatAprPercent, localDate, retirementPurchases, type Entry, type LedgerState } from '@bitcoin-basis/engine';
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { useLedger } from '../data/ledger-provider.tsx';
 import { usePrice } from '../data/price-provider.tsx';
 import { loanTags, statementDayText } from '../lib/loans-view.ts';
-import { LoanBadge } from './loans/loan-parts.tsx';
 import { cx } from '../lib/cx.ts';
 import { describeEntry, entryNoun } from '../lib/describe-entry.ts';
-import { isRecheck, userEdited, type EntryItem, type EntryRun } from '../lib/entry-list.ts';
+import { isRecheck, type EntryItem, type EntryRun } from '../lib/entry-list.ts';
 import { countOf, heldLabel, longDate, shortDate } from '../lib/format.ts';
 import { TIER_LABEL } from '../lib/origin.ts';
 import { entryWorth, type PartKind } from '../lib/worth-now.ts';
@@ -19,81 +17,7 @@ import { PlainMoney } from '../ui/plain-money.tsx';
 import { Sheet } from '../ui/Sheet.tsx';
 import { GainWords } from '../ui/WorthLine.tsx';
 import { DELETABLE_KINDS, EDITABLE_KINDS, lockedYear } from './log/model.ts';
-
-/** A small word next to an entry's title. Removed is the only thing that strikes the title through. */
-function Badge({ tone, children }: { tone: 'soft' | 'loss' | 'amber'; children: ReactNode }) {
-  return (
-    <span className={cx('flex-none rounded-md bg-surface-2 px-1.5 py-px text-[11px] font-semibold leading-4', tone === 'loss' ? 'text-loss' : tone === 'amber' ? 'text-amber' : 'text-soft')}>
-      {children}
-    </span>
-  );
-}
-
-function badgeFor(item: EntryItem): ReactNode {
-  if (item.conflict) return <Badge tone="amber">Needs a decision</Badge>;
-  if (item.deleted) return <Badge tone="loss">Removed</Badge>;
-  if (userEdited(item)) return <Badge tone="soft">Edited</Badge>;
-  return null;
-}
-
-/** One row in any list of entries (Records, a wallet). A button: it opens the entry with its history and actions. */
-export function EntryRow({ run, wallets, onOpen, last }: { run: EntryRun; wallets: ReadonlyMap<string, Wallet>; today: string; onOpen(): void; last: boolean }) {
-  const { item, count, net } = run;
-  const { state } = useLedger();
-  const e = item.current;
-  const line = describeEntry(e, wallets, loanNames(state));
-  const paidWith = (e.kind === 'buy' || e.kind === 'opening-lot') && !item.deleted ? loanTags(state).get(item.id) : undefined;
-  return (
-    <li className={cx(!last && 'border-b border-line')}>
-      <button type="button" aria-haspopup="dialog" onClick={onOpen} className="flex min-h-[60px] w-full items-center gap-3 bg-transparent py-1.5 text-left text-text">
-        <span aria-hidden="true" className="flex size-9 flex-none items-center justify-center rounded-[11px] bg-accent/12 text-[15px] font-bold text-amber">
-          {line.glyph}
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
-            <span className={cx('line-clamp-2 [overflow-wrap:anywhere]', item.deleted && 'text-muted line-through')}>
-              {line.title}
-              {count > 1 ? ` ×${count}` : ''}
-            </span>
-            {paidWith ? <LoanBadge tag={paidWith.tag} /> : null}
-            {badgeFor(item)}
-          </span>
-          <span className="text-xs text-muted [overflow-wrap:anywhere]">
-            {net ?? line.detail} · {shortDate(localDate(e.at, e.tz))}
-          </span>
-        </span>
-        <span className="flex flex-none flex-col items-end gap-0.5">
-          <span className={cx('text-sm font-semibold', item.deleted && 'text-muted')}>
-            {line.sats !== null ? (
-              <>
-                {line.sign}
-                <Amount sats={line.sats} short interactive={false} />
-              </>
-            ) : line.cents !== null ? (
-              <PlainMoney cents={line.cents} />
-            ) : null}
-          </span>
-          {line.sats !== null && line.cents !== null ? (
-            <span className="text-xs text-muted">
-              <PlainMoney cents={line.cents} />
-            </span>
-          ) : null}
-        </span>
-      </button>
-    </li>
-  );
-}
-
-const namesCache = new WeakMap<LedgerState, Map<string, string>>();
-/** Loan id to name, worked out once per replayed state. */
-function loanNames(state: LedgerState): Map<string, string> {
-  let m = namesCache.get(state);
-  if (m === undefined) {
-    m = new Map(state.loans.map((l) => [l.id, l.name]));
-    namesCache.set(state, m);
-  }
-  return m;
-}
+import { loanNames } from './entry-table.tsx';
 
 function facts(e: Entry, name: (id: string) => string, loan: (id: string) => string): [string, ReactNode][] {
   const coins = (label: string, sats: number): [string, ReactNode] => [label, <Amount key={label} sats={sats} showUnit interactive={false} />];

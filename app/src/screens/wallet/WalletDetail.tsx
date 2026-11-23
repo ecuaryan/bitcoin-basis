@@ -20,7 +20,8 @@ import { GainText } from '../holdings-parts.tsx';
 import { useAmount } from '../log/hooks.ts';
 import { describeEntry } from '../../lib/describe-entry.ts';
 import { buildItems, entryRows, NO_FILTER, RECHECK_REASON } from '../../lib/entry-list.ts';
-import { EntryRow, EntrySheet } from '../entry-parts.tsx';
+import { EntrySheet } from '../entry-parts.tsx';
+import { EntryTable } from '../entry-table.tsx';
 import { entriesCount } from '../records/records-entries.tsx';
 import { EmptyLine, SectionCount, SectionHeader, ShowMore } from '../../ui/SectionHeader.tsx';
 import { localInputFor, longDate, nowInstant, trialReplay } from '../log/model.ts';
@@ -346,11 +347,7 @@ function History({ wallet }: { wallet: Wallet }) {
     <Card as="section" aria-label="Entries" className="flex flex-col">
       <SectionHeader title="Entries" right={<SectionCount>{entriesCount(rows.length)}</SectionCount>} className="-mt-2" />
       {rows.length === 0 ? <EmptyLine>Nothing logged for {wallet.name} yet.</EmptyLine> : null}
-      <ul className="m-0 flex list-none flex-col p-0">
-        {shown.map((run, i, arr) => (
-          <EntryRow key={run.item.id} run={run} wallets={wallets} today={today} onOpen={() => setOpenId(run.item.id)} last={i === arr.length - 1} />
-        ))}
-      </ul>
+      {shown.length > 0 ? <EntryTable runs={shown} wallets={wallets} onOpen={setOpenId} walletId={wallet.id} label={`${wallet.name} entries, newest first`} /> : null}
       {rows.length > shown.length ? <ShowMore onClick={() => setAll(true)}>Show all {entriesCount(rows.length)}</ShowMore> : null}
       {open && <EntrySheet run={open} state={state} today={today} onClose={() => setOpenId(null)} />}
     </Card>

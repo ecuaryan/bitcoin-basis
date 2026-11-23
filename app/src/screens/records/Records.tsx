@@ -7,7 +7,8 @@ import { useIsWide } from '../../ui/AppShell.tsx';
 import { ChevronLeftIcon, SearchIcon } from '../../ui/more-icons.tsx';
 import { PageHeader } from '../../ui/PageHeader.tsx';
 import { EntriesView, entriesCount } from './records-entries.tsx';
-import { EntryRow, EntrySheet } from '../entry-parts.tsx';
+import { EntrySheet } from '../entry-parts.tsx';
+import { EntryTable } from '../entry-table.tsx';
 import { EmptyLine, SectionHeader, SectionLink } from '../../ui/SectionHeader.tsx';
 import { ImportExportView } from './records-io.tsx';
 import { ClosedYearsView, WalletsView } from './records-misc.tsx';
@@ -82,11 +83,7 @@ export function Records() {
       {rows.length === 0 ? (
         <EmptyLine className="rounded-[18px] border border-line bg-surface px-4">Nothing logged yet.</EmptyLine>
       ) : (
-        <ul className="m-0 list-none rounded-[18px] border border-line bg-surface px-3.5 py-0.5">
-          {rows.slice(0, 4).map((run, i, arr) => (
-            <EntryRow key={run.item.id} run={run} wallets={wallets} today={today} onOpen={() => setOpenId(run.item.id)} last={i === arr.length - 1} />
-          ))}
-        </ul>
+        <EntryTable runs={rows.slice(0, 4)} wallets={wallets} onOpen={setOpenId} label="Recent entries, newest first" className="rounded-[18px] border border-line bg-surface px-3.5 py-0.5" />
       )}
     </section>
   );

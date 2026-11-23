@@ -81,3 +81,13 @@ export function TierTag({ tier }: { tier: Lot['tier'] }) {
     </span>
   );
 }
+
+/** Marks retirement Bitcoin in a list (the one place `retire` blue appears beside the word). */
+export function RetirementTag() {
+  return (
+    <span className="flex flex-none items-center gap-1 rounded-md border border-line px-1.5 text-[11px] font-semibold leading-4 text-soft">
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-retire" />
+      Retirement
+    </span>
+  );
+}
