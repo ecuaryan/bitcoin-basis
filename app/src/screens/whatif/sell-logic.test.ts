@@ -2,7 +2,7 @@ import { replay, type Entry, type SalePlan, type SellEntry } from '@bitcoin-basi
 import { describe, expect, it } from 'vitest';
 import { buildDemoBook, DEMO_PRICE_CENTS, DEMO_TODAY, W } from '../../demo/demo-data.ts';
 import { computeEffect, trialReplay } from '../log/model.ts';
-import { defaultSats, documentationNote, planForWallet, riskPercentFromBp, stepFor, summarize, taxEffectLabel } from './sell-logic.ts';
+import { bestPills, defaultSats, documentationNote, lotsUsed, mostCarried, planForWallet, riskPercentFromBp, stepFor, summarize, taxEffectLabel, taxShown, termLabel } from './sell-logic.ts';
 
 const plan = (totalTaxCents: number, st = 0, lt = 0, estimatedShareBp = 0): SalePlan => ({ totalTaxCents, carryforwardOut: { st, lt }, estimatedShareBp }) as unknown as SalePlan;
 const words = (parts: ReturnType<typeof summarize>): string => parts.map((p) => (typeof p === 'string' ? p : 'cents' in p ? `$${p.cents}` : p.bold)).join('');
@@ -104,5 +104,57 @@ describe('What if sale review', () => {
       expect(trial.problems).toEqual([]);
       expect(computeEffect(sell, trial.before, trial.after).taxCents).toBe(plan.totalTaxCents);
     }
+  });
+});
+
+describe('plan cards', () => {
+  it('pill: the plan no other beats (less tax, then more losses left), with words for why', () => {
+    expect(bestPills([plan(275_925), plan(1_950)])).toEqual([null, 'Least tax']);
+    expect(bestPills([plan(90_675), plan(-79_500, 0, 640_000), plan(-26_500)])).toEqual([null, 'Saves the most', null]);
+    // Same tax: the engine prefers more losses left for next year.
+    expect(bestPills([plan(0, 100), plan(0)])).toEqual(['Keeps more losses', null]);
+    // Two plans tie for best: both get it. All tied: nothing to point at.
+    expect(bestPills([plan(500), plan(100), plan(100)])).toEqual([null, 'Least tax', 'Least tax']);
+    expect(bestPills([plan(100, 5), plan(100, 5)])).toEqual([null, null]);
+    // Beats one on tax and another only on losses left: the losses words.
+    expect(bestPills([plan(100, 50), plan(100), plan(300)])).toEqual(['Keeps more losses', null, null]);
+  });
+  it('losses left stand out only on the one plan that leaves the most', () => {
+    expect(mostCarried([plan(0, 100), plan(0)])).toEqual([true, false]);
+    expect(mostCarried([plan(0, 100), plan(0, 0, 100)])).toEqual([false, false]);
+    expect(mostCarried([plan(0), plan(0)])).toEqual([false, false]);
+  });
+  it('labels flip with the sign', () => {
+    expect(termLabel('Short-term', -1)).toBe('Short-term loss');
+    expect(termLabel('Long-term', 0)).toBe('Long-term gain');
+    const saves = { totalTaxCents: -79_500, federalTaxCents: -66_000, stateTaxCents: -13_500 } as unknown as SalePlan;
+    expect(taxShown(saves)).toEqual({ label: 'Tax this saves', saves: true, cents: 79_500, federal: 66_000, state: 13_500 });
+    const adds = { totalTaxCents: 275_925, federalTaxCents: 212_250, stateTaxCents: 63_675 } as unknown as SalePlan;
+    expect(taxShown(adds)).toEqual({ label: 'Tax this adds', saves: false, cents: 275_925, federal: 212_250, state: 63_675 });
+  });
+
+  it('on the demo book, every plan adds up: federal + state = tax, proceeds − tax = kept, lots = Total = short + long', () => {
+    const state = replay(buildDemoBook().entries);
+    const year = Number(DEMO_TODAY.slice(0, 4));
+    let checked = 0;
+    for (const settings of [{ ...state.settings, wagesCents: 12_000_000 }, { ...state.settings, wagesCents: 12_000_000, carryforwardStCents: 300_000, carryforwardLtCents: 500_000 }]) {
+      for (const sats of [1_234_567, 25_000_000, 61_880_000]) {
+        const r = planForWallet({ ...state, settings }, settings, { wallet: W.strike, sats, priceCents: DEMO_PRICE_CENTS, onDate: DEMO_TODAY, year }).plans;
+        if (!r.ok) continue;
+        for (const p of [r.value.oldestFirst, r.value.lowestTax]) {
+          const shown = taxShown(p);
+          expect(shown.federal + shown.state).toBe(shown.cents);
+          expect(p.proceedsCents + (shown.saves ? shown.cents : -shown.cents)).toBe(p.afterTaxCents);
+          const used = lotsUsed(p);
+          expect(used.total.sats).toBe(sats);
+          expect(used.rows.reduce((s, x) => s + x.proceedsCents, 0)).toBe(used.total.proceedsCents);
+          expect(used.rows.reduce((s, x) => s + x.costCents, 0)).toBe(used.total.costCents);
+          expect(used.rows.reduce((s, x) => s + x.gainCents, 0)).toBe(used.total.gainCents);
+          expect(used.total.gainCents).toBe(p.stGainCents + p.ltGainCents);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(8);
   });
 });
