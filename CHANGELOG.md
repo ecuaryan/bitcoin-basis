@@ -22,6 +22,10 @@
 
 - **Recent purchases** on Holdings, under the chart and your retirement accounts: your latest five purchases, newest first, in the same table as a wallet's lots (Date, Paid, Bitcoin with the cost per BTC, Now with the gain or loss and its percent), with the wallet on each row. It counts logged purchases, retirement purchases (tagged Retirement) and imported lots that cost something, dated when they were bought. "Show 10 more" adds rows; tap one to open it. On desktop it spans the page, one line per purchase.
 
+### Changed (Sell)
+
+- **Sell: plan cards you can read straight across.** Every plan card (Oldest first, Lowest tax, Lots you picked) shows the same rows in the same places, lined up across cards: the tax as the big number ("Tax this adds", or "Tax this saves" in green) with "Federal $X + state $Y" under it, what you keep after tax with its math ("$23,703.10 sale − $0.00 tax"), short-term, long-term, losses left for next year, the share on Estimated or Unknown cost, and the lots used. Empty figures ($0.00, 0%) are muted. The plan the planner prefers gets a small pill ("Least tax", "Saves the most", or "Keeps more losses" when the tax is the same). Under the cards, "Lots used in …" lists the chosen plan's lots (bought, term, Bitcoin, cost, sold for, gain or loss) with a Total row that matches the card's short-term + long-term. A third plan (after picking lots) sits full width under the two on a phone. Federal and state tax now always add up to the total to the cent (the engine splits the total by largest remainder).
+
 ### Changed (Holdings, taxable)
 
 - **Wallets are one aligned table** on phone and desktop: Wallet (name over type), Bitcoin (all 8 decimals, its worth now under it), and Gain or loss (with the percent under it), so the figures line up down the page. The balance check ("Confirmed Nov 2, 2026", "Needs a check" in amber) gets its own column on a wide card and a line across the row on a phone. A Total row adds up the counted wallets, in whole dollars that match the unrealized gain; frozen wallets follow it, marked "Not counted". On desktop the Wallets card is two thirds of the row, beside "How well it is documented".
