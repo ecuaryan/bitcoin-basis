@@ -5,7 +5,8 @@ import { countOf } from '../../lib/format.ts';
 import { Field, SelectBox } from '../../ui/Field.tsx';
 import { SearchIcon } from '../../ui/more-icons.tsx';
 import { EmptyLine, SectionCount, SectionHeader, ShowMore } from '../../ui/SectionHeader.tsx';
-import { EntryRow, EntrySheet } from '../entry-parts.tsx';
+import { EntrySheet } from '../entry-parts.tsx';
+import { EntryTable } from '../entry-table.tsx';
 
 const PAGE = 40;
 
@@ -63,11 +64,7 @@ export function EntriesView({ autoFocusSearch = false }: { autoFocusSearch?: boo
         {rows.length === 0 ? (
           <EmptyLine className="rounded-[18px] border border-line bg-surface px-4">{filtered ? 'Nothing matches. Clear a filter or try other words.' : 'Nothing logged yet.'}</EmptyLine>
         ) : (
-          <ul className="m-0 list-none rounded-[18px] border border-line bg-surface px-3.5 py-0.5">
-            {rows.slice(0, shown).map((run, i, arr) => (
-              <EntryRow key={run.item.id} run={run} wallets={wallets} today={today} onOpen={() => setOpenId(run.item.id)} last={i === arr.length - 1} />
-            ))}
-          </ul>
+          <EntryTable runs={rows.slice(0, shown)} wallets={wallets} onOpen={setOpenId} label="Entries, newest first" className="rounded-[18px] border border-line bg-surface px-3.5 py-0.5" />
         )}
         {rows.length > shown && <ShowMore onClick={() => setShown((n) => n + PAGE)}>Show {Math.min(PAGE, rows.length - shown)} more</ShowMore>}
       </section>

@@ -154,3 +154,48 @@ test('Records: choosing the same spreadsheet again adds nothing twice', async ({
   await expect(page.getByRole('status').filter({ hasText: 'opening-lots-new-wallets.csv' })).toContainText('Everything in this file is already in your records. Nothing was added.');
   await expect(page.getByRole('button', { name: /^Add|^Create/ })).toHaveCount(0);
 });
+
+test('Entries: an aligned table on a wide card, compact rows on a phone; each row reads in full and opens the entry', async ({ page }, info) => {
+  await openDemo(page);
+  await go(page, '/records?v=entries');
+  const list = page.getByRole('list', { name: 'Entries, newest first' });
+  const first = list.getByRole('button').first();
+  // Title first, then wallet and date with its year (Chrome puts a space before a comma that follows a block), the full 8-decimal BTC and what the dollars were.
+  await expect(first).toHaveAccessibleName(/^Bought ?, Strike · Nov 12 ?, 2026 ?, \+0\.0234 7140 BTC ?, \$1,388\.93 paid$/);
+  const heading = page.locator('[aria-hidden="true"]', { hasText: /^DateWhatWalletBitcoinDollars$/ });
+  if (info.project.name === 'desktop') {
+    await expect(heading).toBeVisible();
+    // Every row's Bitcoin ends at the same x: the columns line up.
+    const rights = await list.getByRole('button').evaluateAll((bs) =>
+      bs.slice(0, 8).map((b) => {
+        const cell = [...b.querySelectorAll('span')].find((s) => s.className.includes('@min-[34rem]:col-start-5'));
+        return Math.round(cell?.getBoundingClientRect().right ?? -1);
+      }),
+    );
+    expect(new Set(rights).size).toBe(1);
+  } else {
+    await expect(heading).toBeHidden();
+  }
+  // A move: both wallets, its fee, no dollars.
+  await page.getByRole('searchbox', { name: 'Search entries' }).fill('moved');
+  await expect(list.getByRole('button').first()).toHaveAccessibleName(/^Moved ?, Strike .*Cold storage · Jul 1 ?, 2025 ?, .*0\.3176 9422 BTC ?, fee 0\.0000 4400 BTC/);
+  await list.getByRole('button').first().click();
+  await expect(page.getByRole('dialog', { name: 'Moved' })).toContainText('History');
+  await expectNoViolations(page);
+});
+
+test("Entries on a wallet's page: a move out shows what left (coins and fee); Hide amounts hides every figure", async ({ page }, info) => {
+  await openDemo(page);
+  await go(page, '/wallet/wallet-strike');
+  const entries = page.getByRole('region', { name: 'Entries' });
+  await entries.getByRole('button', { name: /^Show all \d+ entries/ }).click();
+  const move = entries.getByRole('button', { name: /^Moved to Cold storage/ }).first();
+  await expect(move).toHaveAccessibleName(/0\.3176 9422 BTC arrived · fee 0\.0000 4400 BTC · Jul 1 ?, 2025 ?, −0\.3177 3822 BTC/);
+  if (info.project.name === 'desktop') await expect(page.locator('[aria-hidden="true"]', { hasText: /^DateWhatBitcoinDollars$/ })).toBeVisible();
+  await expectNoViolations(page);
+  // Hide amounts hides every figure in the rows; the dates stay.
+  await page.getByRole('button', { name: 'Hide amounts' }).first().click();
+  const texts = await entries.getByRole('listitem').allInnerTexts();
+  expect(texts.length).toBeGreaterThan(100);
+  for (const t of texts) expect(t.replace(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}|\b20\d\d\b/g, '')).not.toMatch(/\d/);
+});

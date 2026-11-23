@@ -12,21 +12,12 @@ import { PlainMoney } from '../ui/plain-money.tsx';
 import { SectionHeader, ShowMore } from '../ui/SectionHeader.tsx';
 import { EntrySheet } from './entry-parts.tsx';
 import { LoanBadge } from './loans/loan-parts.tsx';
-import { C, DateCell, Gain, MAIN, NARROW_ONLY, Percent, ROW, SUB, TABLE, TierTag, WIDE_ONLY } from './purchase-table.tsx';
+import { C, DateCell, Gain, MAIN, NARROW_ONLY, Percent, RetirementTag, ROW, SUB, TABLE, TierTag, WIDE_ONLY } from './purchase-table.tsx';
 import { recentPurchases, type PurchaseRow } from './recent-purchases.ts';
 
 /** Rows at first, and how many more each "Show more" adds. */
 export const PURCHASES_SHOWN = 5;
 export const PURCHASES_MORE = 10;
-
-function RetirementTag() {
-  return (
-    <span className="flex flex-none items-center gap-1 rounded-md border border-line px-1.5 text-[11px] font-semibold leading-4 text-soft">
-      <span aria-hidden="true" className="size-1.5 rounded-full bg-retire" />
-      Retirement
-    </span>
-  );
-}
 
 function Row({ row, walletName, frozen, priceCents, onOpen }: { row: PurchaseRow; walletName: string; frozen: boolean; priceCents: number | null; onOpen(): void }) {
   const { state } = useLedger();
