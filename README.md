@@ -4,7 +4,10 @@
 
 A self-hosted, local-first, end-to-end encrypted cost-basis and records app for Bitcoin only. Your records live on your devices, sync through a tiny server you own, and are readable by nobody else, including that server.
 
-<!-- TODO: 60-second demo GIF (open the app, Try the demo, Holdings, Log a purchase, Sell comparison, Tax season). Save as docs/screenshots/demo.gif and embed here. -->
+**[Try the live demo](https://bitcoin-basis.ryanwillmore.workers.dev/demo)**: made-up data, no sign-up, nothing saved.
+
+<!-- VIDEO: in GitHub's web editor, drag bitcoin-basis-demo.mp4 onto the blank line below this comment. GitHub uploads it and inserts a link that plays inline. Then delete this comment. -->
+
 
 <p>
   <img src="docs/screenshots/holdings-phone.png" alt="Holdings on a phone: what your Bitcoin is worth, average cost, unrealized gain, stack by year" width="220">
