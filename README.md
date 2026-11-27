@@ -6,8 +6,7 @@ A self-hosted, local-first, end-to-end encrypted cost-basis and records app for 
 
 **[Try the live demo](https://bitcoin-basis.ryanwillmore.workers.dev/demo)**: made-up data, no sign-up, nothing saved.
 
-<!-- VIDEO: in GitHub's web editor, drag bitcoin-basis-demo.mp4 onto the blank line below this comment. GitHub uploads it and inserts a link that plays inline. Then delete this comment. -->
-
+https://github.com/user-attachments/assets/4c012484-8763-4f98-a42a-98c6bbcd7af9
 
 <p>
   <img src="docs/screenshots/holdings-phone.png" alt="Holdings on a phone: what your Bitcoin is worth, average cost, unrealized gain, stack by year" width="220">
