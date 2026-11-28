@@ -1,7 +1,7 @@
 import { allBitcoin, averageCostPerBtc, carryforwardFor, retirementPurchases, retirementWorth, TIERS, valueOfPieces, yearOf, type AllBitcoin, type Holdings, type LedgerState, type Lot, type RetirementHolding, type RetirementPurchaseView, type Tier, type WalletType, type Worth, type WorthWithUnknown } from '@bitcoin-basis/engine';
 import { confirmedLabel, sharePercents, wholeDollarParts } from './format.ts';
 import { staleLosses } from './losses.ts';
-import { fromParts, type WorthNow } from './worth-now.ts';
+import { fromParts, sumWorth, type WorthNow } from './worth-now.ts';
 import { WALLET_TYPE_LABEL } from './wallet-label.ts';
 
 /** A retirement purchase in the stack: its own colour, no tax tier. */
@@ -29,6 +29,10 @@ export interface StackYear {
   retirement: StackRetirementPurchase[];
   /** Lots and retirement purchases together, newest first (the year sheet's list). */
   pieces: StackPiece[];
+  /** What everything bought that year is worth now, each piece valued on its own, and its gain. */
+  worth: WorthNow;
+  /** `worth`'s value and gain in whole dollars that add up to the years' total (`wholeDollarParts`); null with no price. */
+  shown: { valueCents: number | null; gainCents: number | null };
 }
 
 /** Retirement coins with no purchase dates (balance notes only): in the total, not in any year. */
@@ -140,7 +144,7 @@ function stackOf(state: LedgerState, h: Holdings, lots: readonly Lot[], priceCen
   const rowFor = (year: number): StackYear => {
     let row = byYear.get(year);
     if (!row) {
-      row = { year, sats: 0, taxableSats: 0, retirementSats: 0, byTier: Object.fromEntries(TIERS.map((t) => [t, 0])) as Record<Tier, number>, lots: [], retirement: [], pieces: [] };
+      row = { year, sats: 0, taxableSats: 0, retirementSats: 0, byTier: Object.fromEntries(TIERS.map((t) => [t, 0])) as Record<Tier, number>, lots: [], retirement: [], pieces: [], worth: fromParts(0, 0, null), shown: { valueCents: null, gainCents: null } };
       byYear.set(year, row);
     }
     return row;
@@ -170,6 +174,13 @@ function stackOf(state: LedgerState, h: Holdings, lots: readonly Lot[], priceCen
       ...row.lots.map((lot): StackPiece => ({ kind: 'lot', lot })),
       ...row.retirement.map((purchase): StackPiece => ({ kind: 'retirement', purchase })),
     ].sort((a, b) => newestFirst(instant(a.kind === 'lot' ? a.lot.acquiredAt : a.purchase.at), instant(b.kind === 'lot' ? b.lot.acquiredAt : b.purchase.at)));
+    row.worth = sumWorth([...row.lots, ...row.retirement], priceCents);
+  }
+  if (priceCents !== null) {
+    const sum = (k: 'valueCents' | 'gainCents'): number => stack.reduce((t, r) => t + (r.worth[k] as number), 0);
+    const values = wholeDollarParts(stack.map((r) => r.worth.valueCents), sum('valueCents'));
+    const gains = wholeDollarParts(stack.map((r) => r.worth.gainCents), sum('gainCents'));
+    stack.forEach((r, i) => (r.shown = { valueCents: values[i] as number, gainCents: gains[i] as number }));
   }
   const undated = h.retirement.filter((r) => r.balanceFrom === 'snapshot' && r.sats > 0);
   const stackUndated = undated.length === 0 ? null : { sats: undated.reduce((t, r) => t + r.sats, 0), wallets: undated.map((r) => r.name) };

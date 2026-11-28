@@ -50,6 +50,26 @@ describe('Your stack, by year bought', () => {
       expect(text()).not.toContain('Not in a year');
     });
 
+    it(`${layout}: each year shows what it is worth now and its gain, retirement included`, async () => {
+      // 2024: 0.5 BTC for $20,000, worth $50,000. 2025: the IRA's 0.1 BTC for $5,000, worth $10,000.
+      app = await renderApp(<StackCard view={viewOf([...base, iraBuy])} wide={wide} onPick={noop} />);
+      const years = [...app.container.querySelectorAll('li button')].map((b) => b.textContent);
+      expect(years[0]).toContain('$50,000up +$30,000 · +150%');
+      expect(years[1]).toContain('$10,000up +$5,000 · +100%');
+    });
+
+    it(`${layout}: a year down shows its loss, and no price shows a dash`, async () => {
+      const dear: Entry = { id: 'b2', kind: 'buy', at: '2025-05-01T19:00:00Z', tz: TZ, wallet: 'ex', sats: 10_000_000, costCents: 1_250_000, tier: 'documented' };
+      app = await renderApp(<StackCard view={viewOf([...base, dear])} wide={wide} onPick={noop} />);
+      expect([...app.container.querySelectorAll('li button')][1]?.textContent).toContain('$10,000down −$2,500 · −20%');
+      app.unmount();
+      const state = replay([...base, dear]);
+      app = await renderApp(<StackCard view={buildHoldingsView(state, holdings(state), null, '2026-11-20')} wide={wide} onPick={noop} />);
+      const first = [...app.container.querySelectorAll('li button')][0]?.textContent ?? '';
+      expect(first).toContain('—Show the 2024 lots');
+      expect(first).not.toContain('$');
+    });
+
     it(`${layout}: retirement with balance notes only is named under the years, not dropped`, async () => {
       app = await renderApp(<StackCard view={viewOf([...base, iraBuy, ...oldIra])} wide={wide} onPick={noop} />);
       expect(text()).toContain('Not in a year: 0.1200 BTC in retirement, because no purchases are logged for Old IRA.');

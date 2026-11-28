@@ -18,6 +18,7 @@ import { PriceUnavailableLine, yourPriceText } from '../ui/PriceProblem.tsx';
 import { PriceAge, PriceRefreshButton } from '../ui/PriceFreshness.tsx';
 import { sumWorth, worthNow } from '../lib/worth-now.ts';
 import { GainWords, WorthLine } from '../ui/WorthLine.tsx';
+import { Percent, tone } from './purchase-table.tsx';
 import { loanTagFor } from '../lib/loans-view.ts';
 import { LoanBadge } from './loans/loan-parts.tsx';
 
@@ -96,30 +97,62 @@ function segments(row: StackYear): { key: string; bg: string; sats: number }[] {
 export function StackRows({ stack, onPick }: { stack: StackYear[]; onPick(year: number): void }) {
   const max = Math.max(1, ...stack.map((r) => r.sats));
   return (
-    <ul className="-my-1 flex list-none flex-col gap-px p-0">
+    <ul className="-my-1 grid list-none grid-cols-[4.75rem_minmax(0,1fr)_auto] gap-x-2.5 gap-y-1 p-0">
       {stack.map((row) => (
-        <li key={row.year}>
+        <li key={row.year} className="col-span-full grid grid-cols-subgrid">
           <button
             type="button"
             onClick={() => onPick(row.year)}
-            className="press-soft flex min-h-6 w-full items-center gap-2.5 rounded-lg bg-transparent p-0 text-left text-text hover:bg-surface-2/60 active:bg-surface-2/60"
+            className="press-soft col-span-full grid grid-cols-subgrid items-center rounded-lg bg-transparent px-0 py-1 text-left text-text hover:bg-surface-2/60 active:bg-surface-2/60"
           >
-            <span className="w-9 text-xs text-muted">{row.year}</span>
-            <span className="flex h-3.5 flex-1 overflow-hidden rounded-[7px] bg-surface-2" aria-hidden="true">
+            <span className="flex flex-col gap-px">
+              <span className="text-[13px] font-semibold">{row.year}</span>
+              <span className="text-[11px] text-muted">
+                <ShortBtc sats={row.sats} />
+              </span>
+            </span>
+            <span className="flex h-3.5 overflow-hidden rounded-[7px] bg-surface-2" aria-hidden="true">
               <span className="flex h-full origin-left animate-grow" style={{ width: `${(row.sats / max) * MAX_BAR_PERCENT}%` }}>
                 {segments(row).map((s) => (
                   <span key={s.key} className={cx('h-full', s.bg)} style={{ width: `${(s.sats / row.sats) * 100}%` }} />
                 ))}
               </span>
             </span>
-            <span className="w-16 text-right text-xs">
-              <ShortBtc sats={row.sats} />
-            </span>
+            <YearFigures row={row} className="items-end text-right" />
             <span className="sr-only">Show the {row.year} lots and where each came from.</span>
           </button>
         </li>
       ))}
     </ul>
+  );
+}
+
+/** A year's worth now over its gain and percent: `$86,400` over `+$58,500 · +210%`. Plain text, inside the year's button. */
+function YearFigures({ row, wide = false, className }: { row: StackYear; wide?: boolean; className?: string }) {
+  const { worth } = row;
+  const { valueCents, gainCents } = row.shown;
+  return (
+    <span className={cx('flex flex-col gap-px whitespace-nowrap', className)}>
+      <span className={wide ? 'text-sm font-semibold' : 'text-[13px]'}>{valueCents === null ? '—' : <PlainMoney cents={valueCents} precision="dollars" />}</span>
+      {gainCents === null ? null : (
+        <span className={cx('font-medium', wide ? 'text-xs' : 'text-[11px]', tone(gainCents))}>
+          {gainCents === 0 ? (
+            'even'
+          ) : (
+            <>
+              <span className="sr-only">{gainCents > 0 ? 'up ' : 'down '}</span>
+              <PlainMoney cents={gainCents} precision="dollars" signed />
+              {worth.percent === null ? null : (
+                <>
+                  {' · '}
+                  <Percent worth={worth} />
+                </>
+              )}
+            </>
+          )}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -131,7 +164,7 @@ export function StackColumns({ stack, onPick }: { stack: StackYear[]; onPick(yea
   const max = Math.max(1, ...stack.map((r) => r.sats));
   const BAR = 120; // px for the tallest year
   return (
-    <ul className="m-0 grid h-40 list-none items-end gap-3.5 p-0" style={{ gridTemplateColumns: `repeat(${Math.max(1, stack.length)}, minmax(0, 1fr))` }}>
+    <ul className="m-0 grid h-52 list-none items-end gap-3.5 p-0" style={{ gridTemplateColumns: `repeat(${Math.max(1, stack.length)}, minmax(0, 1fr))` }}>
       {stack.map((row) => (
         <li key={row.year} className="h-full">
           <button
@@ -151,6 +184,7 @@ export function StackColumns({ stack, onPick }: { stack: StackYear[]; onPick(yea
                 ))}
             </span>
             <span className="text-xs text-muted">{row.year}</span>
+            <YearFigures row={row} wide className="w-full items-center border-t border-line pt-2" />
             <span className="sr-only">Show the {row.year} lots and where each came from.</span>
           </button>
         </li>

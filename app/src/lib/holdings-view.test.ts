@@ -16,6 +16,18 @@ describe('Holdings: every worth is lot by lot, so the parts add up to the totals
     expect(view.gainCents).toBe(view.all?.taxable.gainCents);
   });
 
+  it('each year is worth its lots and purchases, and the years add up to the hero in whole dollars', () => {
+    const all = view.all;
+    if (all === null) throw new Error('the demo has a retirement wallet');
+    for (const r of view.stack) expect(r.worth).toEqual(sumWorth([...r.lots, ...r.retirement], DEMO_PRICE_CENTS));
+    const whole = (c: number | null) => Math.trunc((c as number) / 100) * 100;
+    expect(view.stack.reduce((t, r) => t + (r.shown.valueCents as number), 0)).toBe(whole(all.total.valueCents));
+    expect(view.stack.reduce((t, r) => t + (r.shown.gainCents as number), 0)).toBe(whole(all.total.gainCents));
+    for (const r of view.stack) expect(Math.abs((r.shown.valueCents as number) - (r.worth.valueCents as number))).toBeLessThan(100);
+    const none = buildHoldingsView(state, holdings(state), null, DEMO_TODAY);
+    expect(none.stack.every((r) => r.shown.valueCents === null && r.shown.gainCents === null)).toBe(true);
+  });
+
   it('retirement is its purchases added up; taxable plus retirement is the total', () => {
     const all = view.all;
     if (all === null) throw new Error('the demo has a retirement wallet');

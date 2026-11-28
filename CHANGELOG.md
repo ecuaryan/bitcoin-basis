@@ -9,6 +9,7 @@
 - The demo is smaller and simpler: 2.1 BTC in all (1.85 taxable in Cold storage and Strike, 0.25 in a retirement account), about 50 purchases instead of 186, no frozen platform (Harbor Earn) and no River wallet. Same loan, gift in and out, spend, past losses and 94% documented.
 - Loan page purchases use the Recent purchases table: Date · Paid · Bitcoin (@ cost per BTC) · Now (gain, %), then the wallet on its own line and a line with the purchase's share of the interest and its gain after interest. A long wallet name is cut short and a long interest line wraps, so the figures never run off the card. On a card 56rem and wider, Interest and After interest are columns. The Total row is still the big number at the top.
 - For my CPA opens in the same tab (Back to Tax season returns). In a new tab it started locked, so from the demo it asked you to sign in and then showed your own records.
+- Your stack, by year bought shows each year's worth now and its gain or loss with percent, so you don't have to open each year. Phone: the year and its BTC on the left, the bar, then the worth over the gain. Desktop: under each year's column. Worth and gain are in whole dollars that add up to the hero's.
 - Loan card: the ≈ in "Left over after paying ≈ $…" stays with its amount, so hiding amounts no longer rewraps the line.
 
 ### Added
